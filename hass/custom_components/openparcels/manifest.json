@@ -1,0 +1,10 @@
+{
+  "domain": "openparcels",
+  "name": "OpenParcels",
+  "documentation": "https://github.com/openparcels/openparcels",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": [],
+  "iot_class": "local_push",
+  "version": "1.0.0"
+}

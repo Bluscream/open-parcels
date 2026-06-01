@@ -1,0 +1,44 @@
+{
+  "name": "open-parcels",
+  "version": "1.0.0",
+  "description": "Self-hostable service that ingests and tracks parcels, returns and orders.",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:generate": "drizzle-kit generate:sqlite",
+    "db:push": "drizzle-kit push:sqlite",
+    "db:studio": "drizzle-kit studio"
+  },
+  "keywords": [
+    "parcel",
+    "tracker"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/http-proxy": "^9.5.0",
+    "@fastify/static": "^7.0.4",
+    "@fastify/swagger": "^8.14.0",
+    "@fastify/swagger-ui": "^3.0.0",
+    "@fastify/websocket": "^8.3.1",
+    "@libsql/client": "^0.14.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.2",
+    "fastify": "^4.26.2",
+    "imap-simple": "^5.1.0",
+    "mail-parser-ts": "file:./packages/mail-parser-ts",
+    "mailparser": "^3.7.1",
+    "playwright": "^1.42.1"
+  },
+  "devDependencies": {
+    "@types/imap-simple": "^4.2.9",
+    "@types/mailparser": "^3.4.4",
+    "@types/node": "^20.11.24",
+    "drizzle-kit": "^0.20.14",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.2"
+  }
+}

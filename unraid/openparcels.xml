@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>OpenParcels</Name>
+  <Repository>openparcels/openparcels:latest</Repository>
+  <Registry>https://hub.docker.com/r/openparcels/openparcels</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/openparcels/openparcels/issues</Support>
+  <Project>https://github.com/openparcels/openparcels</Project>
+  <Overview>Self-hostable service that ingests and tracks parcels, returns and orders from multiple sources.</Overview>
+  <Category>Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:3000]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/openparcels/openparcels/main/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1716768000</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Port" Target="3000" Default="3000" Mode="tcp" Description="Web UI and API Port" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/openparcels" Mode="rw" Description="Path to store SQLite DB and configs" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/openparcels</Config>
+  <Config Name="Encryption Key" Target="ENCRYPTION_KEY" Default="" Mode="" Description="32-byte hex key for encrypting credentials in DB" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Guest Token" Target="OPENPARCELS_TOKEN_GUEST" Default="" Mode="" Description="Read-only access token" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Admin Token" Target="OPENPARCELS_TOKEN_ADMIN" Default="" Mode="" Description="Read-write access token" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="HA URL" Target="HASS_URL" Default="http://homeassistant.local:8123" Mode="" Description="Home Assistant URL for events" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="HA Token" Target="HASS_TOKEN" Default="" Mode="" Description="Long-lived access token for Home Assistant" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+</Container>
