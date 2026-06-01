@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  openparcels:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: openparcels
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/data/data.db
+      # Set your keys here or in a .env file
+      - ENCRYPTION_KEY=your_64_character_hex_key_here
+      - OPENPARCELS_TOKEN_GUEST=guest_token_123
+      - OPENPARCELS_TOKEN_ADMIN=admin_token_secure_456
+      # Home Assistant
+      - HASS_URL=http://homeassistant.local:8123
+      - HASS_TOKEN=your_long_lived_access_token
+    volumes:
+      - openparcels_data:/data
+
+volumes:
+  openparcels_data:
