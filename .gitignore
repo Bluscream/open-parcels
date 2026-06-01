@@ -147,3 +147,5 @@ vite.config.ts.timestamp-*
 .scratch/
 imap-config.json
 packages/
+parsed_mails.json
+data.db
