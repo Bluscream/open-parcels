@@ -3,7 +3,11 @@ import { Home, Package, Plane, Ship, Train, Truck, MapPin } from "lucide-react";
 import React from "react";
 import { renderToString } from "react-dom/server";
 
-export const createDivIcon = (iconNode: React.ReactNode, color: string) => {
+export const createDivIcon = (
+	iconNode: React.ReactNode,
+	color: string,
+	containerSize = 32
+) => {
 	const html = renderToString(
 		<div
 			style={{
@@ -11,8 +15,8 @@ export const createDivIcon = (iconNode: React.ReactNode, color: string) => {
 				display: "flex",
 				alignItems: "center",
 				justifyContent: "center",
-				width: "32px",
-				height: "32px",
+				width: `${containerSize}px`,
+				height: `${containerSize}px`,
 				boxSizing: "border-box",
 				filter: `drop-shadow(0px 2px 4px rgba(0,0,0,0.6))`,
 			}}
@@ -23,9 +27,9 @@ export const createDivIcon = (iconNode: React.ReactNode, color: string) => {
 	return L.divIcon({
 		html,
 		className: "custom-leaflet-icon",
-		iconSize: [32, 32],
-		iconAnchor: [16, 16],
-		popupAnchor: [0, -16],
+		iconSize: [containerSize, containerSize],
+		iconAnchor: [containerSize / 2, containerSize / 2],
+		popupAnchor: [0, -containerSize / 2],
 	});
 };
 
@@ -35,9 +39,9 @@ export const iconTruck = createDivIcon(<Truck size={24} />, "#f59e0b"); // Amber
 export const iconPlane = createDivIcon(<Plane size={24} />, "#60a5fa"); // Blue
 export const iconShip = createDivIcon(<Ship size={24} />, "#3b82f6"); // Darker Blue
 export const iconTrain = createDivIcon(<Train size={24} />, "#a855f7"); // Purple
-export const iconSource = createDivIcon(<MapPin size={24} />, "#ef4444"); // Red
-export const iconIntermediate = createDivIcon(<MapPin size={20} />, "#9ca3af"); // Gray
-export const iconCurrent = createDivIcon(<MapPin size={24} fill="#3b82f6" />, "#3b82f6"); // Blue filled
+export const iconSource = createDivIcon(<MapPin size={16} />, "#ef4444", 24); // Red
+export const iconIntermediate = createDivIcon(<MapPin size={12} />, "#9ca3af", 20); // Gray
+export const iconCurrent = createDivIcon(<MapPin size={16} fill="#3b82f6" />, "#3b82f6", 24); // Blue filled
 
 export function getTransportMarkerIcon(method?: string) {
 	switch (method?.toLowerCase()) {
