@@ -36,6 +36,7 @@ import {
 	iconIntermediate,
 	iconSource,
 } from "../utils/mapIcons";
+import { MapFitter } from "./MapFitter";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -340,26 +341,27 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 
 	// Calculate route points from events (oldest first for line direction)
 	const routePoints = [...events]
-		.filter((e) => typeof e.lat === "number" && typeof e.lng === "number")
+		.filter((e) => e.lat !== null && e.lat !== undefined && e.lng !== null && e.lng !== undefined)
 		.sort(
 			(a, b) =>
 				new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
 		)
 		.map((e) => ({
-			lat: e.lat!,
-			lng: e.lng!,
+			lat: parseFloat(e.lat as any),
+			lng: parseFloat(e.lng as any),
 			description: e.description,
 			timestamp: e.timestamp,
-		}));
+		}))
+		.filter((e) => !Number.isNaN(e.lat) && !Number.isNaN(e.lng));
 
 	const hasLocation =
 		routePoints.length > 0 ||
-		(typeof parcel.lat === "number" && typeof parcel.lng === "number");
+		(parcel.lat !== null && parcel.lat !== undefined && parcel.lng !== null && parcel.lng !== undefined);
 	const latestPoint =
 		routePoints.length > 0
 			? routePoints[routePoints.length - 1]
 			: typeof parcel.lat === "number" && typeof parcel.lng === "number"
-				? { lat: parcel.lat, lng: parcel.lng }
+				? { lat: parseFloat(parcel.lat as any), lng: parseFloat(parcel.lng as any) }
 				: null;
 	const isDelivered = parcel.status === "delivered";
 
@@ -779,19 +781,20 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 								center={
 									latestPoint ? [latestPoint.lat, latestPoint.lng] : [0, 0]
 								}
-								bounds={
-									routePoints.length > 0 || (latestPoint && !isDelivered)
-										? [
-												...routePoints.map((p) => [p.lat, p.lng] as [number, number]),
-												...(latestPoint && !isDelivered ? [[home.lat, home.lng] as [number, number]] : []),
-											]
-										: undefined
-								}
-								boundsOptions={{ padding: [50, 50] }}
 								zoom={7}
 								scrollWheelZoom={true}
 								style={{ height: "100%", width: "100%" }}
 							>
+								<MapFitter
+									bounds={
+										routePoints.length > 0 || (latestPoint && !isDelivered)
+											? [
+													...routePoints.map((p) => [p.lat, p.lng] as [number, number]),
+													...(latestPoint && !isDelivered ? [[home.lat, home.lng] as [number, number]] : []),
+												]
+											: undefined
+									}
+								/>
 								<TileLayer
 									attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 									url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"

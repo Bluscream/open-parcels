@@ -11,8 +11,8 @@ export const createDivIcon = (iconNode: React.ReactNode, color: string) => {
 				display: "flex",
 				alignItems: "center",
 				justifyContent: "center",
-				width: "24px",
-				height: "24px",
+				width: "32px",
+				height: "32px",
 				boxSizing: "border-box",
 				filter: `drop-shadow(0px 2px 4px rgba(0,0,0,0.6))`,
 			}}
@@ -23,21 +23,21 @@ export const createDivIcon = (iconNode: React.ReactNode, color: string) => {
 	return L.divIcon({
 		html,
 		className: "custom-leaflet-icon",
-		iconSize: [24, 24],
-		iconAnchor: [12, 12],
-		popupAnchor: [0, -12],
+		iconSize: [32, 32],
+		iconAnchor: [16, 16],
+		popupAnchor: [0, -16],
 	});
 };
 
-export const iconHome = createDivIcon(<Home size={16} />, "#10b981"); // Emerald
-export const iconPackage = createDivIcon(<Package size={16} />, "#818cf8"); // Indigo
-export const iconTruck = createDivIcon(<Truck size={16} />, "#f59e0b"); // Amber
-export const iconPlane = createDivIcon(<Plane size={16} />, "#60a5fa"); // Blue
-export const iconShip = createDivIcon(<Ship size={16} />, "#3b82f6"); // Darker Blue
-export const iconTrain = createDivIcon(<Train size={16} />, "#a855f7"); // Purple
-export const iconSource = createDivIcon(<MapPin size={16} />, "#ef4444"); // Red
-export const iconIntermediate = createDivIcon(<MapPin size={12} />, "#9ca3af"); // Gray
-export const iconCurrent = createDivIcon(<MapPin size={16} fill="#3b82f6" />, "#3b82f6"); // Blue filled
+export const iconHome = createDivIcon(<Home size={24} />, "#10b981"); // Emerald
+export const iconPackage = createDivIcon(<Package size={24} />, "#818cf8"); // Indigo
+export const iconTruck = createDivIcon(<Truck size={24} />, "#f59e0b"); // Amber
+export const iconPlane = createDivIcon(<Plane size={24} />, "#60a5fa"); // Blue
+export const iconShip = createDivIcon(<Ship size={24} />, "#3b82f6"); // Darker Blue
+export const iconTrain = createDivIcon(<Train size={24} />, "#a855f7"); // Purple
+export const iconSource = createDivIcon(<MapPin size={24} />, "#ef4444"); // Red
+export const iconIntermediate = createDivIcon(<MapPin size={20} />, "#9ca3af"); // Gray
+export const iconCurrent = createDivIcon(<MapPin size={24} fill="#3b82f6" />, "#3b82f6"); // Blue filled
 
 export function getTransportMarkerIcon(method?: string) {
 	switch (method?.toLowerCase()) {

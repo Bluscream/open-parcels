@@ -14,6 +14,7 @@ import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
 import { getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
+import { MapFitter } from "./MapFitter";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -54,14 +55,10 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				if (Array.isArray(data)) {
 					// Map backend fields to frontend interface if necessary
 					setParcels(
-						data.map((p) => ({
-							id: p.id,
-							trackingNumber: p.trackingNumber,
-							name: p.name || undefined,
-							courier: p.courier || "Unknown",
-							status: p.status,
-							lat: p.lat || undefined,
-							lng: p.lng || undefined,
+						data.map((p: any) => ({
+							...p,
+							lat: p.lat ? parseFloat(p.lat) : undefined,
+							lng: p.lng ? parseFloat(p.lng) : undefined,
 							estimatedDelivery: p.estimatedDeliveryStart
 								? new Date(p.estimatedDeliveryStart).toLocaleDateString()
 								: "Pending",
@@ -121,21 +118,22 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				<div className="map-wrapper">
 					<MapContainer
 						center={[45.0, 0.0]}
-						bounds={
-							activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
-								? [
-										...activeParcels
-											.filter((p) => p.lat && p.lng)
-											.map((p) => [p.lat!, p.lng!] as [number, number]),
-										...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
-									]
-								: undefined
-						}
-						boundsOptions={{ padding: [50, 50] }}
 						zoom={3}
 						scrollWheelZoom={true}
 						style={{ height: "100%", width: "100%", borderRadius: "12px" }}
 					>
+						<MapFitter
+							bounds={
+								activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
+									? [
+											...activeParcels
+												.filter((p) => p.lat && p.lng)
+												.map((p) => [p.lat!, p.lng!] as [number, number]),
+											...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
+										]
+									: undefined
+							}
+						/>
 						<TileLayer
 							attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 							url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
