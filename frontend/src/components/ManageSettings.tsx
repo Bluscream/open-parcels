@@ -1,7 +1,7 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: frontend uses any for dynamic props/components */
 /* biome-ignore-all lint/a11y: disable a11y rules for frontend prototype */
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: disable exhaustive dependencies check */
-import L from "leaflet";
+
 import type React from "react";
 import { useState } from "react";
 import {
@@ -12,17 +12,8 @@ import {
 	useMapEvents,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { useEffect } from "react";
-
-delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-	iconUrl: markerIcon,
-	iconRetinaUrl: markerIcon2x,
-	shadowUrl: markerShadow,
-});
+import { iconHome } from "../utils/mapIcons";
 
 // Helper component to update leaflet map view center dynamically
 const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
@@ -329,6 +320,7 @@ export const ManageSettings: React.FC<Props> = ({
 										parseFloat(settingsForm.home_latitude),
 										parseFloat(settingsForm.home_longitude),
 									]}
+									icon={iconHome}
 								/>
 							)}
 						<MapUpdater

@@ -29,6 +29,13 @@ import {
 	Truck,
 } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
+import {
+	generateCurvedPath,
+	iconCurrent,
+	iconHome,
+	iconIntermediate,
+	iconSource,
+} from "../utils/mapIcons";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -159,8 +166,8 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 			if (settingsRes.ok) {
 				const settingsData = await settingsRes.json();
 				setHomeLocation({
-					lat: settingsData.home_latitude,
-					lng: settingsData.home_longitude,
+					lat: parseFloat(settingsData.home_latitude),
+					lng: parseFloat(settingsData.home_longitude),
 					name: settingsData.home_name,
 				});
 			}
@@ -772,6 +779,15 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 								center={
 									latestPoint ? [latestPoint.lat, latestPoint.lng] : [0, 0]
 								}
+								bounds={
+									routePoints.length > 0 || (latestPoint && !isDelivered)
+										? [
+												...routePoints.map((p) => [p.lat, p.lng] as [number, number]),
+												...(latestPoint && !isDelivered ? [[home.lat, home.lng] as [number, number]] : []),
+											]
+										: undefined
+								}
+								boundsOptions={{ padding: [50, 50] }}
 								zoom={7}
 								scrollWheelZoom={true}
 								style={{ height: "100%", width: "100%" }}
@@ -784,7 +800,9 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 								{/* Draw Route Polyline connecting geocoded timeline events (Active Flow) */}
 								{routePoints.length > 1 && (
 									<Polyline
-										positions={routePoints.map((p) => [p.lat, p.lng])}
+										positions={generateCurvedPath(
+											routePoints.map((p) => [p.lat, p.lng]) as [number, number][]
+										)}
 										pathOptions={{
 											color: "#3b82f6",
 											weight: 4,
@@ -797,15 +815,15 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 								{/* Draw Polyline to Home Destination if not delivered (Future Flow - More Transparent) */}
 								{latestPoint && !isDelivered && (
 									<Polyline
-										positions={[
+										positions={generateCurvedPath([
 											[latestPoint.lat, latestPoint.lng],
 											[home.lat, home.lng],
-										]}
+										])}
 										pathOptions={{
 											color: "#a78bfa",
 											weight: 3,
 											opacity: 0.4,
-											className: "flow-line-dest",
+											className: "moving-dash",
 										}}
 									/>
 								)}
@@ -814,8 +832,14 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 								{routePoints.map((point, idx) => {
 									const isSource = idx === 0;
 									const isCurrent = idx === routePoints.length - 1;
+									const markerIcon = isSource
+										? iconSource
+										: isCurrent
+											? iconCurrent
+											: iconIntermediate;
+
 									return (
-										<Marker key={idx} position={[point.lat, point.lng]}>
+										<Marker key={idx} position={[point.lat, point.lng]} icon={markerIcon}>
 											<Popup className="custom-popup">
 												<div className="popup-content">
 													<strong className="tracking-number">
@@ -844,7 +868,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 
 								{/* Marker for Destination Home */}
 								{!isDelivered && (
-									<Marker position={[home.lat, home.lng]}>
+									<Marker position={[home.lat, home.lng]} icon={iconHome}>
 										<Popup className="custom-popup">
 											<div className="popup-content">
 												<strong className="tracking-number">

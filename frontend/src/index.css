@@ -896,3 +896,15 @@ body {
 .spin {
 	animation: spin 0.8s linear infinite;
 }
+
+/* Map Path Animations */
+.moving-dash {
+	stroke-dasharray: 10 10;
+	animation: dash-move 1.5s linear infinite;
+}
+
+@keyframes dash-move {
+	to {
+		stroke-dashoffset: -20;
+	}
+}
