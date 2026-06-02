@@ -53,6 +53,59 @@ export function generateTOTP(secret: string): string {
 	return otp.toString().padStart(6, "0");
 }
 
+export function parseGermanDate(dateStr: string): Date {
+	const now = new Date();
+	const year = now.getFullYear();
+	
+	// Normalize string (strip weekday prefix)
+	const cleanStr = dateStr.replace(/^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s*/i, "").trim();
+	
+	const monthsGerman = ["januar", "februar", "märz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember"];
+	const monthsEnglish = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+	
+	// Try parsing standard formats first
+	let parsed = new Date(dateStr);
+	if (!Number.isNaN(parsed.getTime())) {
+		// If year is way off (e.g. 2001 or less), let's correct it to current year
+		if (parsed.getFullYear() < 2020) {
+			parsed.setFullYear(year);
+		}
+		return parsed;
+	}
+	
+	// Manual regex parse: "2. Juni 2:14" or "1. Juni 20:48" or "1. Juni" or "2 June" etc.
+	// Match: Day. Month (optional Hour:Minute)
+	const match = cleanStr.match(/^(\d+)(?:\.|\b)\s+([^\s\d,]+)(?:\s+(\d+):(\d+))?/i);
+	if (match) {
+		const day = parseInt(match[1], 10);
+		const monthName = match[2].toLowerCase();
+		const hour = match[3] ? parseInt(match[3], 10) : 0;
+		const min = match[4] ? parseInt(match[4], 10) : 0;
+		
+		let monthIdx = monthsGerman.findIndex(m => monthName.startsWith(m));
+		if (monthIdx === -1) {
+			monthIdx = monthsEnglish.findIndex(m => monthName.startsWith(m));
+		}
+		if (monthIdx === -1) {
+			// Fallback to English/German abbreviations
+			const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+			monthIdx = shortMonths.findIndex(m => monthName.startsWith(m));
+		}
+		
+		if (monthIdx !== -1) {
+			const d = new Date(year, monthIdx, day, hour, min, 0, 0);
+			// If the parsed date is in the future compared to now, it might be from last year
+			if (d.getTime() > now.getTime() + 1000 * 60 * 60 * 24 * 7) {
+				d.setFullYear(year - 1);
+			}
+			return d;
+		}
+	}
+	
+	return now;
+}
+
+
 export interface AmazonLiveCredentials {
 	email?: string;
 	username?: string;
@@ -208,24 +261,18 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					console.error("[AmazonLiveScraper] CAPTCHA detected on Amazon email login page. Headless scraping blocked.");
 					const captchaPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
 					await this.page.screenshot({ path: captchaPath });
-					console.log(`[AmazonLiveScraper] CAPTCHA screenshot saved to: ${captchaPath}`);
 					return false;
 				}
 
 				// Fill in email with randomized human typing speed (40-120ms per key)
-				console.log("[AmazonLiveScraper] Filling in email field...");
 				await this.page.fill('input[name="email"]', "");
 				await this.page.type('input[name="email"]', emailVal, { delay: Math.floor(Math.random() * 80) + 40 });
 				await this.page.waitForTimeout(Math.random() * 500 + 200); // short natural pause
 
-				console.log("[AmazonLiveScraper] Clicking Continue button...");
 				await this.page.click("input#continue");
-				console.log("[AmazonLiveScraper] Continue clicked. Waiting 1500ms for transition...");
 				await this.page.waitForTimeout(1500); // Wait for transition
-				console.log(`[AmazonLiveScraper] Post-continue URL: ${this.page.url()}`);
 
 				// Press Escape key twice to dismiss any native browser-level Passkey overlay dialogs
-				console.log("[AmazonLiveScraper] Pressing Escape keys to clear passkey overlay dialogs...");
 				await this.page.keyboard.press("Escape");
 				await this.page.waitForTimeout(500);
 				await this.page.keyboard.press("Escape");
@@ -245,7 +292,6 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				}
 
 				// Automatically detect and click Passkey fallback "Use password instead"
-				console.log("[AmazonLiveScraper] Checking for Passkey screen...");
 				const fallbackClicked = await this.page.evaluate(() => {
 					const anchors = Array.from(document.querySelectorAll("a, button"));
 					const found = anchors.find(a => 
@@ -262,43 +308,28 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				});
 
 				if (fallbackClicked) {
-					console.log("[AmazonLiveScraper] Passkey screen detected. Automatically clicked 'Use password instead' fallback!");
 					await this.page.waitForTimeout(1500);
-					console.log(`[AmazonLiveScraper] Post-passkey-fallback URL: ${this.page.url()}`);
 				}
 				
 				// Wait up to 10 seconds for password field to appear dynamically
-				console.log("[AmazonLiveScraper] Waiting for password field to be visible...");
-				await this.page.waitForSelector('input[name="password"]', { timeout: 10000 }).catch(() => {
-					console.log("[AmazonLiveScraper] Password field selector wait timed out.");
-				});
+				await this.page.waitForSelector('input[name="password"]', { timeout: 10000 }).catch(() => {});
 				await this.page.waitForTimeout(Math.random() * 1000 + 500); // 0.5s - 1.5s post-transition pause
 
 				// Check for CAPTCHA on password screen
 				hasCaptcha = (await this.page.$("input[name*='captcha'], img[src*='captcha'], #auth-captcha-image")) !== null;
-				console.log(`[AmazonLiveScraper] CAPTCHA detected on password screen: ${hasCaptcha}`);
 				if (hasCaptcha) {
 					console.error("[AmazonLiveScraper] CAPTCHA detected on Amazon password login page. Headless scraping blocked.");
-					const captchaPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
-					await this.page.screenshot({ path: captchaPath });
-					console.log(`[AmazonLiveScraper] CAPTCHA screenshot saved to: ${captchaPath}`);
 					return false;
 				}
 
 				// Fill in password with human-like typing
-				console.log("[AmazonLiveScraper] Filling in password field...");
 				await this.page.fill('input[name="password"]', "");
 				await this.page.type('input[name="password"]', creds.password, { delay: Math.floor(Math.random() * 80) + 40 });
 				await this.page.waitForTimeout(Math.random() * 800 + 400); // pause before click
 
-				console.log("[AmazonLiveScraper] Clicking Sign-In submit button...");
 				await this.page.click("input#signInSubmit");
-				console.log("[AmazonLiveScraper] Sign-In clicked. Waiting for load state...");
-				await this.page.waitForLoadState("load", { timeout: 20000 }).catch(() => {
-					console.log("[AmazonLiveScraper] waitForLoadState timed out or completed.");
-				});
+				await this.page.waitForLoadState("load", { timeout: 20000 }).catch(() => {});
 				await this.page.waitForTimeout(2000);
-				console.log(`[AmazonLiveScraper] Post-submit URL: ${this.page.url()}`);
 
 				// Handle potential OTP/2FA request or manual intervention
 				if (
@@ -306,12 +337,9 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					this.page.url().includes("cvf") ||
 					this.page.url().includes("mfa")
 				) {
-					console.log("[AmazonLiveScraper] Detected OTP/2FA or Approval page.");
 					if (creds.otpSecret) {
-						console.log("[AmazonLiveScraper] OTP/2FA page encountered, attempting auto-fill with TOTP...");
 						try {
 							const otpCode = generateTOTP(creds.otpSecret);
-							console.log(`[AmazonLiveScraper] Generated TOTP token: ${otpCode}`);
 
 							let filled = false;
 							// Standard Multi-factor Auth page
@@ -383,14 +411,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					console.error("[AmazonLiveScraper] Failed to extract DOM error message:", err);
 				}
 
-				// Capture debug screenshot to let user inspect in the browser
-				try {
-					const debugPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
-					await this.page.screenshot({ path: debugPath });
-					console.log(`[AmazonLiveScraper] Debug login state screenshot saved to: ${debugPath}`);
-				} catch (err) {
-					console.error("[AmazonLiveScraper] Failed to save failure screenshot:", err);
-				}
+
 
 				return false;
 			}
@@ -627,6 +648,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					timestamp: new Date(),
 					lat: driverLat,
 					lng: driverLng,
+					source: "Amazon Live Map",
 				});
 			}
 
@@ -737,6 +759,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 									timestamp: time,
 									lat,
 									lng,
+									source: "Amazon Live Map",
 								});
 							}
 						}
@@ -764,8 +787,20 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 
 		const creds = JSON.parse(decryptCredential(decrypted[0].encryptedData));
 
+		const ensureEnglishUrl = (urlStr: string): string => {
+			if (!urlStr) return urlStr;
+			try {
+				const parsed = new URL(urlStr);
+				if (parsed.hostname.includes("amazon.")) {
+					parsed.searchParams.set("language", "en_GB");
+					return parsed.toString();
+				}
+			} catch (_) {}
+			return urlStr;
+		};
+
 		// Construct progress-tracker URL dynamically
-		let trackingUrl = creds.urls?.[trackingNumber] || creds.shipTrackUrl;
+		let trackingUrl = (this.config.url && this.config.url.startsWith("http")) ? this.config.url : (creds.urls?.[trackingNumber] || creds.shipTrackUrl);
 
 		if (!trackingUrl && orderNo) {
 			// If we don't have a cached tracking URL but have an order number,
@@ -775,6 +810,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			trackingUrl = `https://www.amazon.de/progress-tracker/package?orderId=${orderNo}&packageIndex=0&shipmentId=${trackingNumber}&vt=NOTIFICATIONS`;
 		}
 
+		trackingUrl = ensureEnglishUrl(trackingUrl);
 		this.config.url = trackingUrl;
 
 		console.log(`[AmazonLiveScraper] Initiating scrape at URL: ${trackingUrl}`);
@@ -789,8 +825,37 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			throw new Error("Browser page not initialized.");
 		}
 
+		let itemName: string | null = null;
+
 		// If we are on the order details page, resolve and click the tracking link
 		if (this.page.url().includes("order-details")) {
+			console.log("[AmazonLiveScraper] On order details page. Attempting to extract item name...");
+			itemName = await this.page.evaluate(() => {
+				const itemLinks = Array.from(document.querySelectorAll(".yohtmlc-item a, .a-list-item a.a-link-normal, [class*='item-title'] a"));
+				for (const link of itemLinks) {
+					const text = link.textContent?.trim();
+					if (text && text.length > 3 && 
+						!text.toLowerCase().includes("schreiben") && 
+						!text.toLowerCase().includes("feedback") && 
+						!text.toLowerCase().includes("rückgabe") &&
+						!text.toLowerCase().includes("review") && 
+						!text.toLowerCase().includes("return")) {
+						return text;
+					}
+				}
+				const generalLinks = Array.from(document.querySelectorAll("a.a-link-normal, a[href*='/gp/product/'], a[href*='/dp/']"));
+				for (const link of generalLinks) {
+					const text = link.textContent?.trim();
+					const href = (link as HTMLAnchorElement).href || "";
+					if (text && text.length > 5 && 
+						(href.includes("/gp/product/") || href.includes("/dp/"))) {
+						return text;
+					}
+				}
+				return null;
+			});
+			console.log(`[AmazonLiveScraper] Extracted item name from order details: ${itemName}`);
+
 			console.log("[AmazonLiveScraper] On order details page. Resolving tracking link...");
 			const trackingLinkHref = await this.page.evaluate(() => {
 				const links = Array.from(document.querySelectorAll("a"));
@@ -825,7 +890,8 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				}
 
 				// Navigate to the real progress tracker page
-				await this.page.goto(trackingLinkHref, {
+				const targetUrl = ensureEnglishUrl(trackingLinkHref);
+				await this.page.goto(targetUrl, {
 					waitUntil: "load",
 					timeout: 60000,
 				});
@@ -876,38 +942,32 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			console.log("[AmazonLiveScraper] Warning: Timed out waiting for tracking container selectors. Proceeding with current DOM state.");
 		});
 
-		try {
-			await this.page.screenshot({ path: '/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/tracking_page.png' });
-			console.log("[AmazonLiveScraper] Saved tracking page screenshot to frontend/dist/tracking_page.png");
-		} catch (err) {
-			console.error("[AmazonLiveScraper] Failed to take tracking page screenshot:", err);
-		}
 
-		console.log("[AmazonLiveScraper] Current URL before evaluating events:", this.page.url());
-		const bodyText = await this.page.evaluate(() => document.body.innerText.slice(0, 1000));
-		console.log("[AmazonLiveScraper] Page text preview:", bodyText);
 		
 		// Parse dates, times, descriptions, and locations from DOM
 		const scrapedData = await this.page.evaluate(() => {
 			const eventsList: Array<{ date: string; status: string; location?: string }> = [];
 			
-			// Select all day groups or rows
-			const dayGroups = document.querySelectorAll(".a-spacing-double-large, .a-spacing-large, .tracking-event-group");
-			
-			if (dayGroups.length > 0) {
-				for (const group of Array.from(dayGroups)) {
-					const dateHeader = group.querySelector("h4, .a-size-medium, .event-date");
-					if (!dateHeader) continue;
-					const dateText = dateHeader.textContent?.trim() || "";
+			// 1. Try modern updates modal layout first (e.g. #tracking-events-container)
+			const trackingEventsContainer = document.querySelector("#tracking-events-container");
+			if (trackingEventsContainer) {
+				const dayElements = Array.from(trackingEventsContainer.querySelectorAll(".a-row")).filter(
+					el => el.querySelector(".tracking-event-date")
+				);
+				for (const dayEl of dayElements) {
+					const dateEl = dayEl.querySelector(".tracking-event-date");
+					if (!dateEl) continue;
+					const dateText = dateEl.textContent?.trim() || "";
 					
-					const eventRows = group.querySelectorAll(".a-row, .event-details");
-					for (const row of Array.from(eventRows)) {
-						const timeEl = row.querySelector(".a-size-small, .event-time");
-						const descEl = row.querySelector(".a-size-base, .event-description, b, strong");
-						const locEl = row.querySelector(".a-color-secondary, .event-location, span[class*='secondary']");
+					// Get all event rows under this day group
+					const rows = dayEl.querySelectorAll(".a-row.a-spacing-large, .a-row.a-spacing-top-medium");
+					for (const row of Array.from(rows)) {
+						const timeEl = row.querySelector(".tracking-event-time");
+						const descEl = row.querySelector(".tracking-event-message");
+						const locEl = row.querySelector(".tracking-event-location");
 						
 						if (descEl && descEl.textContent?.trim()) {
-							const timeText = timeEl ? ` ${timeEl.textContent.trim()}` : "";
+							const timeText = timeEl && timeEl.textContent?.trim() ? ` ${timeEl.textContent.trim()}` : "";
 							const descText = descEl.textContent.trim();
 							const locText = locEl ? locEl.textContent.trim() : "";
 							
@@ -919,29 +979,61 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 						}
 					}
 				}
-			} else {
-				// Fallback: search for list items or text rows directly if dayGroups structure differs
-				const genericRows = document.querySelectorAll(".a-spacing-medium .a-row");
-				let currentDate = "";
+			}
+
+			if (eventsList.length === 0) {
+				// Select all day groups or rows
+				const dayGroups = document.querySelectorAll(".a-spacing-double-large, .a-spacing-large, .tracking-event-group");
 				
-				for (const row of Array.from(genericRows)) {
-					const text = row.textContent?.trim() || "";
-					const isHeader = row.querySelector("h4, .a-size-medium") || (!row.querySelector(".a-size-small") && text.match(/(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i));
-					
-					if (isHeader) {
-						currentDate = text;
-					} else {
-						const timeEl = row.querySelector(".a-size-small, .event-time");
-						const descEl = row.querySelector(".a-size-base, b, strong");
-						const locEl = row.querySelector(".a-color-secondary");
+				if (dayGroups.length > 0) {
+					for (const group of Array.from(dayGroups)) {
+						const dateHeader = group.querySelector("h4, .a-size-medium, .event-date, .tracking-event-date");
+						if (!dateHeader) continue;
+						const dateText = dateHeader.textContent?.trim() || "";
 						
-						if (descEl && descEl.textContent?.trim()) {
-							const timeText = timeEl ? ` ${timeEl.textContent.trim()}` : "";
-							eventsList.push({
-								date: `${currentDate || new Date().toDateString()}${timeText}`,
-								status: descEl.textContent.trim(),
-								location: locEl ? locEl.textContent.trim() : undefined
-							});
+						const eventRows = group.querySelectorAll(".a-row, .event-details");
+						for (const row of Array.from(eventRows)) {
+							const timeEl = row.querySelector(".a-size-small, .event-time, .tracking-event-time");
+							const descEl = row.querySelector(".a-size-base, .event-description, .tracking-event-message, b, strong");
+							const locEl = row.querySelector(".a-color-secondary, .event-location, .tracking-event-location, span[class*='secondary']");
+							
+							if (descEl && descEl.textContent?.trim()) {
+								const timeText = timeEl ? ` ${timeEl.textContent.trim()}` : "";
+								const descText = descEl.textContent.trim();
+								const locText = locEl ? locEl.textContent.trim() : "";
+								
+								eventsList.push({
+									date: `${dateText}${timeText}`,
+									status: descText,
+									location: locText || undefined
+								});
+							}
+						}
+					}
+				} else {
+					// Fallback: search for list items or text rows directly if dayGroups structure differs
+					const genericRows = document.querySelectorAll(".a-spacing-medium .a-row, #tracking-events-container .a-row");
+					let currentDate = "";
+					
+					for (const row of Array.from(genericRows)) {
+						const text = row.textContent?.trim() || "";
+						const isHeader = row.querySelector("h4, .a-size-medium, .tracking-event-date") || (!row.querySelector(".a-size-small, .tracking-event-time") && text.match(/(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i));
+						
+						if (isHeader) {
+							currentDate = text;
+						} else {
+							const timeEl = row.querySelector(".a-size-small, .event-time, .tracking-event-time");
+							const descEl = row.querySelector(".a-size-base, .tracking-event-message, b, strong");
+							const locEl = row.querySelector(".a-color-secondary, .tracking-event-location");
+							
+							if (descEl && descEl.textContent?.trim()) {
+								const timeText = timeEl ? ` ${timeEl.textContent.trim()}` : "";
+								eventsList.push({
+									date: `${currentDate || new Date().toDateString()}${timeText}`,
+									status: descEl.textContent.trim(),
+									location: locEl ? locEl.textContent.trim() : undefined
+								});
+							}
 						}
 					}
 				}
@@ -958,10 +1050,30 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				statusSlug = "ordered";
 			}
 			
+			// Extract real tracking ID from DOM
+			let realTrackingId = "";
+			const pageText = document.body.textContent || "";
+			const trkMatch = pageText.match(/(?:Tracking\s*(?:ID|nummer|number)?|Sendungsnummer|Tracking-ID|Carrier\s*Tracking)\s*[:#-]?\s*([a-zA-Z0-9_-]{5,30})/i);
+			if (trkMatch && trkMatch[1]) {
+				const rawId = trkMatch[1].trim();
+				// If the tracking ID contains lowercase letters at the end (due to text merge like DE5525979947Alle),
+				// strip those action words and extract the pure uppercase alphanumeric prefix.
+				const rawIdClean = rawId.replace(/(?:Alle|Updates|Show|See|Details|Aktualisierungen).*$/i, "");
+				const dhlMatch = rawIdClean.match(/(DE\d{10})/i);
+				if (dhlMatch) {
+					realTrackingId = dhlMatch[1].toUpperCase();
+				} else {
+					const cleanMatch = rawIdClean.match(/^([A-Z0-9_-]{5,25})/);
+					realTrackingId = cleanMatch ? cleanMatch[1] : rawIdClean;
+				}
+			}
+
 			return {
 				events: eventsList,
 				status: statusSlug,
-				statusDescription: timelineHeader || "In transit"
+				statusDescription: timelineHeader || "In transit",
+				realTrackingId: realTrackingId || undefined,
+				bodyText: pageText
 			};
 		});
 
@@ -969,31 +1081,83 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 		console.log("[AmazonLiveScraper] Raw Scraped Data Status Description:", scrapedData.statusDescription);
 		console.log("[AmazonLiveScraper] Raw Scraped Events:", JSON.stringify(scrapedData.events, null, 2));
 
-		await this.close();
+		try {
+			require("fs").writeFileSync(".scratch/scraped-body.txt", scrapedData.bodyText || "");
+		} catch (_) {}
 
 		// Convert date strings to standardized Dates
 		const formattedEvents = scrapedData.events.map(ev => {
-			let dateObj = new Date(ev.date);
-			if (Number.isNaN(dateObj.getTime())) {
-				// Parse German dates (e.g. "Dienstag, 2. Juni 02:14")
-				// We can just fallback to current date for safety
-				dateObj = new Date();
-			}
+			const dateObj = parseGermanDate(ev.date);
 			
 			return {
 				date: dateObj.toISOString(),
 				status: ev.status,
 				location: ev.location || undefined,
-				description: ev.status
+				description: ev.status,
+				source: "Amazon Scraper"
 			};
 		});
 
+		if (!itemName && this.page) {
+			console.log("[AmazonLiveScraper] Attempting to extract item name from progress tracker page...");
+			itemName = await this.page.evaluate(() => {
+				// 1. Try product links first
+				const productLinks = Array.from(document.querySelectorAll("a[href*='/gp/product/'], a[href*='/dp/']"));
+				for (const link of productLinks) {
+					const text = link.textContent?.trim();
+					if (text && text.length > 5 && !text.toLowerCase().includes("details") && !text.toLowerCase().includes("review") && !text.toLowerCase().includes("feedback")) {
+						return text;
+					}
+				}
+				// 2. Try images next
+				const images = Array.from(document.querySelectorAll("img"));
+				for (const img of images) {
+					const alt = img.alt?.trim();
+					if (alt && alt.length > 5 && 
+						!alt.toLowerCase().includes("carrier") && 
+						!alt.toLowerCase().includes("logo") && 
+						!alt.toLowerCase().includes("progress") &&
+						!alt.toLowerCase().includes("delivery") &&
+						!alt.toLowerCase().includes("paket") &&
+						!alt.toLowerCase().includes("scroll") &&
+						!alt.toLowerCase().includes("status")) {
+						return alt;
+					}
+				}
+				// 3. Try tracking object name classes
+				const titleElements = Array.from(document.querySelectorAll(".tracking-object-name, [id*='item-title']"));
+				for (const el of titleElements) {
+					const text = el.textContent?.trim();
+					if (text && text.length > 3 && !text.toLowerCase().includes("delivery") && !text.toLowerCase().includes("bestellung") && !text.toLowerCase().includes("scroll")) {
+						return text;
+					}
+				}
+				return null;
+			}).catch(() => null);
+			// Clean HTML tags or extract image alt from item name if it contains them
+			if (itemName) {
+				const imgAltMatch = itemName.match(/alt="([^"]+)"/i) || itemName.match(/alt='([^']+)'/i);
+				if (imgAltMatch) {
+					itemName = imgAltMatch[1];
+				} else {
+					itemName = itemName.replace(/<[^>]*>/g, "").trim();
+				}
+			}
+			console.log(`[AmazonLiveScraper] Extracted item name from progress tracker: ${itemName}`);
+		}
+
+		await this.close();
+
+		const scrapedTrackingNumber = scrapedData.realTrackingId || trackingNumber;
+		console.log(`[AmazonLiveScraper] Final Resolved Tracking Number: ${scrapedTrackingNumber}`);
+
 		return {
-			trackingNumber,
+			trackingNumber: scrapedTrackingNumber,
 			courier: "Amazon",
 			status: scrapedData.status,
 			statusDescription: scrapedData.statusDescription,
-			events: formattedEvents
+			events: formattedEvents,
+			itemName: itemName || undefined
 		};
 	}
 

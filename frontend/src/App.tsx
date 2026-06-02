@@ -116,6 +116,7 @@ function App() {
 	const [newCourier, setNewCourier] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState("");
+	const [isResolvingLink, setIsResolvingLink] = useState(false);
 
 	useEffect(() => {
 		const handleLocationChange = () => {
@@ -210,17 +211,59 @@ function App() {
 		setCurrentPath(path);
 	};
 
-	const handleRawInputChange = (val: string) => {
+	const handleRawInputChange = async (val: string) => {
 		setRawInput(val);
+		
+		// Quick local regex/parameter parsing as instant feedback
 		const parsed = parseTrackingAndOrder(val);
-		if (parsed.trackingNumber) {
-			setNewTrackingNumber(parsed.trackingNumber);
-		}
-		if (parsed.orderNumber) {
-			setNewOrderNumber(parsed.orderNumber);
-		}
-		if (parsed.source) {
-			setNewCourier(parsed.source);
+		if (parsed.trackingNumber) setNewTrackingNumber(parsed.trackingNumber);
+		if (parsed.orderNumber) setNewOrderNumber(parsed.orderNumber);
+		if (parsed.source) setNewCourier(parsed.source);
+
+		// If it looks like an Amazon track or details URL, trigger the live scraper preview in background!
+		if (
+			val.trim().startsWith("http") &&
+			val.includes("amazon.") &&
+			(val.includes("orderId") || val.includes("orderID") || val.includes("shipmentId") || val.includes("shipment_id") || val.includes("order-details"))
+		) {
+			try {
+				setIsResolvingLink(true);
+				setError("");
+				// Temporarily clear fields to indicate fresh loading
+				setNewTrackingNumber("");
+				setNewOrderNumber("");
+				setNewName("");
+				setNewCourier("Amazon");
+
+				const res = await fetch(`/api/v1/parcels/preview?token=${getGuestToken()}`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ url: val.trim() }),
+				});
+
+				if (res.ok) {
+					const data = await res.json();
+					if (data.trackingNumber) setNewTrackingNumber(data.trackingNumber);
+					if (data.orderNumber) setNewOrderNumber(data.orderNumber);
+					if (data.itemName) setNewName(data.itemName);
+					setNewCourier("Amazon");
+				} else {
+					const errData = await res.json().catch(() => ({}));
+					console.warn("Live link preview failed, keeping fallback query parameters:", errData.error);
+					// Restore fallback parameters if preview scraping fails
+					if (parsed.trackingNumber) setNewTrackingNumber(parsed.trackingNumber);
+					if (parsed.orderNumber) setNewOrderNumber(parsed.orderNumber);
+				}
+			} catch (err) {
+				console.error("Link preview error:", err);
+				// Restore fallback parameters
+				if (parsed.trackingNumber) setNewTrackingNumber(parsed.trackingNumber);
+				if (parsed.orderNumber) setNewOrderNumber(parsed.orderNumber);
+			} finally {
+				setIsResolvingLink(false);
+			}
 		}
 	};
 
@@ -240,25 +283,7 @@ function App() {
 		setError("");
 
 		try {
-			if (tracking) {
-				const res = await fetch(`/api/v1/parcels?token=${getGuestToken()}`, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						trackingNumber: tracking,
-						status: "ordered",
-						name: name || undefined,
-						courier: courier || undefined,
-					}),
-				});
-
-				if (!res.ok) {
-					const data = await res.json().catch(() => ({}));
-					throw new Error(data.error || `HTTP error! Status: ${res.status}`);
-				}
-			}
+			let createdOrderId: number | null = null;
 
 			if (order) {
 				const res = await fetch(`/api/v1/orders?token=${getGuestToken()}`, {
@@ -270,6 +295,29 @@ function App() {
 						orderNumber: order,
 						source: courier || "Amazon",
 						status: "ordered",
+					}),
+				});
+
+				if (!res.ok) {
+					const data = await res.json().catch(() => ({}));
+					throw new Error(data.error || `HTTP error! Status: ${res.status}`);
+				}
+				const data = await res.json();
+				createdOrderId = data.id;
+			}
+
+			if (tracking) {
+				const res = await fetch(`/api/v1/parcels?token=${getGuestToken()}`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						trackingNumber: tracking,
+						status: "ordered",
+						name: name || undefined,
+						courier: courier || undefined,
+						orderId: createdOrderId || undefined,
 					}),
 				});
 
@@ -476,17 +524,27 @@ function App() {
 										value={rawInput}
 										onChange={(e) => handleRawInputChange(e.target.value)}
 										autoFocus
+										readOnly={isResolvingLink || isSubmitting}
 									/>
 								</div>
+								
+								{isResolvingLink && (
+									<div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#60a5fa", fontSize: "13px", margin: "8px 0 16px 0", background: "rgba(96,165,250,0.1)", padding: "10px 14px", borderRadius: "8px", border: "1px solid rgba(96,165,250,0.2)" }}>
+										<div className="spinner-sm" style={{ width: "16px", height: "16px", border: "2px solid rgba(96,165,250,0.2)", borderTopColor: "#60a5fa", borderRadius: "50%", animation: "spin 0.8s linear infinite" }}></div>
+										<span style={{ fontWeight: "500" }}>Logging in and scraping actual Tracking ID & friendly item name...</span>
+									</div>
+								)}
+
 								<div className="form-row" style={{ display: "flex", gap: "12px" }}>
 									<div className="form-group" style={{ flex: 1 }}>
 										<label className="label">Tracking Number</label>
 										<input
 											type="text"
 											className="input"
-											placeholder="e.g. T6rZJNyqb"
+											placeholder={isResolvingLink ? "Loading actual ID..." : "e.g. DE5525979947"}
 											value={newTrackingNumber}
 											onChange={(e) => setNewTrackingNumber(e.target.value)}
+											readOnly={isResolvingLink || isSubmitting}
 										/>
 									</div>
 									<div className="form-group" style={{ flex: 1 }}>
@@ -494,9 +552,10 @@ function App() {
 										<input
 											type="text"
 											className="input"
-											placeholder="e.g. 305-1827771-7197161"
+											placeholder={isResolvingLink ? "Loading order ID..." : "e.g. 305-1827771-7197161"}
 											value={newOrderNumber}
 											onChange={(e) => setNewOrderNumber(e.target.value)}
+											readOnly={isResolvingLink || isSubmitting}
 										/>
 									</div>
 								</div>
@@ -505,9 +564,10 @@ function App() {
 									<input
 										type="text"
 										className="input"
-										placeholder="e.g. New Shoes"
+										placeholder={isResolvingLink ? "Loading item description..." : "e.g. New Shoes"}
 										value={newName}
 										onChange={(e) => setNewName(e.target.value)}
+										readOnly={isResolvingLink || isSubmitting}
 									/>
 								</div>
 								<div className="form-group">
@@ -518,6 +578,7 @@ function App() {
 										placeholder="e.g. Amazon, DHL"
 										value={newCourier}
 										onChange={(e) => setNewCourier(e.target.value)}
+										readOnly={isResolvingLink || isSubmitting}
 									/>
 								</div>
 							</div>
@@ -526,11 +587,11 @@ function App() {
 									type="button"
 									className="btn"
 									onClick={() => setIsAddModalOpen(false)}
-									disabled={isSubmitting}
+									disabled={isSubmitting || isResolvingLink}
 								>
 									Cancel
 								</button>
-								<button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+								<button type="submit" className="btn btn-primary" disabled={isSubmitting || isResolvingLink}>
 									{isSubmitting ? "Adding..." : "Add"}
 								</button>
 							</div>

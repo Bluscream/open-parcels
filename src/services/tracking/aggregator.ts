@@ -9,6 +9,7 @@ export interface TrackingEventData {
 	status: string;
 	location?: string;
 	description?: string;
+	source?: string;
 }
 
 export interface StandardizedTrackingData {
@@ -29,6 +30,7 @@ export interface TrackingApiProvider {
 		trackingNumber: string,
 	): Promise<StandardizedTrackingData | null>;
 }
+
 
 // ---------------------------------------------------------------------------
 // UniversalLookup Provider
@@ -189,6 +191,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 				status: ev.status ?? "Status Update",
 				location: ev.location ?? undefined,
 				description: ev.status ?? undefined,
+				source: ev.courier || courier,
 			}));
 
 			return {
@@ -330,6 +333,8 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 
 	// 1. Update parcel fields
 	const updateData: {
+		name?: string | null;
+		trackingNumber?: string;
 		courier?: string;
 		status?: string;
 		updatedAt: Date;
@@ -341,6 +346,14 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 		status: trackingInfo.status,
 		updatedAt: new Date(),
 	};
+
+	if (!parcel.name && trackingInfo.itemName) {
+		updateData.name = trackingInfo.itemName;
+	}
+
+	if (trackingInfo.trackingNumber && trackingInfo.trackingNumber !== parcel.trackingNumber) {
+		updateData.trackingNumber = trackingInfo.trackingNumber;
+	}
 
 	if (trackingInfo.lat !== undefined) updateData.lat = trackingInfo.lat;
 	if (trackingInfo.lng !== undefined) updateData.lng = trackingInfo.lng;
@@ -411,6 +424,7 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 				timestamp: evDate,
 				lat: eventLat,
 				lng: eventLng,
+				source: ev.source || trackingInfo.courier || null,
 			});
 		}
 	}

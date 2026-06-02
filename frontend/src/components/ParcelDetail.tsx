@@ -37,6 +37,14 @@ L.Icon.Default.mergeOptions({
 	shadowUrl: markerShadow,
 });
 
+const STATUS_LABELS: Record<string, string> = {
+	ordered: "Ordered",
+	sent: "Dispatched",
+	arriving: "Arriving",
+	delivered: "Delivered",
+	"return-accepted": "Return Accepted",
+};
+
 // Default recipient home location fallback
 const DEFAULT_HOME = { lat: 50.1109, lng: 8.6821, name: "Home (Destination)" };
 
@@ -61,6 +69,7 @@ interface ParcelEvent {
 	timestamp: string;
 	lat: number | null;
 	lng: number | null;
+	source?: string | null;
 }
 
 interface ParcelDetailProps {
@@ -583,7 +592,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 								letterSpacing: "0.5px",
 							}}
 						>
-							{parcel.status}
+							{STATUS_LABELS[parcel.status] || parcel.status}
 						</div>
 					</div>
 
@@ -694,7 +703,25 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 															: "rgba(248, 250, 252, 0.8)",
 												}}
 											>
-												{event.description}
+												<span>{event.description}</span>
+												{event.source && (
+													<span
+														style={{
+															fontSize: "10px",
+															color: "var(--text-muted)",
+															background: "rgba(255, 255, 255, 0.05)",
+															padding: "2px 6px",
+															borderRadius: "4px",
+															marginLeft: "8px",
+															border: "1px solid rgba(255,255,255,0.05)",
+															display: "inline-block",
+															verticalAlign: "middle",
+															fontWeight: 400,
+														}}
+													>
+														{event.source}
+													</span>
+												)}
 											</div>
 											<div
 												style={{

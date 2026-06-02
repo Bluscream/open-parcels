@@ -1,7 +1,10 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: fastify handlers use any for request/reply */
-import { eq } from "drizzle-orm";
+import fs from "node:fs";
+import path from "node:path";
+import { and, count, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db";
+import { client } from "../db";
 import {
 	credentials,
 	orderParcels,
@@ -11,6 +14,7 @@ import {
 	settings,
 } from "../db/schema";
 import { trackAndUpdateParcel, aggregator } from "../services/tracking/aggregator";
+import { AmazonLiveScraper } from "../services/scrapers/amazon-live-scraper";
 import { wsBroker } from "../services/websocket";
 import { decryptCredential, encryptCredential } from "../utils/crypto";
 import { geocodeLocation, extractLocationName } from "../utils/geocoder";
@@ -208,6 +212,57 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			},
 		},
 		getSingleParcelHandler,
+	);
+
+	// POST /parcels/preview - Resolve tracking details from a pasted URL or order link
+	fastify.post(
+		"/parcels/preview",
+		{
+			schema: {
+				tags: ["Parcels"],
+				body: {
+					type: "object",
+					required: ["url"],
+					properties: {
+						url: { type: "string" },
+					},
+				},
+			},
+		},
+		async (request: any, reply) => {
+			const { url } = request.body;
+			if (!url) return reply.code(400).send({ error: "Missing url parameter" });
+
+			let orderNo = "";
+			let trackingNo = "";
+			try {
+				const parsedUrl = new URL(url);
+				const params = new URLSearchParams(parsedUrl.search);
+				orderNo = params.get("orderId") || params.get("orderID") || params.get("order_id") || "";
+				trackingNo = params.get("shipmentId") || params.get("shipment_id") || params.get("tracking") || "";
+			} catch (_) {}
+
+			if (!orderNo && !trackingNo) {
+				return reply.code(400).send({ error: "Could not parse Amazon order number or tracking information from this URL." });
+			}
+
+			try {
+				const scraper = new AmazonLiveScraper({
+					serviceName: "Amazon",
+					url: url,
+				});
+
+				const trackingInfo = await scraper.scrapeTimeline(orderNo, trackingNo || "temp-preview-id");
+				return reply.send({
+					trackingNumber: trackingInfo.trackingNumber || trackingNo,
+					itemName: trackingInfo.itemName || "",
+					orderNumber: orderNo,
+				});
+			} catch (err: any) {
+				fastify.log.error(err);
+				return reply.code(500).send({ error: `Preview scraping failed: ${err.message || err}` });
+			}
+		}
 	);
 
 	// POST /parcels - Create a parcel
@@ -412,7 +467,12 @@ export async function apiRoutes(fastify: FastifyInstance) {
 	const deleteParcelHandler = async (request: any, reply: any) => {
 		const { id } = request.params;
 
-		// Delete associated events first
+		// Delete associated order links first
+		await db
+			.delete(orderParcels)
+			.where(eq(orderParcels.parcelId, parseInt(id, 10)));
+
+		// Delete associated events next
 		await db
 			.delete(parcelEvents)
 			.where(eq(parcelEvents.parcelId, parseInt(id, 10)));
@@ -504,6 +564,33 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				return reply.code(400).send({
 					error: "Missing required fields: source, orderNumber, status",
 				});
+			}
+
+			// Check if order already exists to prevent duplicate entries
+			const existing = await db
+				.select()
+				.from(orders)
+				.where(
+					and(
+						eq(orders.orderNumber, orderNumber),
+						eq(orders.source, source)
+					)
+				)
+				.limit(1);
+
+			if (existing.length > 0) {
+				if (existing[0].status !== status) {
+					const updated = await db
+						.update(orders)
+						.set({
+							status,
+							updatedAt: new Date(),
+						})
+						.where(eq(orders.id, existing[0].id))
+						.returning();
+					return reply.code(200).send(updated[0]);
+				}
+				return reply.code(200).send(existing[0]);
 			}
 
 			const newOrder = await db
@@ -673,6 +760,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						timestamp: ev.date,
 						lat: eventLat,
 						lng: eventLng,
+						source: ev.source || trackingInfo.courier || null,
 					});
 				}
 				return stripNulls(events);
@@ -706,6 +794,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								timestamp: { type: "string" },
 								lat: { type: "number", nullable: true },
 								lng: { type: "number", nullable: true },
+								source: { type: "string", nullable: true },
 							},
 						},
 					},
@@ -714,7 +803,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		getParcelEventsHandler,
 	);
-
+ 
 	fastify.get(
 		"/parcel/:id/events",
 		{
@@ -733,6 +822,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								timestamp: { type: "string" },
 								lat: { type: "number", nullable: true },
 								lng: { type: "number", nullable: true },
+								source: { type: "string", nullable: true },
 							},
 						},
 					},
@@ -755,6 +845,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						location: { type: "string" },
 						description: { type: "string" },
 						timestamp: { type: "string" },
+						source: { type: "string" },
 					},
 				},
 			},
@@ -762,7 +853,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		async (request: any, reply) => {
 			const { id } = request.params;
 			const params = getParams(request);
-			const { location, description, timestamp } = params;
+			const { location, description, timestamp, source } = params;
 
 			if (!description) {
 				return reply
@@ -777,6 +868,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					location: location || null,
 					description,
 					timestamp: timestamp ? new Date(timestamp) : new Date(),
+					source: source || "Manual",
 				})
 				.returning();
 
@@ -1145,6 +1237,192 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			} catch (err) {
 				console.error("[Geocode] Search failed:", err);
 				return reply.code(500).send({ error: "Failed to geocode location" });
+			}
+		},
+	);
+
+	// GET /status - Service overview stats
+	fastify.get(
+		"/status",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (_request, _reply) => {
+			const uptimeSeconds = Math.floor(process.uptime());
+
+			const [parcelCount] = await db.select({ count: count() }).from(parcels);
+			const [orderCount] = await db.select({ count: count() }).from(orders);
+			const [credCount] = await db.select({ count: count() }).from(credentials);
+			const [eventCount] = await db.select({ count: count() }).from(parcelEvents);
+
+			// Count parcels by status
+			const statusCounts = await db
+				.select({ status: parcels.status, count: count() })
+				.from(parcels)
+				.groupBy(parcels.status);
+
+			// DB file size
+			const dbPath = process.env.DB_PATH || path.join(process.cwd(), "data.db");
+			let dbSizeBytes = 0;
+			try {
+				const stat = fs.statSync(dbPath);
+				dbSizeBytes = stat.size;
+			} catch { /* ignore */ }
+
+			return {
+				uptime: uptimeSeconds,
+				parcels: parcelCount.count,
+				orders: orderCount.count,
+				credentials: credCount.count,
+				events: eventCount.count,
+				parcelsByStatus: statusCounts,
+				dbSizeBytes,
+				nodeVersion: process.version,
+				env: process.env.NODE_ENV || "production",
+			};
+		},
+	);
+
+	// GET /admin/db-backup - Download a SQL dump of the database
+	fastify.get(
+		"/admin/db-backup",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (_request, reply) => {
+			try {
+				// Get all user-defined tables from sqlite_master
+				const masterResult = await client.execute(
+					"SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rootpage"
+				);
+
+				const lines: string[] = [
+					"-- OpenParcels SQL Dump",
+					`-- Generated: ${new Date().toISOString()}`,
+					"-- -----------------------------------------------",
+					"PRAGMA foreign_keys = OFF;",
+					"BEGIN TRANSACTION;",
+					"",
+				];
+
+				for (const row of (masterResult as any).rows ?? []) {
+					const tableName = row[0] as string;
+					const createSql = row[1] as string;
+					if (!createSql) continue;
+
+					lines.push(`-- Table: ${tableName}`);
+					lines.push(`DROP TABLE IF EXISTS ${JSON.stringify(tableName)};`);
+					lines.push(`${createSql};`);
+
+					// Fetch all rows for this table
+					const rowsResult = await client.execute(`SELECT * FROM ${JSON.stringify(tableName)}`);
+					const dataRows = rowsResult.rows ?? [];
+					const colNames: string[] = rowsResult.columns ?? [];
+
+					for (const dataRow of dataRows) {
+						const vals = (dataRow as any[]).map((v) => {
+							if (v === null) return "NULL";
+							if (typeof v === "number") return String(v);
+							return `'${String(v).replace(/'/g, "''")}'`;
+						});
+						const cols = colNames.map((c) => JSON.stringify(c)).join(", ");
+						lines.push(`INSERT INTO ${JSON.stringify(tableName)} (${cols}) VALUES (${vals.join(", ")});`);
+					}
+					lines.push("");
+				}
+
+				lines.push("COMMIT;");
+				lines.push("PRAGMA foreign_keys = ON;");
+
+				const sqlDump = lines.join("\n");
+				const filename = `openparcels-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.sql`;
+
+				reply
+					.header("Content-Type", "text/plain; charset=utf-8")
+					.header("Content-Disposition", `attachment; filename="${filename}"`)
+					.send(sqlDump);
+			} catch (err) {
+				console.error("[DB-Backup] Failed to generate SQL dump:", err);
+				return reply.code(500).send({ error: "Failed to generate SQL dump" });
+			}
+		},
+	);
+
+	// POST /admin/db-restore - Upload a .sql dump and restore it into the database
+	fastify.post(
+		"/admin/db-restore",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (request: any, reply) => {
+			try {
+				const data = await request.file();
+				if (!data) {
+					return reply.code(400).send({ error: "No file uploaded" });
+				}
+				const chunks: Buffer[] = [];
+				for await (const chunk of data.file) {
+					chunks.push(Buffer.from(chunk));
+				}
+				const sqlText = Buffer.concat(chunks).toString("utf-8");
+				if (!sqlText.trim()) {
+					return reply.code(400).send({ error: "Uploaded file is empty" });
+				}
+
+				// Safety: back up the current raw DB file before touching anything
+				const dbPath = process.env.DB_PATH || path.join(process.cwd(), "data.db");
+				if (fs.existsSync(dbPath)) {
+					const backupPath = dbPath.replace(".db", `-pre-restore-${Date.now()}.db`);
+					fs.copyFileSync(dbPath, backupPath);
+				}
+
+				// Split SQL into individual statements, skip blank lines and comment-only lines
+				const statements = sqlText
+					.split(";")
+					.map((s) => s.trim())
+					.filter((s) => s.length > 0 && !s.replace(/--[^\n]*/g, "").trim().startsWith(""));
+
+				const IGNORABLE = ["PRAGMA", "BEGIN", "COMMIT", "ROLLBACK"];
+				for (const stmt of statements) {
+					// Skip pure comment lines
+					const stripped = stmt.replace(/--[^\n]*/g, "").trim();
+					if (!stripped) continue;
+					try {
+						await client.execute(stripped);
+					} catch (stmtErr) {
+						// Tolerate PRAGMA / transaction control statements that libSQL may reject
+						const upper = stripped.toUpperCase();
+						if (IGNORABLE.some((kw) => upper.startsWith(kw))) continue;
+						throw stmtErr;
+					}
+				}
+
+				return { message: "Database restored successfully from SQL dump." };
+			} catch (err) {
+				console.error("[DB-Restore] Failed:", err);
+				return reply.code(500).send({ error: "Failed to restore database from SQL dump" });
+			}
+		},
+	);
+
+	// POST /admin/db-clear - Wipe all data from all tables
+	fastify.post(
+		"/admin/db-clear",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (_request, reply) => {
+			try {
+				// Delete in safe order to respect foreign keys
+				await db.delete(parcelEvents);
+				await db.delete(orderParcels);
+				await db.delete(parcels);
+				await db.delete(orders);
+				await db.delete(credentials);
+				return { message: "All data cleared successfully" };
+			} catch (err) {
+				console.error("[DB-Clear] Failed:", err);
+				return reply.code(500).send({ error: "Failed to clear database" });
 			}
 		},
 	);
