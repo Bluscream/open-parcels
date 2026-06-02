@@ -30,12 +30,44 @@ export function extractLocationName(text: string): string | null {
 }
 
 /**
+ * Checks if a string is likely a geographic location name, and not a status sentence.
+ */
+export function isLikelyLocation(text: string): boolean {
+	if (!text) return false;
+	if (text.length > 50) return false; // Too long for a location name
+
+	const lower = text.toLowerCase();
+	const statusWords = [
+		"package", "parcel", "may", "not", "have", "been", "sent", "yet", "pending", 
+		"information", "status", "delivery", "carrier", "your", "order", "arrived", 
+		"departed", "transit", "facility", "sorted", "processed", "shipping", "shipped",
+		"delivered", "handling", "hub", "courier", "updates"
+	];
+
+	let statusWordCount = 0;
+	for (const word of statusWords) {
+		if (lower.includes(word)) {
+			statusWordCount++;
+		}
+	}
+
+	// If it contains multiple status words or resembles a warning statement, it is a status text
+	if (statusWordCount >= 2) return false;
+
+	return true;
+}
+
+/**
  * Geocodes a place name into latitude/longitude via LOOKUP_URL.
  * Results are cached in-memory for the lifetime of the process.
  */
 export async function geocodeLocation(
 	locationName: string,
 ): Promise<{ lat: number; lng: number } | null> {
+	if (!locationName || !isLikelyLocation(locationName)) {
+		return null;
+	}
+
 	const raw = process.env.LOOKUP_URLS ?? "";
 	if (!raw.trim()) {
 		console.warn("[geocoder] LOOKUP_URLS is not set — skipping geocoding.");

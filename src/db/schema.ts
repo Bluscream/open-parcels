@@ -47,6 +47,7 @@ export const parcelEvents = sqliteTable("parcel_events", {
 	timestamp: integer("timestamp", { mode: "timestamp" }).notNull(),
 	lat: real("lat"),
 	lng: real("lng"),
+	source: text("source"),
 });
 
 export const auditLogs = sqliteTable("audit_logs", {

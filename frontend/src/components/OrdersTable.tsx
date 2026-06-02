@@ -1,5 +1,5 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: dynamic API data */
-import { RefreshCw, ShoppingBag, Hash, Calendar } from "lucide-react";
+import { RefreshCw, ShoppingBag, Hash, Calendar, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getGuestToken } from "../utils/auth";
 
@@ -47,11 +47,33 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 				headers: { Authorization: `Bearer ${token}` },
 			});
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			setOrders(await res.json());
+			const data = await res.json();
+			const sorted = Array.isArray(data)
+				? data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+				: [];
+			setOrders(sorted);
 		} catch (e: any) {
 			setError(e.message ?? "Failed to load orders");
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const deleteOrder = async (id: number) => {
+		if (!confirm("Are you sure you want to delete this order?")) return;
+		try {
+			const token = getGuestToken();
+			const res = await fetch(`/api/v1/orders/${id}?token=${token}`, {
+				method: "DELETE",
+			});
+			if (res.ok) {
+				load();
+			} else {
+				alert("Failed to delete order");
+			}
+		} catch (err) {
+			console.error(err);
+			alert("Error deleting order");
 		}
 	};
 
@@ -86,19 +108,20 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 								<th>Status</th>
 								<th><Calendar size={12} style={{display:"inline",marginRight:4}}/>Created</th>
 								<th>Updated</th>
+								<th style={{ textAlign: "right" }}>Actions</th>
 							</tr>
 						</thead>
 						<tbody>
 							{loading && (
 								<tr>
-									<td colSpan={6} className="table-placeholder">
+									<td colSpan={7} className="table-placeholder">
 										<RefreshCw size={18} className="spin" /> Loading…
 									</td>
 								</tr>
 							)}
 							{!loading && orders.length === 0 && (
 								<tr>
-									<td colSpan={6} className="table-placeholder">No orders found.</td>
+									<td colSpan={7} className="table-placeholder">No orders found.</td>
 								</tr>
 							)}
 							{orders.map((o) => (
@@ -109,6 +132,20 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 									<td><OrderStatusTag status={o.status} /></td>
 									<td className="text-muted">{fmtDate(o.createdAt)}</td>
 									<td className="text-muted">{fmtDate(o.updatedAt)}</td>
+									<td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+										<button
+											type="button"
+											className="btn-icon-sm text-red"
+											onClick={(e) => {
+												e.stopPropagation();
+												deleteOrder(o.id);
+											}}
+											title="Delete Order"
+											style={{ display: "inline-flex", marginLeft: "auto" }}
+										>
+											<Trash2 size={14} />
+										</button>
+									</td>
 								</tr>
 							))}
 						</tbody>
