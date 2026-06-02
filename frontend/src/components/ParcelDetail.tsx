@@ -826,6 +826,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 											color: "#a78bfa",
 											weight: 3,
 											opacity: 0.4,
+											dashArray: "10, 10",
 											className: "moving-dash",
 										}}
 									/>
