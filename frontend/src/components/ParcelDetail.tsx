@@ -7,7 +7,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
 	MapContainer,
 	Marker,
-	Polyline,
 	Popup,
 	TileLayer,
 } from "react-leaflet";
@@ -36,6 +35,7 @@ import {
 	iconIntermediate,
 	iconSource,
 } from "../utils/mapIcons";
+import { AnimatedRoute } from "./AnimatedRoute";
 import { MapFitter } from "./MapFitter";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
@@ -802,33 +802,23 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 
 								{/* Draw Route Polyline connecting geocoded timeline events (Active Flow) */}
 								{routePoints.length > 1 && (
-									<Polyline
+									<AnimatedRoute
 										positions={generateCurvedPath(
 											routePoints.map((p) => [p.lat, p.lng]) as [number, number][]
 										)}
-										pathOptions={{
-											color: "#3b82f6",
-											weight: 4,
-											opacity: 0.9,
-											className: "flow-line",
-										}}
+										color="#3b82f6"
+										dashArray="0, 0"
 									/>
 								)}
 
 								{/* Draw Polyline to Home Destination if not delivered (Future Flow - More Transparent) */}
 								{latestPoint && !isDelivered && (
-									<Polyline
+									<AnimatedRoute
 										positions={generateCurvedPath([
 											[latestPoint.lat, latestPoint.lng],
 											[home.lat, home.lng],
-										])}
-										pathOptions={{
-											color: "#a78bfa",
-											weight: 3,
-											opacity: 0.4,
-											dashArray: "10, 10",
-											className: "moving-dash",
-										}}
+										]) as [number, number][]}
+										color="#a78bfa"
 									/>
 								)}
 
