@@ -3,7 +3,7 @@
 /* biome-ignore-all lint/style/noNonNullAssertion: leaflet marker coordinates */
 import type React from "react";
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet icon fix
@@ -13,7 +13,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
-import { getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
+import { generateCurvedPath, getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
 import { MapFitter } from "./MapFitter";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
@@ -151,26 +151,42 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 						{activeParcels
 							.filter((p) => p.lat && p.lng)
 							.map((parcel) => (
-								<Marker key={parcel.id} position={[parcel.lat!, parcel.lng!]} icon={getTransportMarkerIcon(parcel.transportMethod)}>
-									<Popup className="custom-popup">
-										<div className="popup-content">
-											<strong
-												className="tracking-number"
-												style={{ cursor: "pointer" }}
-												onClick={() => onSelectParcel?.(parcel.trackingNumber)}
-											>
-												{parcel.name
-													? `${parcel.name} (${parcel.trackingNumber})`
-													: parcel.trackingNumber}
-											</strong>
-											<div className="courier-info">{parcel.courier}</div>
-											<div className="status-info">
-												{getStatusIcon(parcel.status)}
-												<span>{parcel.status.toUpperCase()}</span>
+								<div key={parcel.id}>
+									{homeCoords && (
+										<Polyline
+											positions={generateCurvedPath([
+												[parcel.lat!, parcel.lng!],
+												[homeCoords.lat, homeCoords.lng],
+											])}
+											pathOptions={{
+												color: "#a78bfa",
+												weight: 3,
+												opacity: 0.3,
+												className: "moving-dash",
+											}}
+										/>
+									)}
+									<Marker position={[parcel.lat!, parcel.lng!]} icon={getTransportMarkerIcon(parcel.transportMethod)}>
+										<Popup className="custom-popup">
+											<div className="popup-content">
+												<strong
+													className="tracking-number"
+													style={{ cursor: "pointer" }}
+													onClick={() => onSelectParcel?.(parcel.trackingNumber)}
+												>
+													{parcel.name
+														? `${parcel.name} (${parcel.trackingNumber})`
+														: parcel.trackingNumber}
+												</strong>
+												<div className="courier-info">{parcel.courier}</div>
+												<div className="status-info">
+													{getStatusIcon(parcel.status)}
+													<span>{parcel.status.toUpperCase()}</span>
+												</div>
 											</div>
-										</div>
-									</Popup>
-								</Marker>
+										</Popup>
+									</Marker>
+								</div>
 							))}
 					</MapContainer>
 				</div>
