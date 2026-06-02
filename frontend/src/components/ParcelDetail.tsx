@@ -4,12 +4,7 @@
 /* biome-ignore-all lint/suspicious/noArrayIndexKey: disable array index key check */
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
-import {
-	MapContainer,
-	Marker,
-	Popup,
-	TileLayer,
-} from "react-leaflet";
+import { Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -36,7 +31,8 @@ import {
 	iconSource,
 } from "../utils/mapIcons";
 import { AnimatedRoute } from "./AnimatedRoute";
-import { MapFitter } from "./MapFitter";
+import { SharedMap } from "./SharedMap";
+import { SplitContainer } from "./SplitContainer";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -452,24 +448,23 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 
 			<div
 				style={{
-					display: "flex",
-					gap: "24px",
 					flex: 1,
 					height: "calc(100% - 44px)",
 					overflow: "hidden",
 				}}
 			>
-				{/* Left Side: Parcel Details & History Timeline */}
-				<div
-					className="glass-panel"
-					style={{
-						flex: 1,
-						padding: "24px",
-						display: "flex",
-						flexDirection: "column",
-						overflow: "hidden",
-					}}
-				>
+				<SplitContainer
+					leftPanel={
+						<div
+							className="glass-panel"
+							style={{
+								height: "100%",
+								padding: "24px",
+								display: "flex",
+								flexDirection: "column",
+								overflow: "hidden",
+							}}
+						>
 					<div
 						style={{
 							display: "flex",
@@ -764,41 +759,33 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 						)}
 					</div>
 				</div>
-
-				{/* Right Side: Map */}
-				<div
-					className="glass-panel"
-					style={{
-						flex: 1.5,
-						display: "flex",
-						flexDirection: "column",
-						overflow: "hidden",
-					}}
-				>
+					}
+					rightPanel={
+						<div
+							className="glass-panel"
+							style={{
+								height: "100%",
+								display: "flex",
+								flexDirection: "column",
+								overflow: "hidden",
+							}}
+						>
 					{hasLocation ? (
 						<div style={{ width: "100%", height: "100%" }}>
-							<MapContainer
+							<SharedMap
 								center={
 									latestPoint ? [latestPoint.lat, latestPoint.lng] : [0, 0]
 								}
 								zoom={7}
-								scrollWheelZoom={true}
-								style={{ height: "100%", width: "100%" }}
+								bounds={
+									routePoints.length > 0 || (latestPoint && !isDelivered)
+										? [
+												...routePoints.map((p) => [p.lat, p.lng] as [number, number]),
+												...(latestPoint && !isDelivered ? [[home.lat, home.lng] as [number, number]] : []),
+											]
+										: undefined
+								}
 							>
-								<MapFitter
-									bounds={
-										routePoints.length > 0 || (latestPoint && !isDelivered)
-											? [
-													...routePoints.map((p) => [p.lat, p.lng] as [number, number]),
-													...(latestPoint && !isDelivered ? [[home.lat, home.lng] as [number, number]] : []),
-												]
-											: undefined
-									}
-								/>
-								<TileLayer
-									attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-									url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-								/>
 
 								{/* Draw Route Polyline connecting geocoded timeline events (Active Flow) */}
 								{routePoints.length > 1 && (
@@ -881,7 +868,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 										</Popup>
 									</Marker>
 								)}
-							</MapContainer>
+							</SharedMap>
 						</div>
 					) : (
 						<div
@@ -927,7 +914,9 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 							</p>
 						</div>
 					)}
-				</div>
+						</div>
+					}
+				/>
 			</div>
 		</div>
 	);

@@ -1,6 +1,6 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: frontend uses any for dynamic props/components */
 /* biome-ignore-all lint/a11y: disable a11y rules for frontend prototype */
-import { Key, Plus, Trash2, X } from "lucide-react";
+import { Key, Plus, Trash2, X, Edit } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 
@@ -95,10 +95,33 @@ export const ManageCredentials: React.FC<Props> = ({
 		}
 	};
 
+	const editCredentials = async (service: string) => {
+		try {
+			const res = await fetch(`/api/v1/credentials/${service}?token=${token}`);
+			if (res.ok) {
+				const cred = await res.json();
+				setCredForm({
+					service: cred.service,
+					username: cred.data.username || "",
+					password: cred.data.password || "",
+					otpSecret: cred.data.otpSecret || "",
+					host: cred.data.host || "",
+					port: cred.data.port ? String(cred.data.port) : "",
+					tls: cred.data.tls !== false ? "true" : "false",
+				});
+				setShowCredModal(true);
+			} else {
+				alert("Failed to load credentials for editing.");
+			}
+		} catch (err) {
+			console.error(err);
+		}
+	};
+
 	return (
 		<>
 			{/* CREDENTIALS TABLE */}
-			<div className="glass-panel">
+			<div className="glass-panel" style={{ padding: "24px" }}>
 				<div className="panel-header-actions">
 					<h3 className="panel-title" style={{ margin: 0 }}>
 						{" "}
@@ -137,12 +160,22 @@ export const ManageCredentials: React.FC<Props> = ({
 									</td>
 									<td>{new Date(cred.updatedAt).toLocaleString()}</td>
 									<td style={{ textAlign: "right" }}>
-										<button
-											className="btn-icon-sm text-red"
-											onClick={() => deleteCredentials(cred.id)}
-										>
-											<Trash2 size={14} />
-										</button>
+										<div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+											<button
+												className="btn-icon-sm"
+												onClick={() => editCredentials(cred.service)}
+												title="Edit"
+											>
+												<Edit size={14} />
+											</button>
+											<button
+												className="btn-icon-sm text-red"
+												onClick={() => deleteCredentials(cred.id)}
+												title="Delete"
+											>
+												<Trash2 size={14} />
+											</button>
+										</div>
 									</td>
 								</tr>
 							))}

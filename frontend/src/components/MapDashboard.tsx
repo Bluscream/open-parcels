@@ -3,7 +3,7 @@
 /* biome-ignore-all lint/style/noNonNullAssertion: leaflet marker coordinates */
 import type React from "react";
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet icon fix
@@ -15,7 +15,8 @@ import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
 import { generateCurvedPath, getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
 import { AnimatedRoute } from "./AnimatedRoute";
-import { MapFitter } from "./MapFitter";
+import { SharedMap } from "./SharedMap";
+import { SplitContainer } from "./SplitContainer";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -114,31 +115,29 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 
 	return (
 		<div className="dashboard-container">
-			<div className="glass-panel map-panel">
+			<SplitContainer
+				leftDefaultSize={70}
+				leftMinSize={40}
+				rightDefaultSize={30}
+				rightMinSize={20}
+				leftPanel={
+					<div className="glass-panel map-panel" style={{ height: "100%" }}>
 				<h2 className="panel-title">Live Tracking</h2>
 				<div className="map-wrapper">
-					<MapContainer
+					<SharedMap
 						center={[45.0, 0.0]}
 						zoom={3}
-						scrollWheelZoom={true}
-						style={{ height: "100%", width: "100%", borderRadius: "12px" }}
+						bounds={
+							activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
+								? [
+										...activeParcels
+											.filter((p) => p.lat && p.lng)
+											.map((p) => [p.lat!, p.lng!] as [number, number]),
+										...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
+									]
+								: undefined
+						}
 					>
-						<MapFitter
-							bounds={
-								activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
-									? [
-											...activeParcels
-												.filter((p) => p.lat && p.lng)
-												.map((p) => [p.lat!, p.lng!] as [number, number]),
-											...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
-										]
-									: undefined
-							}
-						/>
-						<TileLayer
-							attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-							url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-						/>
 						{homeCoords && (
 							<Marker position={[homeCoords.lat, homeCoords.lng]} icon={iconHome}>
 								<Popup className="custom-popup">
@@ -184,11 +183,12 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 									</Marker>
 								</div>
 							))}
-					</MapContainer>
+					</SharedMap>
 				</div>
 			</div>
-
-			<div className="glass-panel list-panel">
+				}
+				rightPanel={
+			<div className="glass-panel list-panel" style={{ height: "100%" }}>
 				<h2 className="panel-title">Parcels in Transit</h2>
 				<div className="parcel-list">
 					{activeParcels.length === 0 ? (
@@ -219,6 +219,8 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 					)}
 				</div>
 			</div>
+				}
+			/>
 		</div>
 	);
 };
