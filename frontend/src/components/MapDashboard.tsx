@@ -3,7 +3,7 @@
 /* biome-ignore-all lint/style/noNonNullAssertion: leaflet marker coordinates */
 import type React from "react";
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet icon fix
@@ -14,6 +14,7 @@ import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
 import { generateCurvedPath, getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
+import { AnimatedRoute } from "./AnimatedRoute";
 import { MapFitter } from "./MapFitter";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
@@ -153,18 +154,12 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							.map((parcel) => (
 								<div key={parcel.id}>
 									{homeCoords && (
-										<Polyline
+										<AnimatedRoute
 											positions={generateCurvedPath([
 												[parcel.lat!, parcel.lng!],
 												[homeCoords.lat, homeCoords.lng],
-											])}
-											pathOptions={{
-												color: "#a78bfa",
-												weight: 3,
-												opacity: 0.4,
-												dashArray: "10, 10",
-												className: "moving-dash",
-											}}
+											]) as [number, number][]}
+											color="#a78bfa"
 										/>
 									)}
 									<Marker position={[parcel.lat!, parcel.lng!]} icon={getTransportMarkerIcon(parcel.transportMethod)}>
