@@ -33,15 +33,15 @@ export const createDivIcon = (
 	});
 };
 
-export const iconHome = createDivIcon(<Home size={16} />, "#10b981", 24); // Emerald
-export const iconPackage = createDivIcon(<Package size={16} />, "#818cf8", 24); // Indigo
-export const iconTruck = createDivIcon(<Truck size={16} />, "#f59e0b", 24); // Amber
-export const iconPlane = createDivIcon(<Plane size={16} />, "#60a5fa", 24); // Blue
-export const iconShip = createDivIcon(<Ship size={16} />, "#3b82f6", 24); // Darker Blue
-export const iconTrain = createDivIcon(<Train size={16} />, "#a855f7", 24); // Purple
-export const iconSource = createDivIcon(<MapPin size={16} />, "#ef4444", 24); // Red
-export const iconIntermediate = createDivIcon(<MapPin size={12} />, "#9ca3af", 20); // Gray
-export const iconCurrent = createDivIcon(<MapPin size={16} fill="#3b82f6" />, "#3b82f6", 24); // Blue filled
+export const iconHome = createDivIcon(<Home size={24} />, "#10b981", 32); // Emerald
+export const iconPackage = createDivIcon(<Package size={24} />, "#818cf8", 32); // Indigo
+export const iconTruck = createDivIcon(<Truck size={24} />, "#f59e0b", 32); // Amber
+export const iconPlane = createDivIcon(<Plane size={24} />, "#60a5fa", 32); // Blue
+export const iconShip = createDivIcon(<Ship size={24} />, "#3b82f6", 32); // Darker Blue
+export const iconTrain = createDivIcon(<Train size={24} />, "#a855f7", 32); // Purple
+export const iconSource = createDivIcon(<MapPin size={24} />, "#ef4444", 28); // Red
+export const iconIntermediate = createDivIcon(<MapPin size={20} />, "#9ca3af", 24); // Gray
+export const iconCurrent = createDivIcon(<MapPin size={24} fill="#3b82f6" />, "#3b82f6", 28); // Blue filled
 
 export function getTransportMarkerIcon(method?: string) {
 	switch (method?.toLowerCase()) {
