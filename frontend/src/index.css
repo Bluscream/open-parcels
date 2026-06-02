@@ -899,12 +899,31 @@ body {
 
 /* Map Path Animations */
 .moving-dash {
-	stroke-dasharray: 10 10 !important;
-	animation: dash-move 1.5s linear infinite;
+	stroke-dasharray: 10, 10 !important;
+	animation: dash-move 1s linear infinite forwards !important;
 }
 
 @keyframes dash-move {
-	to {
-		stroke-dashoffset: -20;
+	0% {
+		stroke-dashoffset: 20;
 	}
+	100% {
+		stroke-dashoffset: 0;
+	}
+}
+
+/* Fix OS cursor scaling bugs with Leaflet's 'grab' */
+.leaflet-container {
+    cursor: default !important;
+}
+.leaflet-interactive {
+    cursor: pointer !important;
+}
+.leaflet-grab {
+    cursor: default !important;
+}
+.leaflet-dragging .leaflet-grab,
+.leaflet-dragging .leaflet-grab .leaflet-interactive,
+.leaflet-dragging .leaflet-marker-icon {
+    cursor: move !important;
 }
