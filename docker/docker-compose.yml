@@ -20,7 +20,7 @@ services:
       # Home Assistant
       - HASS_URL=http://homeassistant.local:8123
       - HASS_TOKEN=your_long_lived_access_token
-      - LOOKUP_URL=https://lookup.minopia.de/
+      - LOOKUP_URLS=https://lookup.minopia.de/
     volumes:
       - openparcels_data:/data
 

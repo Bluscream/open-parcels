@@ -55,6 +55,7 @@ export function generateTOTP(secret: string): string {
 
 export interface AmazonLiveCredentials {
 	email?: string;
+	username?: string;
 	password?: string;
 	otpSecret?: string;
 	cookies?: {
@@ -100,7 +101,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				path.join(process.cwd(), ".scratch", "amazon-session"),
 			);
 
-			const browser = await chromium.launchPersistentContext(userDataDir, {
+			this.browserContext = await chromium.launchPersistentContext(userDataDir, {
 				headless: true,
 				executablePath: chromiumPath,
 				args: [
@@ -108,9 +109,6 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					"--no-sandbox",
 					"--disable-setuid-sandbox",
 				],
-			});
-			this.browserContext = await browser.newContext({
-				userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 				viewport: { width: 1280, height: 800 },
 				locale: "de-DE",
 				timezoneId: "Europe/Berlin",
@@ -118,11 +116,11 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 
 			// Load saved cookies if they exist
 			if (creds.cookies && creds.cookies.length > 0) {
-				await this.browserContext.addCookies(creds.cookies);
+				await this.browserContext!.addCookies(creds.cookies);
 			}
 
 			// Mask webdriver automation flag and mock standard Chrome browser properties
-			this.page = await this.browserContext.newPage();
+			this.page = await this.browserContext!.newPage();
 			await this.page.addInitScript(() => {
 				Object.defineProperty(navigator, "webdriver", {
 					get: () => undefined,
@@ -163,7 +161,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			});
 
 			// Align browser headers with our mock user agent
-			await this.browserContext.setExtraHTTPHeaders({
+			await this.browserContext!.setExtraHTTPHeaders({
 				"Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
 				"sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
 				"sec-ch-ua-mobile": "?0",
@@ -177,14 +175,24 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			});
 
 			// Check if we are redirected to sign-in page
+			console.log(`[AmazonLiveScraper] Navigation complete. URL is: ${this.page.url()}`);
 			const isSignIn =
 				this.page.url().includes("/ap/signin") ||
 				(await this.page.$('input[name="email"]')) !== null;
+
+			console.log(`[AmazonLiveScraper] Detected isSignIn state: ${isSignIn}`);
 
 			if (isSignIn) {
 				console.log(
 					"[AmazonLiveScraper] Stored session invalid, attempting full login...",
 				);
+				console.log(`[AmazonLiveScraper] Current Page URL: ${this.page.url()}`);
+				try {
+					console.log(`[AmazonLiveScraper] Current Page Title: ${await this.page.title()}`);
+				} catch (titleErr) {
+					console.log("[AmazonLiveScraper] Failed to fetch page title:", titleErr);
+				}
+
 				const emailVal = creds.email || creds.username;
 				if (!emailVal || !creds.password) {
 					console.error(
@@ -195,6 +203,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 
 				// Check for CAPTCHA first on email screen
 				let hasCaptcha = (await this.page.$("input[name*='captcha'], img[src*='captcha'], #auth-captcha-image")) !== null;
+				console.log(`[AmazonLiveScraper] CAPTCHA detected on email screen: ${hasCaptcha}`);
 				if (hasCaptcha) {
 					console.error("[AmazonLiveScraper] CAPTCHA detected on Amazon email login page. Headless scraping blocked.");
 					const captchaPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
@@ -204,20 +213,39 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				}
 
 				// Fill in email with randomized human typing speed (40-120ms per key)
+				console.log("[AmazonLiveScraper] Filling in email field...");
 				await this.page.fill('input[name="email"]', "");
 				await this.page.type('input[name="email"]', emailVal, { delay: Math.floor(Math.random() * 80) + 40 });
 				await this.page.waitForTimeout(Math.random() * 500 + 200); // short natural pause
 
+				console.log("[AmazonLiveScraper] Clicking Continue button...");
 				await this.page.click("input#continue");
+				console.log("[AmazonLiveScraper] Continue clicked. Waiting 1500ms for transition...");
 				await this.page.waitForTimeout(1500); // Wait for transition
+				console.log(`[AmazonLiveScraper] Post-continue URL: ${this.page.url()}`);
 
 				// Press Escape key twice to dismiss any native browser-level Passkey overlay dialogs
+				console.log("[AmazonLiveScraper] Pressing Escape keys to clear passkey overlay dialogs...");
 				await this.page.keyboard.press("Escape");
 				await this.page.waitForTimeout(500);
 				await this.page.keyboard.press("Escape");
 				await this.page.waitForTimeout(500);
 
+				// Log any visible alerts on the email submission transition
+				try {
+					const transitionAlert = await this.page.evaluate(() => {
+						const alert = document.querySelector(".a-alert-content, .a-alert-heading, #auth-error-message-box, .a-alert-error");
+						return alert ? alert.textContent?.trim() : null;
+					});
+					if (transitionAlert) {
+						console.log(`[AmazonLiveScraper] Transition alert detected: "${transitionAlert}"`);
+					}
+				} catch (alertErr) {
+					console.log("[AmazonLiveScraper] Failed to check for transition alerts:", alertErr);
+				}
+
 				// Automatically detect and click Passkey fallback "Use password instead"
+				console.log("[AmazonLiveScraper] Checking for Passkey screen...");
 				const fallbackClicked = await this.page.evaluate(() => {
 					const anchors = Array.from(document.querySelectorAll("a, button"));
 					const found = anchors.find(a => 
@@ -236,14 +264,19 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				if (fallbackClicked) {
 					console.log("[AmazonLiveScraper] Passkey screen detected. Automatically clicked 'Use password instead' fallback!");
 					await this.page.waitForTimeout(1500);
+					console.log(`[AmazonLiveScraper] Post-passkey-fallback URL: ${this.page.url()}`);
 				}
 				
 				// Wait up to 10 seconds for password field to appear dynamically
-				await this.page.waitForSelector('input[name="password"]', { timeout: 10000 }).catch(() => {});
+				console.log("[AmazonLiveScraper] Waiting for password field to be visible...");
+				await this.page.waitForSelector('input[name="password"]', { timeout: 10000 }).catch(() => {
+					console.log("[AmazonLiveScraper] Password field selector wait timed out.");
+				});
 				await this.page.waitForTimeout(Math.random() * 1000 + 500); // 0.5s - 1.5s post-transition pause
 
 				// Check for CAPTCHA on password screen
 				hasCaptcha = (await this.page.$("input[name*='captcha'], img[src*='captcha'], #auth-captcha-image")) !== null;
+				console.log(`[AmazonLiveScraper] CAPTCHA detected on password screen: ${hasCaptcha}`);
 				if (hasCaptcha) {
 					console.error("[AmazonLiveScraper] CAPTCHA detected on Amazon password login page. Headless scraping blocked.");
 					const captchaPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
@@ -253,19 +286,27 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				}
 
 				// Fill in password with human-like typing
+				console.log("[AmazonLiveScraper] Filling in password field...");
 				await this.page.fill('input[name="password"]', "");
 				await this.page.type('input[name="password"]', creds.password, { delay: Math.floor(Math.random() * 80) + 40 });
 				await this.page.waitForTimeout(Math.random() * 800 + 400); // pause before click
 
+				console.log("[AmazonLiveScraper] Clicking Sign-In submit button...");
 				await this.page.click("input#signInSubmit");
-				await this.page.waitForLoadState("load", { timeout: 20000 }).catch(() => {});
+				console.log("[AmazonLiveScraper] Sign-In clicked. Waiting for load state...");
+				await this.page.waitForLoadState("load", { timeout: 20000 }).catch(() => {
+					console.log("[AmazonLiveScraper] waitForLoadState timed out or completed.");
+				});
 				await this.page.waitForTimeout(2000);
+				console.log(`[AmazonLiveScraper] Post-submit URL: ${this.page.url()}`);
 
 				// Handle potential OTP/2FA request or manual intervention
 				if (
 					this.page.url().includes("approval") ||
-					this.page.url().includes("cvf")
+					this.page.url().includes("cvf") ||
+					this.page.url().includes("mfa")
 				) {
+					console.log("[AmazonLiveScraper] Detected OTP/2FA or Approval page.");
 					if (creds.otpSecret) {
 						console.log("[AmazonLiveScraper] OTP/2FA page encountered, attempting auto-fill with TOTP...");
 						try {
@@ -315,6 +356,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				}
 
 				// Return to ship-track page after successful login
+				console.log(`[AmazonLiveScraper] Returning to ship-track page: ${this.config.url}`);
 				await this.page.goto(this.config.url, {
 					waitUntil: "load",
 					timeout: 60000,
@@ -354,7 +396,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			}
 
 			// Extract cookies and csrfToken
-			const newCookies = await this.browserContext.cookies();
+			const newCookies = await this.browserContext!.cookies();
 			this.csrfToken = await this.page.evaluate(
 				() => (window as { csrfToken?: string }).csrfToken || null,
 			);
@@ -793,6 +835,57 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 		}
 
 		console.log("[AmazonLiveScraper] Scraping tracking events from DOM...");
+
+		// Try to click "Alle Aktualisierungen anzeigen" or similar button to expand detailed events list
+		console.log("[AmazonLiveScraper] Checking for 'Alle Aktualisierungen anzeigen' (Show all updates) button natively...");
+		const showAllUpdatesLocator = this.page.locator("a:has-text('Aktualisierungen'), a:has-text('updates'), a:has-text('Updates'), a:has-text('Updates anzeigen')");
+		if (await showAllUpdatesLocator.count() > 0) {
+			console.log("[AmazonLiveScraper] Found show all updates link natively. Clicking...");
+			await showAllUpdatesLocator.first().click({ timeout: 5000 }).catch((clickErr) => {
+				console.log("[AmazonLiveScraper] Native click failed, trying evaluate click fallback:", clickErr);
+			});
+			console.log("[AmazonLiveScraper] Click completed. Waiting 3000ms for updates container to load...");
+			await this.page.waitForTimeout(3000);
+		} else {
+			console.log("[AmazonLiveScraper] Native show all updates link not found. Trying page.evaluate fallback click...");
+			const clickedUpdates = await this.page.evaluate(() => {
+				const elements = Array.from(document.querySelectorAll("a, button, span, div"));
+				const target = elements.find(el => {
+					const txt = el.textContent?.toLowerCase() || "";
+					return txt.includes("aktualisierungen anzeigen") ||
+						   txt.includes("see all updates") ||
+						   txt.includes("show all updates");
+				});
+				if (target) {
+					(target as HTMLElement).click();
+					return true;
+				}
+				return false;
+			});
+			if (clickedUpdates) {
+				console.log("[AmazonLiveScraper] Clicked 'Show all updates' via evaluate fallback. Waiting for updates container to load...");
+				await this.page.waitForTimeout(3000);
+			} else {
+				console.log("[AmazonLiveScraper] 'Show all updates' button not found or not clickable in fallback.");
+			}
+		}
+		
+		// Wait for tracking content to render dynamically
+		console.log("[AmazonLiveScraper] Waiting for tracking elements to render...");
+		await this.page.waitForSelector('#primaryStatus, .primary-status, .track-package-status-box, #tracking-events-container, [id*="primaryStatus"], [id*="status"]', { timeout: 10000 }).catch((e) => {
+			console.log("[AmazonLiveScraper] Warning: Timed out waiting for tracking container selectors. Proceeding with current DOM state.");
+		});
+
+		try {
+			await this.page.screenshot({ path: '/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/tracking_page.png' });
+			console.log("[AmazonLiveScraper] Saved tracking page screenshot to frontend/dist/tracking_page.png");
+		} catch (err) {
+			console.error("[AmazonLiveScraper] Failed to take tracking page screenshot:", err);
+		}
+
+		console.log("[AmazonLiveScraper] Current URL before evaluating events:", this.page.url());
+		const bodyText = await this.page.evaluate(() => document.body.innerText.slice(0, 1000));
+		console.log("[AmazonLiveScraper] Page text preview:", bodyText);
 		
 		// Parse dates, times, descriptions, and locations from DOM
 		const scrapedData = await this.page.evaluate(() => {
@@ -871,6 +964,10 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				statusDescription: timelineHeader || "In transit"
 			};
 		});
+
+		console.log("[AmazonLiveScraper] Raw Scraped Data Status:", scrapedData.status);
+		console.log("[AmazonLiveScraper] Raw Scraped Data Status Description:", scrapedData.statusDescription);
+		console.log("[AmazonLiveScraper] Raw Scraped Events:", JSON.stringify(scrapedData.events, null, 2));
 
 		await this.close();
 
