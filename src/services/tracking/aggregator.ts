@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { credentials, parcelEvents, parcels } from "../../db/schema";
+import { credentials, orderParcels, orders, parcelEvents, parcels } from "../../db/schema";
 import { extractLocationName, geocodeLocation } from "../../utils/geocoder";
 import { AmazonLiveScraper } from "../scrapers/amazon-live-scraper";
 
@@ -30,170 +30,180 @@ export interface TrackingApiProvider {
 	): Promise<StandardizedTrackingData | null>;
 }
 
-// JS-equivalent MurmurHash2 (32-bit) hashing function used by ParcelsApp API
-function hash_32_gc(text: string, seed: number): number {
-	let length = text.length;
-	let h = seed ^ length;
-	let i = 0;
-	while (length >= 4) {
-		let k =
-			(text.charCodeAt(i) & 0xff) |
-			((text.charCodeAt(i + 1) & 0xff) << 8) |
-			((text.charCodeAt(i + 2) & 0xff) << 16) |
-			((text.charCodeAt(i + 3) & 0xff) << 24);
+// ---------------------------------------------------------------------------
+// Minopia Lookup Provider
+// Calls LOOKUP_URL/api/parcel/{trackingNumber} to resolve tracking info.
+//
+// The API response shape differs by carrier. Known variants:
+//   - carrier: number (e.g. 2) or string (e.g. "DHL")
+//   - status:  normalized slug ("pickup") OR raw carrier text ("Zustellung erfolgreich.")
+//   - delivered: boolean (present on some carriers, absent on others)
+//   - is_return: boolean (present on some carriers)
+//   - estimated_delivery: object with period[] (present on some carriers)
+//   - couriers: string[] (always present when success=true)
+// ---------------------------------------------------------------------------
 
-		k = Math.imul(k, 1540483477);
-		k ^= k >>> 24;
-		k = Math.imul(k, 1540483477);
+/**
+ * Resolves the internal status from the Minopia response.
+ * Prioritizes the structured boolean flags over free-text status strings.
+ */
+function resolveMinopiaStatus(r: {
+	delivered?: boolean;
+	is_return?: boolean;
+	status?: string;
+	estimated_delivery?: { status?: string };
+}): string {
+	// Most reliable: boolean flags
+	if (r.is_return === true) return "return";
+	if (r.delivered === true) return "delivered";
 
-		h = Math.imul(h, 1540483477);
-		h ^= k;
+	// Second most reliable: normalized status on estimated_delivery object
+	const edStatus = r.estimated_delivery?.status?.toLowerCase() ?? "";
+	if (edStatus === "pickup" || edStatus === "delivered") return "delivered";
+	if (edStatus === "out_for_delivery" || edStatus === "delivery") return "arriving";
+	if (edStatus === "in_transit") return "sent";
+	if (edStatus === "ordered" || edStatus === "pending") return "ordered";
 
-		length -= 4;
-		i += 4;
-	}
+	// Fallback: keyword match on the raw status string (may be in any language)
+	const rawStatus = (r.status ?? "").toLowerCase();
+	if (
+		rawStatus.includes("zugestellt") ||
+		rawStatus.includes("delivered") ||
+		rawStatus === "pickup"
+	) return "delivered";
+	if (rawStatus.includes("unterwegs") || rawStatus.includes("out for delivery")) return "arriving";
+	if (rawStatus.includes("return") || rawStatus.includes("rücksendung")) return "return";
 
-	switch (length) {
-		case 3:
-			h ^= (text.charCodeAt(i + 2) & 0xff) << 16;
-			h ^= (text.charCodeAt(i + 1) & 0xff) << 8;
-			h ^= text.charCodeAt(i) & 0xff;
-			h = Math.imul(h, 1540483477);
-			break;
-		case 2:
-			h ^= (text.charCodeAt(i + 1) & 0xff) << 8;
-			h ^= text.charCodeAt(i) & 0xff;
-			h = Math.imul(h, 1540483477);
-			break;
-		case 1:
-			h ^= text.charCodeAt(i) & 0xff;
-			h = Math.imul(h, 1540483477);
-			break;
-	}
-
-	h ^= h >>> 13;
-	h = Math.imul(h, 1540483477);
-	h ^= h >>> 15;
-	return h >>> 0;
+	return "sent";
 }
 
-export class ParcelsAppProvider implements TrackingApiProvider {
-	name = "parcelsapp";
+export class UniversalLookupProvider implements TrackingApiProvider {
+	name = "minopia";
+
+	private get baseUrls(): string[] {
+		const raw = process.env.LOOKUP_URL ?? "";
+		if (!raw.trim()) return [];
+		return raw.split(",").map((url) => url.trim().replace(/\/+$/, ""));
+	}
 
 	async fetchTracking(
 		trackingNumber: string,
 	): Promise<StandardizedTrackingData | null> {
-		const url = `https://parcelsapp.com/api/v1/parcels/${encodeURIComponent(trackingNumber)}/Auto%20Detect/en/Germany/Default/android`;
+		const urls = this.baseUrls;
+		if (urls.length === 0) {
+			console.warn(
+				"[UniversalLookupProvider] LOOKUP_URL is not set — skipping lookup.",
+			);
+			return null;
+		}
 
-		const settings: (string | number | boolean)[] = [
-			true, // Settings:push
-			false, // Settings:subscribed
-			1716723120000, // Settings:installedAt
-			0, // Settings:goods
-			5, // ReviewPromptStats:appOpens
-			0, // totalParcels
-			false, // dummy/ad-free
-			"Pixel 6", // Model
-			"oriole", // Device ID
-			"89201f99c0d12e4f", // Unique ID
-			"Google", // Manufacturer
-			"com.android.vending", // Installer
-			"3.0.2", // Readable Version
-			trackingNumber, // Tracking Number
-		];
+		let body: any = null;
+		let lastError: Error | null = null;
 
-		const jsonStr = JSON.stringify(settings);
-		const hash = hash_32_gc(jsonStr, 978);
-		settings.push(hash);
+		for (const baseUrl of urls) {
+			const url = `${baseUrl}/api/parcel/${encodeURIComponent(trackingNumber)}?fresh=true`;
+			try {
+				const resp = await fetch(url, {
+					headers: {
+						"User-Agent": "OpenParcels/1.0.0 (self-hosted parcel tracker)",
+						Accept: "application/json",
+					},
+				});
 
-		const payload = [
-			{
-				slug: "ahkref",
-				data: settings,
-			},
-		];
+				if (!resp.ok) {
+					throw new Error(`HTTP ${resp.status} from ${resp.url}`);
+				}
+
+				const resBody = await resp.json();
+
+				if (!resBody?.success || !resBody?.response) {
+					console.warn(
+						`[UniversalLookupProvider] Unsuccessful response for ${trackingNumber} from ${baseUrl}:`,
+						resBody?.errors || resBody,
+					);
+					continue;
+				}
+
+				body = resBody;
+				break; // Successfully got tracking data
+			} catch (err: any) {
+				console.warn(
+					`[UniversalLookupProvider] Failed to fetch tracking for ${trackingNumber} from ${baseUrl}:`,
+					err.message || err,
+				);
+				lastError = err;
+			}
+		}
+
+		if (!body) {
+			if (lastError) {
+				console.error(
+					`[UniversalLookupProvider] All lookup URLs failed for ${trackingNumber}. Last error:`,
+					lastError,
+				);
+			}
+			return null;
+		}
 
 		try {
-			const resp = await fetch(url, {
-				method: "POST",
-				headers: {
-					"User-Agent": "ParcelsApp/3.0 (Android)",
-					"Content-Type": "application/json",
-					Accept: "application/json",
-				},
-				body: JSON.stringify(payload),
-			});
-
-			if (!resp.ok) {
-				throw new Error(`HTTP error! Status: ${resp.status}`);
-			}
-
-			const raw = await resp.json();
-
-			if (!raw || raw.error || !raw.states) {
-				return null;
-			}
-
-			// Map delivered state
-			let status = "sent";
-			if (raw.delivered) {
-				status = "delivered";
-			} else if (raw.status?.toLowerCase().includes("today")) {
-				status = "arriving";
-			} else if (raw.status?.toLowerCase().includes("order")) {
-				status = "ordered";
-			}
-
-			// Extract events
-			const events: TrackingEventData[] = (raw.states || []).map(
-				(s: {
+			const r = body.response as {
+				tracking_number?: string;
+				carrier?: number | string;
+				status?: string;
+				status_description?: string;
+				delivered?: boolean;
+				is_return?: boolean;
+				couriers?: string[];
+				estimated_delivery?: {
+					status?: string;
+					period?: string[];
+				};
+				events?: {
 					date?: string;
 					status?: string;
 					location?: string;
-					description?: string;
-				}) => ({
-					date: s.date || new Date().toISOString(),
-					status: s.status || "Status Update",
-					location: s.location || undefined,
-					description: s.description || undefined,
-				}),
-			);
+					courier?: string;
+					is_return?: boolean;
+				}[];
+			};
 
-			// Approximate coordinates if location can be geocoded or extract if exists
-			let lat: number | undefined;
-			let lng: number | undefined;
+			const status = resolveMinopiaStatus(r);
 
-			// Some couriers return location coordinates. In parcelsapp response, we check if raw has locations or coordinates
-			if (raw.lat && raw.lng) {
-				lat = parseFloat(raw.lat);
-				lng = parseFloat(raw.lng);
-			}
+			// carrier may be a number (internal ID) or a string name — prefer couriers[] or string carrier
+			const courierName =
+				typeof r.carrier === "string"
+					? r.carrier
+					: Array.isArray(r.couriers) && r.couriers.length > 0
+						? r.couriers[0]
+						: undefined;
+			const courier = courierName ?? r.status_description ?? "Unknown";
 
-			// Calculate estimated delivery
+			// Extract estimated delivery from period array if present
 			let estimatedDelivery: string | undefined;
-			if (raw.estimatedDeliveryDate) {
-				estimatedDelivery = raw.estimatedDeliveryDate;
-			} else if (raw.eta && typeof raw.eta === "object") {
-				if (Array.isArray(raw.eta.period) && raw.eta.period.length > 0) {
-					estimatedDelivery = raw.eta.period[0];
-				} else if (typeof raw.eta.date === "string") {
-					estimatedDelivery = raw.eta.date;
-				}
+			if (Array.isArray(r.estimated_delivery?.period) && r.estimated_delivery!.period!.length > 0) {
+				estimatedDelivery = r.estimated_delivery!.period![0];
 			}
+
+			const events: TrackingEventData[] = (r.events ?? []).map((ev) => ({
+				date: ev.date ?? new Date().toISOString(),
+				status: ev.status ?? "Status Update",
+				location: ev.location ?? undefined,
+				description: ev.status ?? undefined,
+			}));
 
 			return {
-				trackingNumber: raw.trackingId || raw.tracking_id || trackingNumber,
-				courier: raw.slug || raw.carrier || raw.origin || "Unknown",
+				trackingNumber: r.tracking_number ?? trackingNumber,
+				courier,
 				status,
-				statusDescription: raw.statusDescription || raw.status || undefined,
-				estimatedDelivery,
-				lat,
-				lng,
+				statusDescription: r.status_description,
 				events,
-				raw,
+				raw: body,
 			};
 		} catch (err) {
-			console.error("ParcelsApp fetch failed:", err);
+			console.error(
+				`[UniversalLookupProvider] Failed to fetch tracking for ${trackingNumber}:`,
+				err,
+			);
 			return null;
 		}
 	}
@@ -203,8 +213,7 @@ export class TrackingAggregator {
 	private providers: TrackingApiProvider[] = [];
 
 	constructor() {
-		// Register the ParcelsApp free provider by default
-		this.registerProvider(new ParcelsAppProvider());
+		this.registerProvider(new UniversalLookupProvider());
 	}
 
 	registerProvider(provider: TrackingApiProvider) {
@@ -246,8 +255,78 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 	if (found.length === 0) return false;
 
 	const parcel = found[0];
-	const trackingInfo = await aggregator.aggregate(parcel.trackingNumber);
+	const isAmazon =
+		(parcel.courier && parcel.courier.toLowerCase() === "amazon") ||
+		parcel.trackingNumber?.toLowerCase().startsWith("de");
+
+	let trackingInfo: any = null;
+
+	if (isAmazon) {
+		const amzCred = await db
+			.select()
+			.from(credentials)
+			.where(eq(credentials.service, "Amazon"))
+			.limit(1);
+		
+		if (amzCred.length > 0) {
+			console.log(`[Tracking] Amazon package detected. Launching local scraper for ${parcel.trackingNumber}...`);
+			try {
+				// Find linked order number
+				const links = await db
+					.select()
+					.from(orderParcels)
+					.where(eq(orderParcels.parcelId, parcelId))
+					.limit(1);
+				
+				let orderNo = "";
+				if (links.length > 0) {
+					const ord = await db
+						.select()
+						.from(orders)
+						.where(eq(orders.id, links[0].orderId))
+						.limit(1);
+					if (ord.length > 0) {
+						orderNo = ord[0].orderNumber;
+					}
+				}
+
+				const scraper = new AmazonLiveScraper({
+					serviceName: "Amazon",
+					url: "",
+				});
+				
+				trackingInfo = await scraper.scrapeTimeline(orderNo, parcel.trackingNumber);
+				console.log(`[Tracking] Amazon local scraper finished successfully. Found ${trackingInfo.events.length} events.`);
+			} catch (err) {
+				console.error("[Tracking] Local Amazon scraper failed:", err);
+			}
+		}
+	}
+
+	if (!trackingInfo) {
+		trackingInfo = await aggregator.aggregate(parcel.trackingNumber);
+	}
+
 	if (!trackingInfo) return false;
+
+	// Check if the tracking info is recycled:
+	// If the status is "delivered" but the last event timestamp is older than when the parcel was created (with a 12-hour grace period for timezones/clock differences),
+	// ignore the tracking data and preserve the parcel's status (e.g. keeping it as "ordered" / "sent" / whatever it was).
+	const lastEventDate = trackingInfo.events.length > 0
+		? new Date(trackingInfo.events[trackingInfo.events.length - 1].date)
+		: null;
+
+	const isRecycled = lastEventDate &&
+		trackingInfo.status === "delivered" &&
+		lastEventDate.getTime() < parcel.createdAt.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+	if (isRecycled) {
+		console.warn(
+			`[Tracking] Reused/recycled tracking number detected for ${parcel.trackingNumber}. ` +
+			`Tracking returns 'delivered' on ${lastEventDate.toISOString()} but parcel was created on ${parcel.createdAt.toISOString()}. Ignoring tracking updates.`,
+		);
+		return true;
+	}
 
 	// 1. Update parcel fields
 	const updateData: {
@@ -266,20 +345,15 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 	if (trackingInfo.lat !== undefined) updateData.lat = trackingInfo.lat;
 	if (trackingInfo.lng !== undefined) updateData.lng = trackingInfo.lng;
 
-	// Try to geocode from events if coordinates are not provided directly by API
+	// Geocode from events if coordinates are not provided directly by the API
 	if (updateData.lat === undefined || updateData.lat === null) {
 		const sortedEventsDesc = [...trackingInfo.events].sort(
 			(a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
 		);
 		for (const ev of sortedEventsDesc) {
 			let locationName = ev.location || null;
-			if (!locationName && ev.description) {
-				locationName = extractLocationName(ev.description);
-			}
-			if (!locationName && ev.status) {
-				locationName = extractLocationName(ev.status);
-			}
-
+			if (!locationName && ev.description) locationName = extractLocationName(ev.description);
+			if (!locationName && ev.status) locationName = extractLocationName(ev.status);
 			if (locationName) {
 				const coords = await geocodeLocation(locationName);
 				if (coords) {
@@ -320,13 +394,8 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 			let eventLng: number | null = null;
 
 			let locationName = ev.location || null;
-			if (!locationName && ev.description) {
-				locationName = extractLocationName(ev.description);
-			}
-			if (!locationName && ev.status) {
-				locationName = extractLocationName(ev.status);
-			}
-
+			if (!locationName && ev.description) locationName = extractLocationName(ev.description);
+			if (!locationName && ev.status) locationName = extractLocationName(ev.status);
 			if (locationName) {
 				const coords = await geocodeLocation(locationName);
 				if (coords) {

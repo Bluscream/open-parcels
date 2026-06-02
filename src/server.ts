@@ -69,11 +69,11 @@ server.register(fastifyStatic, {
 	decorateReply: false,
 });
 
-// Serve root files (index.html, favicon.ico, etc.) without wildcard routing
+// Serve root files (index.html, favicon.ico, etc.) with wildcard routing
 server.register(fastifyStatic, {
 	root: distPath,
 	prefix: "/",
-	wildcard: false,
+	wildcard: true,
 });
 
 // Fallback for single-page application routes (e.g. /manage, /parcel/*)

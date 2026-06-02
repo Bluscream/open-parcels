@@ -1,6 +1,6 @@
 import assert from "node:assert";
 
-const BASE_URL = "http://localhost:3000/api/v1";
+const BASE_URL = "http://127.0.0.1:3000/api/v1";
 const GUEST_TOKEN = "guest_secret_token";
 const ADMIN_TOKEN = "admin_secret_token";
 

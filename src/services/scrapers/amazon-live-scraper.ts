@@ -1,14 +1,62 @@
 import { eq } from "drizzle-orm";
 import { type BrowserContext, chromium, type Page } from "playwright";
+import crypto from "node:crypto";
+import path from "node:path";
 import { db } from "../../db";
 import { credentials, parcelEvents, parcels } from "../../db/schema";
 import { decryptCredential, encryptCredential } from "../../utils/crypto";
 import { wsBroker } from "../websocket";
 import { BaseScraper, type ScraperResult } from "./index";
 
+function base32Decode(base32: string): Buffer {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+	const clean = base32.toUpperCase().replace(/=+$/, "");
+	const length = clean.length;
+	let bits = 0;
+	let value = 0;
+	let index = 0;
+	const buffer = Buffer.alloc(Math.floor((length * 5) / 8));
+
+	for (let i = 0; i < length; i++) {
+		const val = alphabet.indexOf(clean[i]);
+		if (val === -1) throw new Error("Invalid Base32 character");
+		value = (value << 5) | val;
+		bits += 5;
+		if (bits >= 8) {
+			buffer[index++] = (value >>> (bits - 8)) & 255;
+			bits -= 8;
+		}
+	}
+	return buffer;
+}
+
+export function generateTOTP(secret: string): string {
+	const key = base32Decode(secret.replace(/\s+/g, ""));
+	const epoch = Math.floor(Date.now() / 1000);
+	const counter = Math.floor(epoch / 30);
+
+	const counterBuffer = Buffer.alloc(8);
+	counterBuffer.writeUInt32BE(counter, 4);
+
+	const hmac = crypto.createHmac("sha1", key);
+	hmac.update(counterBuffer);
+	const hash = hmac.digest();
+
+	const offset = hash[hash.length - 1] & 0xf;
+	const code =
+		((hash[offset] & 0x7f) << 24) |
+		((hash[offset + 1] & 0xff) << 16) |
+		((hash[offset + 2] & 0xff) << 8) |
+		(hash[offset + 3] & 0xff);
+
+	const otp = code % 1000000;
+	return otp.toString().padStart(6, "0");
+}
+
 export interface AmazonLiveCredentials {
 	email?: string;
 	password?: string;
+	otpSecret?: string;
 	cookies?: {
 		name: string;
 		value: string;
@@ -38,15 +86,89 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 	 */
 	async authenticate(creds: AmazonLiveCredentials): Promise<boolean> {
 		try {
-			const browser = await chromium.launch({ headless: true });
-			this.browserContext = await browser.newContext();
+			// Resolve Chromium path: env var override → system default → let Playwright decide
+			const chromiumPath =
+				process.env.PLAYWRIGHT_CHROMIUM_PATH ||
+				process.env.PUPPETEER_EXECUTABLE_PATH ||
+				"/usr/bin/chromium";
+			console.log(`[AmazonLiveScraper] Using Chromium at: ${chromiumPath}`);
+
+			// Persistent user data dir: keeps cookies/session alive across server restarts
+			// so Amazon login only needs to happen once (or when the session expires).
+			const userDataDir = path.resolve(
+				process.env.AMAZON_SESSION_DIR ||
+				path.join(process.cwd(), ".scratch", "amazon-session"),
+			);
+
+			const browser = await chromium.launchPersistentContext(userDataDir, {
+				headless: true,
+				executablePath: chromiumPath,
+				args: [
+					"--disable-blink-features=AutomationControlled",
+					"--no-sandbox",
+					"--disable-setuid-sandbox",
+				],
+			});
+			this.browserContext = await browser.newContext({
+				userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+				viewport: { width: 1280, height: 800 },
+				locale: "de-DE",
+				timezoneId: "Europe/Berlin",
+			});
 
 			// Load saved cookies if they exist
 			if (creds.cookies && creds.cookies.length > 0) {
 				await this.browserContext.addCookies(creds.cookies);
 			}
 
+			// Mask webdriver automation flag and mock standard Chrome browser properties
 			this.page = await this.browserContext.newPage();
+			await this.page.addInitScript(() => {
+				Object.defineProperty(navigator, "webdriver", {
+					get: () => undefined,
+				});
+				Object.defineProperty(navigator, "languages", {
+					get: () => ["de-DE", "de", "en-US", "en"],
+				});
+				(window as any).chrome = {
+					app: {
+						isInstalled: false,
+						InstallState: { DISABLED: "DISABLED", INSTALLED: "INSTALLED", NOT_INSTALLED: "NOT_INSTALLED" },
+						runningState: () => "CANNOT_RUN",
+						getInstallState: () => "NOT_INSTALLED",
+						getDetails: () => null
+					},
+					runtime: {
+						OnInstalledReason: { CHROME_UPDATE: "chrome_update", INSTALL: "install", SHARED_MODULE_UPDATE: "shared_module_update", UPDATE: "update" },
+						OnRestartRequiredReason: { APP_UPDATE: "app_update", OS_UPDATE: "os_update", PERIODIC: "periodic" },
+						PlatformArch: { ARM: "arm", ARM64: "arm64", MIPS: "mips", MIPS64: "mips64", X86_32: "x86-32", X86_64: "x86-64" },
+						PlatformNaclArch: { ARM: "arm", MIPS: "mips", MIPS64: "mips64", X86_32: "x86-32", X86_64: "x86-64" },
+						PlatformOs: { ANDROID: "android", CROS: "cros", LINUX: "linux", MAC: "mac", OPENBSD: "openbsd", WIN: "win" },
+						RequestUpdateCheckStatus: { NO_UPDATE: "no_update", THROTTLED: "throttled", UPDATE_AVAILABLE: "update_available" }
+					}
+				};
+				const originalQuery = window.navigator.permissions.query;
+				window.navigator.permissions.query = (parameters) => (
+					parameters.name === "notifications" ?
+						Promise.resolve({ state: Notification.permission } as PermissionStatus) :
+						originalQuery(parameters)
+				);
+
+				// Disable WebAuthn / Passkeys completely so that Amazon falls back to standard passwords
+				delete (window as any).PublicKeyCredential;
+				if (navigator.credentials) {
+					navigator.credentials.get = () => Promise.reject(new Error("WebAuthn disabled"));
+					navigator.credentials.create = () => Promise.reject(new Error("WebAuthn disabled"));
+				}
+			});
+
+			// Align browser headers with our mock user agent
+			await this.browserContext.setExtraHTTPHeaders({
+				"Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+				"sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+				"sec-ch-ua-mobile": "?0",
+				"sec-ch-ua-platform": '"Linux"',
+			});
 
 			// Navigate to the ship-track page to check auth state
 			await this.page.goto(this.config.url, {
@@ -63,35 +185,133 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				console.log(
 					"[AmazonLiveScraper] Stored session invalid, attempting full login...",
 				);
-				if (!creds.email || !creds.password) {
+				const emailVal = creds.email || creds.username;
+				if (!emailVal || !creds.password) {
 					console.error(
 						"[AmazonLiveScraper] Stored session expired and no email/password credentials provided.",
 					);
 					return false;
 				}
 
-				// Fill in email
-				await this.page.fill('input[name="email"]', creds.email);
-				await this.page.click("input#continue");
-				await this.page.waitForTimeout(1000);
+				// Check for CAPTCHA first on email screen
+				let hasCaptcha = (await this.page.$("input[name*='captcha'], img[src*='captcha'], #auth-captcha-image")) !== null;
+				if (hasCaptcha) {
+					console.error("[AmazonLiveScraper] CAPTCHA detected on Amazon email login page. Headless scraping blocked.");
+					const captchaPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
+					await this.page.screenshot({ path: captchaPath });
+					console.log(`[AmazonLiveScraper] CAPTCHA screenshot saved to: ${captchaPath}`);
+					return false;
+				}
 
-				// Fill in password
-				await this.page.fill('input[name="password"]', creds.password);
-				await this.page.click("input#signInSubmit");
-				await this.page.waitForNavigation({
-					waitUntil: "load",
-					timeout: 60000,
+				// Fill in email with randomized human typing speed (40-120ms per key)
+				await this.page.fill('input[name="email"]', "");
+				await this.page.type('input[name="email"]', emailVal, { delay: Math.floor(Math.random() * 80) + 40 });
+				await this.page.waitForTimeout(Math.random() * 500 + 200); // short natural pause
+
+				await this.page.click("input#continue");
+				await this.page.waitForTimeout(1500); // Wait for transition
+
+				// Press Escape key twice to dismiss any native browser-level Passkey overlay dialogs
+				await this.page.keyboard.press("Escape");
+				await this.page.waitForTimeout(500);
+				await this.page.keyboard.press("Escape");
+				await this.page.waitForTimeout(500);
+
+				// Automatically detect and click Passkey fallback "Use password instead"
+				const fallbackClicked = await this.page.evaluate(() => {
+					const anchors = Array.from(document.querySelectorAll("a, button"));
+					const found = anchors.find(a => 
+						a.id === "auth-signin-with-password" || 
+						a.id === "passkey-signin-fallback" ||
+						a.textContent?.toLowerCase().includes("stattdessen") ||
+						a.textContent?.toLowerCase().includes("instead")
+					);
+					if (found) {
+						(found as HTMLElement).click();
+						return true;
+					}
+					return false;
 				});
+
+				if (fallbackClicked) {
+					console.log("[AmazonLiveScraper] Passkey screen detected. Automatically clicked 'Use password instead' fallback!");
+					await this.page.waitForTimeout(1500);
+				}
+				
+				// Wait up to 10 seconds for password field to appear dynamically
+				await this.page.waitForSelector('input[name="password"]', { timeout: 10000 }).catch(() => {});
+				await this.page.waitForTimeout(Math.random() * 1000 + 500); // 0.5s - 1.5s post-transition pause
+
+				// Check for CAPTCHA on password screen
+				hasCaptcha = (await this.page.$("input[name*='captcha'], img[src*='captcha'], #auth-captcha-image")) !== null;
+				if (hasCaptcha) {
+					console.error("[AmazonLiveScraper] CAPTCHA detected on Amazon password login page. Headless scraping blocked.");
+					const captchaPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
+					await this.page.screenshot({ path: captchaPath });
+					console.log(`[AmazonLiveScraper] CAPTCHA screenshot saved to: ${captchaPath}`);
+					return false;
+				}
+
+				// Fill in password with human-like typing
+				await this.page.fill('input[name="password"]', "");
+				await this.page.type('input[name="password"]', creds.password, { delay: Math.floor(Math.random() * 80) + 40 });
+				await this.page.waitForTimeout(Math.random() * 800 + 400); // pause before click
+
+				await this.page.click("input#signInSubmit");
+				await this.page.waitForLoadState("load", { timeout: 20000 }).catch(() => {});
+				await this.page.waitForTimeout(2000);
 
 				// Handle potential OTP/2FA request or manual intervention
 				if (
 					this.page.url().includes("approval") ||
 					this.page.url().includes("cvf")
 				) {
-					console.warn(
-						"[AmazonLiveScraper] 2FA/OTP or Approval page encountered. Please complete it manually in browser or check credentials.",
-					);
-					return false;
+					if (creds.otpSecret) {
+						console.log("[AmazonLiveScraper] OTP/2FA page encountered, attempting auto-fill with TOTP...");
+						try {
+							const otpCode = generateTOTP(creds.otpSecret);
+							console.log(`[AmazonLiveScraper] Generated TOTP token: ${otpCode}`);
+
+							let filled = false;
+							// Standard Multi-factor Auth page
+							if (await this.page.$("input#auth-mfa-otpcode")) {
+								await this.page.fill("input#auth-mfa-otpcode", otpCode);
+								await this.page.click("input#auth-signin-button");
+								filled = true;
+							}
+							// CVF page (e.g. email/SMS or authenticator OTP verification)
+							else if (await this.page.$("input#ap_cvf_otpcode_input")) {
+								await this.page.fill("input#ap_cvf_otpcode_input", otpCode);
+								await this.page.click("input#ap_cvf_submit");
+								filled = true;
+							}
+							else if (await this.page.$("input[name='code']")) {
+								await this.page.fill("input[name='code']", otpCode);
+								const submit = await this.page.$("input[type='submit'], button[type='submit']");
+								if (submit) await submit.click();
+								filled = true;
+							}
+
+							if (filled) {
+								console.log("[AmazonLiveScraper] OTP submitted, waiting for navigation...");
+								await this.page.waitForNavigation({
+									waitUntil: "load",
+									timeout: 30000,
+								}).catch(() => {});
+							} else {
+								console.warn("[AmazonLiveScraper] Failed to identify OTP input field on the page.");
+								return false;
+							}
+						} catch (totpErr) {
+							console.error("[AmazonLiveScraper] Failed to generate or enter TOTP:", totpErr);
+							return false;
+						}
+					} else {
+						console.warn(
+							"[AmazonLiveScraper] 2FA/OTP or Approval page encountered. Please complete it manually in browser or check credentials.",
+						);
+						return false;
+					}
 				}
 
 				// Return to ship-track page after successful login
@@ -107,6 +327,29 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				console.error(
 					"[AmazonLiveScraper] Authentication failed. Redirected back to login.",
 				);
+
+				// Capture any error messages displayed on the Amazon login screen
+				try {
+					const errorMsg = await this.page.evaluate(() => {
+						const alert = document.querySelector(".a-alert-content, .a-alert-heading, #auth-error-message-box, .a-alert-error");
+						return alert ? alert.textContent?.trim() : null;
+					});
+					if (errorMsg) {
+						console.error(`[AmazonLiveScraper] Amazon login page error message: "${errorMsg}"`);
+					}
+				} catch (err) {
+					console.error("[AmazonLiveScraper] Failed to extract DOM error message:", err);
+				}
+
+				// Capture debug screenshot to let user inspect in the browser
+				try {
+					const debugPath = `/run/media/system/Data/Projects/nodejs/open-parcels/frontend/dist/captcha.png`;
+					await this.page.screenshot({ path: debugPath });
+					console.log(`[AmazonLiveScraper] Debug login state screenshot saved to: ${debugPath}`);
+				} catch (err) {
+					console.error("[AmazonLiveScraper] Failed to save failure screenshot:", err);
+				}
+
 				return false;
 			}
 
@@ -464,6 +707,197 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 				err,
 			);
 		}
+	}
+
+	public async scrapeTimeline(orderNo: string, trackingNumber: string): Promise<any> {
+		const decrypted = await db
+			.select()
+			.from(credentials)
+			.where(eq(credentials.service, "Amazon"))
+			.limit(1);
+
+		if (decrypted.length === 0) {
+			throw new Error("No Amazon credentials found in database.");
+		}
+
+		const creds = JSON.parse(decryptCredential(decrypted[0].encryptedData));
+
+		// Construct progress-tracker URL dynamically
+		let trackingUrl = creds.urls?.[trackingNumber] || creds.shipTrackUrl;
+
+		if (!trackingUrl && orderNo) {
+			// If we don't have a cached tracking URL but have an order number,
+			// navigate to the order details page first to resolve the correct shipmentId!
+			trackingUrl = `https://www.amazon.de/gp/your-account/order-details?orderID=${orderNo}`;
+		} else if (!trackingUrl) {
+			trackingUrl = `https://www.amazon.de/progress-tracker/package?orderId=${orderNo}&packageIndex=0&shipmentId=${trackingNumber}&vt=NOTIFICATIONS`;
+		}
+
+		this.config.url = trackingUrl;
+
+		console.log(`[AmazonLiveScraper] Initiating scrape at URL: ${trackingUrl}`);
+		const success = await this.authenticate(creds);
+		if (!success) {
+			await this.close();
+			throw new Error("Failed to authenticate with Amazon.");
+		}
+
+		if (!this.page) {
+			await this.close();
+			throw new Error("Browser page not initialized.");
+		}
+
+		// If we are on the order details page, resolve and click the tracking link
+		if (this.page.url().includes("order-details")) {
+			console.log("[AmazonLiveScraper] On order details page. Resolving tracking link...");
+			const trackingLinkHref = await this.page.evaluate(() => {
+				const links = Array.from(document.querySelectorAll("a"));
+				const trackLink = links.find(a => 
+					a.href.includes("progress-tracker") || 
+					a.href.includes("ship-track") ||
+					a.textContent?.toLowerCase().includes("verfolgen") ||
+					a.textContent?.toLowerCase().includes("track")
+				);
+				return trackLink ? trackLink.href : null;
+			});
+
+			if (trackingLinkHref) {
+				console.log(`[AmazonLiveScraper] Resolved real tracking link: ${trackingLinkHref}`);
+				this.config.url = trackingLinkHref;
+
+				// Cache resolved URL back into credentials DB for fast future refreshes
+				try {
+					if (!creds.urls) creds.urls = {};
+					creds.urls[trackingNumber] = trackingLinkHref;
+					const encrypted = encryptCredential(JSON.stringify(creds));
+					await db
+						.update(credentials)
+						.set({
+							encryptedData: encrypted,
+							updatedAt: new Date(),
+						})
+						.where(eq(credentials.id, decrypted[0].id));
+					console.log(`[AmazonLiveScraper] Cached real tracking URL for ${trackingNumber}`);
+				} catch (cacheErr) {
+					console.error("[AmazonLiveScraper] Failed to cache URL in database:", cacheErr);
+				}
+
+				// Navigate to the real progress tracker page
+				await this.page.goto(trackingLinkHref, {
+					waitUntil: "load",
+					timeout: 60000,
+				});
+			} else {
+				console.warn("[AmazonLiveScraper] Could not find any tracking links on the order details page.");
+			}
+		}
+
+		console.log("[AmazonLiveScraper] Scraping tracking events from DOM...");
+		
+		// Parse dates, times, descriptions, and locations from DOM
+		const scrapedData = await this.page.evaluate(() => {
+			const eventsList: Array<{ date: string; status: string; location?: string }> = [];
+			
+			// Select all day groups or rows
+			const dayGroups = document.querySelectorAll(".a-spacing-double-large, .a-spacing-large, .tracking-event-group");
+			
+			if (dayGroups.length > 0) {
+				for (const group of Array.from(dayGroups)) {
+					const dateHeader = group.querySelector("h4, .a-size-medium, .event-date");
+					if (!dateHeader) continue;
+					const dateText = dateHeader.textContent?.trim() || "";
+					
+					const eventRows = group.querySelectorAll(".a-row, .event-details");
+					for (const row of Array.from(eventRows)) {
+						const timeEl = row.querySelector(".a-size-small, .event-time");
+						const descEl = row.querySelector(".a-size-base, .event-description, b, strong");
+						const locEl = row.querySelector(".a-color-secondary, .event-location, span[class*='secondary']");
+						
+						if (descEl && descEl.textContent?.trim()) {
+							const timeText = timeEl ? ` ${timeEl.textContent.trim()}` : "";
+							const descText = descEl.textContent.trim();
+							const locText = locEl ? locEl.textContent.trim() : "";
+							
+							eventsList.push({
+								date: `${dateText}${timeText}`,
+								status: descText,
+								location: locText || undefined
+							});
+						}
+					}
+				}
+			} else {
+				// Fallback: search for list items or text rows directly if dayGroups structure differs
+				const genericRows = document.querySelectorAll(".a-spacing-medium .a-row");
+				let currentDate = "";
+				
+				for (const row of Array.from(genericRows)) {
+					const text = row.textContent?.trim() || "";
+					const isHeader = row.querySelector("h4, .a-size-medium") || (!row.querySelector(".a-size-small") && text.match(/(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i));
+					
+					if (isHeader) {
+						currentDate = text;
+					} else {
+						const timeEl = row.querySelector(".a-size-small, .event-time");
+						const descEl = row.querySelector(".a-size-base, b, strong");
+						const locEl = row.querySelector(".a-color-secondary");
+						
+						if (descEl && descEl.textContent?.trim()) {
+							const timeText = timeEl ? ` ${timeEl.textContent.trim()}` : "";
+							eventsList.push({
+								date: `${currentDate || new Date().toDateString()}${timeText}`,
+								status: descEl.textContent.trim(),
+								location: locEl ? locEl.textContent.trim() : undefined
+							});
+						}
+					}
+				}
+			}
+			
+			// Extract overall status
+			let statusSlug = "sent";
+			const timelineHeader = document.querySelector("h1, h2, .a-size-large, .tracking-object-state")?.textContent?.trim()?.toLowerCase() || "";
+			if (timelineHeader.includes("zugestellt") || timelineHeader.includes("delivered") || timelineHeader.includes("geliefert")) {
+				statusSlug = "delivered";
+			} else if (timelineHeader.includes("heute") || timelineHeader.includes("today") || timelineHeader.includes("zustellung") || timelineHeader.includes("delivery")) {
+				statusSlug = "arriving";
+			} else if (timelineHeader.includes("bestellt") || timelineHeader.includes("ordered")) {
+				statusSlug = "ordered";
+			}
+			
+			return {
+				events: eventsList,
+				status: statusSlug,
+				statusDescription: timelineHeader || "In transit"
+			};
+		});
+
+		await this.close();
+
+		// Convert date strings to standardized Dates
+		const formattedEvents = scrapedData.events.map(ev => {
+			let dateObj = new Date(ev.date);
+			if (Number.isNaN(dateObj.getTime())) {
+				// Parse German dates (e.g. "Dienstag, 2. Juni 02:14")
+				// We can just fallback to current date for safety
+				dateObj = new Date();
+			}
+			
+			return {
+				date: dateObj.toISOString(),
+				status: ev.status,
+				location: ev.location || undefined,
+				description: ev.status
+			};
+		});
+
+		return {
+			trackingNumber,
+			courier: "Amazon",
+			status: scrapedData.status,
+			statusDescription: scrapedData.statusDescription,
+			events: formattedEvents
+		};
 	}
 
 	async close(): Promise<void> {
