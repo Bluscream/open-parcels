@@ -899,7 +899,7 @@ body {
 
 /* Map Path Animations */
 .moving-dash {
-	stroke-dasharray: 10 10;
+	stroke-dasharray: 10 10 !important;
 	animation: dash-move 1.5s linear infinite;
 }
 

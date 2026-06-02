@@ -161,7 +161,8 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 											pathOptions={{
 												color: "#a78bfa",
 												weight: 3,
-												opacity: 0.3,
+												opacity: 0.4,
+												dashArray: "10, 10",
 												className: "moving-dash",
 											}}
 										/>
