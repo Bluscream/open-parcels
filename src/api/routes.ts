@@ -1320,7 +1320,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					const colNames: string[] = rowsResult.columns ?? [];
 
 					for (const dataRow of dataRows) {
-						const vals = (dataRow as any[]).map((v) => {
+						const vals = colNames.map((c) => {
+							const v = (dataRow as Record<string, unknown>)[c];
 							if (v === null) return "NULL";
 							if (typeof v === "number") return String(v);
 							return `'${String(v).replace(/'/g, "''")}'`;

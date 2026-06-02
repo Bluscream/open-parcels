@@ -13,6 +13,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
+import { getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -30,6 +31,7 @@ interface Parcel {
 	lat?: number;
 	lng?: number;
 	estimatedDelivery?: string;
+	transportMethod?: string;
 }
 
 interface MapDashboardProps {
@@ -40,6 +42,7 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 	onSelectParcel,
 }) => {
 	const [parcels, setParcels] = useState<Parcel[]>([]);
+	const [homeCoords, setHomeCoords] = useState<{ lat: number; lng: number } | null>(null);
 
 	useEffect(() => {
 		fetch(`/api/v1/parcels?token=${getGuestToken()}`)
@@ -62,6 +65,8 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							estimatedDelivery: p.estimatedDeliveryStart
 								? new Date(p.estimatedDeliveryStart).toLocaleDateString()
 								: "Pending",
+							// A heuristic: if courier is explicitly a flight/ship, or rely on a DB field later
+							transportMethod: p.courier?.toLowerCase().includes("air") ? "plane" : "unknown"
 						})),
 					);
 				}
@@ -70,6 +75,19 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				console.error("Failed to fetch parcels:", err);
 				setParcels([]);
 			});
+
+		// Fetch home settings
+		fetch(`/api/v1/settings?token=${getGuestToken()}`)
+			.then((res) => res.json())
+			.then((data) => {
+				if (data.home_latitude !== undefined && data.home_longitude !== undefined) {
+					setHomeCoords({
+						lat: parseFloat(data.home_latitude),
+						lng: parseFloat(data.home_longitude),
+					});
+				}
+			})
+			.catch((err) => console.error("Failed to fetch home settings", err));
 	}, []);
 
 	const getStatusIcon = (status: string) => {
@@ -103,6 +121,17 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				<div className="map-wrapper">
 					<MapContainer
 						center={[45.0, 0.0]}
+						bounds={
+							activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
+								? [
+										...activeParcels
+											.filter((p) => p.lat && p.lng)
+											.map((p) => [p.lat!, p.lng!] as [number, number]),
+										...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
+									]
+								: undefined
+						}
+						boundsOptions={{ padding: [50, 50] }}
 						zoom={3}
 						scrollWheelZoom={true}
 						style={{ height: "100%", width: "100%", borderRadius: "12px" }}
@@ -111,10 +140,20 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 							url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
 						/>
+						{homeCoords && (
+							<Marker position={[homeCoords.lat, homeCoords.lng]} icon={iconHome}>
+								<Popup className="custom-popup">
+									<div className="popup-content">
+										<strong style={{ color: "#10b981" }}>Home</strong>
+										<div className="status-info">Destination</div>
+									</div>
+								</Popup>
+							</Marker>
+						)}
 						{activeParcels
 							.filter((p) => p.lat && p.lng)
 							.map((parcel) => (
-								<Marker key={parcel.id} position={[parcel.lat!, parcel.lng!]}>
+								<Marker key={parcel.id} position={[parcel.lat!, parcel.lng!]} icon={getTransportMarkerIcon(parcel.transportMethod)}>
 									<Popup className="custom-popup">
 										<div className="popup-content">
 											<strong
