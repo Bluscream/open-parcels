@@ -1,4 +1,4 @@
-// Location resolution via LOOKUP_URL (e.g. https://lookup.minopia.de/api/location/{name})
+// Location resolution via LOOKUP_URLS (e.g. https://lookup.minopia.de/api/location/{name})
 // In-process cache to avoid redundant requests within a server lifetime.
 const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
 
@@ -36,9 +36,9 @@ export function extractLocationName(text: string): string | null {
 export async function geocodeLocation(
 	locationName: string,
 ): Promise<{ lat: number; lng: number } | null> {
-	const raw = process.env.LOOKUP_URL ?? "";
+	const raw = process.env.LOOKUP_URLS ?? "";
 	if (!raw.trim()) {
-		console.warn("[geocoder] LOOKUP_URL is not set — skipping geocoding.");
+		console.warn("[geocoder] LOOKUP_URLS is not set — skipping geocoding.");
 		return null;
 	}
 

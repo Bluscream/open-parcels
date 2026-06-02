@@ -31,8 +31,8 @@ export interface TrackingApiProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Minopia Lookup Provider
-// Calls LOOKUP_URL/api/parcel/{trackingNumber} to resolve tracking info.
+// UniversalLookup Provider
+// Calls LOOKUP_URLS/api/parcel/{trackingNumber} to resolve tracking info.
 //
 // The API response shape differs by carrier. Known variants:
 //   - carrier: number (e.g. 2) or string (e.g. "DHL")
@@ -44,10 +44,10 @@ export interface TrackingApiProvider {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolves the internal status from the Minopia response.
+ * Resolves the internal status from the UniversalLookup response.
  * Prioritizes the structured boolean flags over free-text status strings.
  */
-function resolveMinopiaStatus(r: {
+function resolveUniversalLookupStatus(r: {
 	delivered?: boolean;
 	is_return?: boolean;
 	status?: string;
@@ -78,10 +78,10 @@ function resolveMinopiaStatus(r: {
 }
 
 export class UniversalLookupProvider implements TrackingApiProvider {
-	name = "minopia";
+	name = "universal-lookup";
 
 	private get baseUrls(): string[] {
-		const raw = process.env.LOOKUP_URL ?? "";
+		const raw = process.env.LOOKUP_URLS ?? "";
 		if (!raw.trim()) return [];
 		return raw.split(",").map((url) => url.trim().replace(/\/+$/, ""));
 	}
@@ -92,7 +92,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 		const urls = this.baseUrls;
 		if (urls.length === 0) {
 			console.warn(
-				"[UniversalLookupProvider] LOOKUP_URL is not set — skipping lookup.",
+				"[UniversalLookupProvider] LOOKUP_URLS is not set — skipping lookup.",
 			);
 			return null;
 		}
@@ -167,7 +167,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 				}[];
 			};
 
-			const status = resolveMinopiaStatus(r);
+			const status = resolveUniversalLookupStatus(r);
 
 			// carrier may be a number (internal ID) or a string name — prefer couriers[] or string carrier
 			const courierName =
