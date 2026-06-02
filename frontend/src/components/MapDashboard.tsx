@@ -32,36 +32,6 @@ interface Parcel {
 	estimatedDelivery?: string;
 }
 
-const DUMMY_PARCELS: Parcel[] = [
-	{
-		id: 1,
-		trackingNumber: "JD000000001",
-		courier: "DHL",
-		status: "arriving",
-		lat: 48.1351,
-		lng: 11.582,
-		estimatedDelivery: "Today",
-	},
-	{
-		id: 2,
-		trackingNumber: "1Z999999999",
-		courier: "UPS",
-		status: "sent",
-		lat: 40.7128,
-		lng: -74.006,
-		estimatedDelivery: "Oct 15",
-	},
-	{
-		id: 3,
-		trackingNumber: "TBA00000000",
-		courier: "Amazon",
-		status: "delivered",
-		lat: 51.5074,
-		lng: -0.1278,
-		estimatedDelivery: "Delivered",
-	},
-];
-
 interface MapDashboardProps {
 	onSelectParcel?: (trackingNumber: string) => void;
 }
@@ -78,7 +48,7 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				return res.json();
 			})
 			.then((data) => {
-				if (Array.isArray(data) && data.length > 0) {
+				if (Array.isArray(data)) {
 					// Map backend fields to frontend interface if necessary
 					setParcels(
 						data.map((p) => ({
@@ -94,13 +64,11 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 								: "Pending",
 						})),
 					);
-				} else {
-					setParcels(DUMMY_PARCELS);
 				}
 			})
 			.catch((err) => {
-				console.error("Failed to fetch parcels, using dummy fallback:", err);
-				setParcels(DUMMY_PARCELS);
+				console.error("Failed to fetch parcels:", err);
+				setParcels([]);
 			});
 	}, []);
 
@@ -121,6 +89,13 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 		}
 	};
 
+	const activeParcels = parcels.filter(
+		(p) =>
+			p.status !== "delivered" &&
+			p.status !== "return" &&
+			p.status !== "return-accepted",
+	);
+
 	return (
 		<div className="dashboard-container">
 			<div className="glass-panel map-panel">
@@ -136,7 +111,7 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 							url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
 						/>
-						{parcels
+						{activeParcels
 							.filter((p) => p.lat && p.lng)
 							.map((parcel) => (
 								<Marker key={parcel.id} position={[parcel.lat!, parcel.lng!]}>
@@ -167,26 +142,32 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 			<div className="glass-panel list-panel">
 				<h2 className="panel-title">Parcels in Transit</h2>
 				<div className="parcel-list">
-					{parcels.map((parcel) => (
-						<div
-							key={parcel.id}
-							className="parcel-card"
-							onClick={() => onSelectParcel?.(parcel.trackingNumber)}
-						>
-							<div className="parcel-icon">{getStatusIcon(parcel.status)}</div>
-							<div className="parcel-details">
-								<div className="parcel-id">
-									{parcel.name
-										? `${parcel.name} (${parcel.trackingNumber})`
-										: parcel.trackingNumber}
-								</div>
-								<div className="parcel-meta">
-									{parcel.courier} &bull; {parcel.estimatedDelivery}
-								</div>
-							</div>
-							<div className="parcel-status-badge">{parcel.status}</div>
+					{activeParcels.length === 0 ? (
+						<div className="empty-list-message" style={{ color: "var(--text-muted)", padding: "40px 20px", textAlign: "center", fontStyle: "italic" }}>
+							No active parcels in transit
 						</div>
-					))}
+					) : (
+						activeParcels.map((parcel) => (
+							<div
+								key={parcel.id}
+								className="parcel-card"
+								onClick={() => onSelectParcel?.(parcel.trackingNumber)}
+							>
+								<div className="parcel-icon">{getStatusIcon(parcel.status)}</div>
+								<div className="parcel-details">
+									<div className="parcel-id">
+										{parcel.name
+											? `${parcel.name} (${parcel.trackingNumber})`
+											: parcel.trackingNumber}
+									</div>
+									<div className="parcel-meta">
+										{parcel.courier} &bull; {parcel.estimatedDelivery}
+									</div>
+								</div>
+								<div className="parcel-status-badge">{parcel.status}</div>
+							</div>
+						))
+					)}
 				</div>
 			</div>
 		</div>

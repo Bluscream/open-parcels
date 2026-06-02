@@ -10,5 +10,5 @@ export const getGuestToken = (): string => {
 		return urlToken;
 	}
 
-	return storedToken || "guest_secret_token";
+	return storedToken || "";
 };

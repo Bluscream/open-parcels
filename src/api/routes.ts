@@ -4,15 +4,16 @@ import type { FastifyInstance } from "fastify";
 import { db } from "../db";
 import {
 	credentials,
+	orderParcels,
 	orders,
 	parcelEvents,
 	parcels,
 	settings,
 } from "../db/schema";
-import { trackAndUpdateParcel } from "../services/tracking/aggregator";
+import { trackAndUpdateParcel, aggregator } from "../services/tracking/aggregator";
 import { wsBroker } from "../services/websocket";
 import { decryptCredential, encryptCredential } from "../utils/crypto";
-import { geocodeLocation } from "../utils/geocoder";
+import { geocodeLocation, extractLocationName } from "../utils/geocoder";
 
 // Basic Auth hook to check token
 const checkAuth = async (request: any, reply: any) => {
@@ -21,42 +22,25 @@ const checkAuth = async (request: any, reply: any) => {
 		request.query.token ||
 		request.body?.token;
 
-	const guestToken = process.env.OPENPARCELS_TOKEN_GUEST;
-	const adminToken = process.env.OPENPARCELS_TOKEN_ADMIN;
+	const configuredToken = process.env.OPENPARCELS_TOKEN;
+	const isAuthRequired = !!(configuredToken && configuredToken.trim() !== "");
 
-	const hasGuestTokenConfigured = !!(guestToken && guestToken.trim() !== "");
-
-	// If no token is provided:
-	if (!token) {
-		if (hasGuestTokenConfigured) {
-			return reply.code(401).send({ error: "Unauthorized: Missing token" });
-		}
-		// No guest token configured, allow GET requests as guest
-		request.user = { isGuest: true, isAdmin: false };
-		if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-			return reply
-				.code(401)
-				.send({ error: "Unauthorized: Admin token required" });
-		}
+	// If no auth is required (no token configured):
+	if (!isAuthRequired) {
+		request.user = { isGuest: false, isAdmin: true };
 		return;
 	}
 
-	// If token is provided:
-	const isAdmin = token === adminToken;
-	const isGuest = hasGuestTokenConfigured ? token === guestToken : true;
+	// Auth is required:
+	if (!token) {
+		return reply.code(401).send({ error: "Unauthorized: Missing token" });
+	}
 
-	if (!isAdmin && hasGuestTokenConfigured && token !== guestToken) {
+	if (token !== configuredToken) {
 		return reply.code(403).send({ error: "Forbidden: Invalid token" });
 	}
 
-	request.user = { isGuest, isAdmin };
-
-	// Block write actions for guests
-	if (!isAdmin && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-		return reply
-			.code(403)
-			.send({ error: "Forbidden: Admin token required for writes" });
-	}
+	request.user = { isGuest: false, isAdmin: true };
 };
 
 const stripNulls = (obj: any): any => {
@@ -110,6 +94,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								estimatedDeliveryEnd: { type: "string", nullable: true },
 								createdAt: { type: "string" },
 								updatedAt: { type: "string" },
+								orderId: { type: "number", nullable: true },
 							},
 						},
 					},
@@ -118,7 +103,16 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		async (_request, _reply) => {
 			const allParcels = await db.select().from(parcels);
-			return stripNulls(allParcels);
+			const links = await db.select().from(orderParcels);
+			const parcelToOrderMap = new Map<number, number>();
+			for (const link of links) {
+				parcelToOrderMap.set(link.parcelId, link.orderId);
+			}
+			const results = allParcels.map((p) => ({
+				...p,
+				orderId: parcelToOrderMap.get(p.id) || null,
+			}));
+			return stripNulls(results);
 		},
 	);
 
@@ -140,9 +134,47 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.limit(1);
 		}
 		if (found.length === 0) {
+			const trackingInfo = await aggregator.aggregate(identifier);
+			if (trackingInfo) {
+				// Resolve temporary coordinates from the latest event if possible
+				let lat: number | null = null;
+				let lng: number | null = null;
+				const sortedEventsDesc = [...trackingInfo.events].sort(
+					(a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+				);
+				for (const ev of sortedEventsDesc) {
+					let locationName = ev.location || null;
+					if (!locationName && ev.description) locationName = extractLocationName(ev.description);
+					if (!locationName && ev.status) locationName = extractLocationName(ev.status);
+					if (locationName) {
+						const coords = await geocodeLocation(locationName);
+						if (coords) {
+							lat = coords.lat;
+							lng = coords.lng;
+							break;
+						}
+					}
+				}
+				return stripNulls({
+					id: 0,
+					trackingNumber: trackingInfo.trackingNumber,
+					courier: trackingInfo.courier,
+					status: trackingInfo.status,
+					lat,
+					lng,
+					estimatedDeliveryStart: trackingInfo.estimatedDelivery || null,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+					temp: true,
+					orderId: null,
+				});
+			}
 			return reply.code(404).send({ error: "Parcel not found" });
 		}
-		return stripNulls(found[0]);
+		const parcel = found[0];
+		const link = await db.select().from(orderParcels).where(eq(orderParcels.parcelId, parcel.id)).limit(1);
+		const orderId = link.length > 0 ? link[0].orderId : null;
+		return stripNulls({ ...parcel, orderId });
 	};
 
 	// GET /parcels/:identifier & GET /parcel/:identifier - Get a single parcel by ID or tracking number
@@ -200,7 +232,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		async (request: any, reply) => {
 			const params = getParams(request);
-			const { trackingNumber, name, courier, status, lat, lng } = params;
+			const { trackingNumber, name, courier, status, lat, lng, orderId } = params;
 
 			if (!trackingNumber || !status) {
 				return reply
@@ -224,6 +256,13 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 			const insertedParcel = newParcel[0];
 
+			if (orderId) {
+				await db.insert(orderParcels).values({
+					orderId: parseInt(orderId, 10),
+					parcelId: insertedParcel.id,
+				}).onConflictDoNothing();
+			}
+
 			// Automatically trigger a live tracking query immediately upon creation
 			try {
 				await trackAndUpdateParcel(insertedParcel.id);
@@ -238,7 +277,10 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.where(eq(parcels.id, insertedParcel.id))
 				.limit(1);
 
-			return reply.code(201).send(latestParcel[0] || insertedParcel);
+			const finalParcel = latestParcel[0] || insertedParcel;
+			const finalOrderId = orderId ? parseInt(orderId, 10) : null;
+
+			return reply.code(201).send({ ...finalParcel, orderId: finalOrderId });
 		},
 	);
 
@@ -247,6 +289,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		const { id } = request.params;
 		const params = getParams(request);
 		const {
+			trackingNumber,
 			name,
 			courier,
 			status,
@@ -254,10 +297,12 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			lng,
 			estimatedDeliveryStart,
 			estimatedDeliveryEnd,
+			orderId,
 		} = params;
 
 		const updateData: {
 			updatedAt: Date;
+			trackingNumber?: string;
 			name?: string;
 			courier?: string;
 			status?: string;
@@ -269,6 +314,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			updatedAt: new Date(),
 		};
 
+		if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
 		if (name !== undefined) updateData.name = name;
 		if (courier !== undefined) updateData.courier = courier;
 		if (status !== undefined) updateData.status = status;
@@ -293,7 +339,20 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			return reply.code(404).send({ error: "Parcel not found" });
 		}
 
-		return updated[0];
+		if (orderId !== undefined) {
+			await db.delete(orderParcels).where(eq(orderParcels.parcelId, parseInt(id, 10)));
+			if (orderId !== null && orderId !== "") {
+				await db.insert(orderParcels).values({
+					orderId: parseInt(orderId, 10),
+					parcelId: parseInt(id, 10),
+				}).onConflictDoNothing();
+			}
+		}
+
+		const resultParcel = updated[0];
+		const finalOrderId = orderId !== undefined ? (orderId !== null && orderId !== "" ? parseInt(orderId, 10) : null) : null;
+
+		return { ...resultParcel, orderId: finalOrderId };
 	};
 
 	// PATCH /parcels/:id - Update parcel
@@ -462,6 +521,72 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 	);
 
+	// GET /orders/:id - Get a single order by ID
+	fastify.get(
+		"/orders/:id",
+		{ schema: { tags: ["Orders"] } },
+		async (request: any, reply) => {
+			const { id } = request.params;
+			const found = await db
+				.select()
+				.from(orders)
+				.where(eq(orders.id, parseInt(id, 10)))
+				.limit(1);
+			if (found.length === 0) return reply.code(404).send({ error: "Order not found" });
+			return stripNulls(found[0]);
+		},
+	);
+
+	// GET /orders/:id/parcels - List parcels linked to an order
+	fastify.get(
+		"/orders/:id/parcels",
+		{ schema: { tags: ["Orders"] } },
+		async (request: any, _reply) => {
+			const { id } = request.params;
+			const links = await db
+				.select()
+				.from(orderParcels)
+				.where(eq(orderParcels.orderId, parseInt(id, 10)));
+			if (links.length === 0) return [];
+			const parcelIds = links.map((l) => l.parcelId);
+			const results = await Promise.all(
+				parcelIds.map((pid) =>
+					db.select().from(parcels).where(eq(parcels.id, pid)).limit(1)
+				)
+			);
+			return stripNulls(results.flatMap((r) => r));
+		},
+	);
+
+	// POST /orders/:id/parcels - Link a parcel to an order by tracking number or parcel ID
+	fastify.post(
+		"/orders/:id/parcels",
+		{ schema: { tags: ["Orders"] } },
+		async (request: any, reply) => {
+			const { id } = request.params;
+			const params = getParams(request);
+			const { trackingNumber, parcelId } = params;
+
+			let foundParcel: any = null;
+			if (parcelId) {
+				const r = await db.select().from(parcels).where(eq(parcels.id, parseInt(parcelId, 10))).limit(1);
+				if (r.length > 0) foundParcel = r[0];
+			} else if (trackingNumber) {
+				const r = await db.select().from(parcels).where(eq(parcels.trackingNumber, trackingNumber)).limit(1);
+				if (r.length > 0) foundParcel = r[0];
+			}
+
+			if (!foundParcel) return reply.code(404).send({ error: "Parcel not found" });
+
+			await db.insert(orderParcels).values({
+				orderId: parseInt(id, 10),
+				parcelId: foundParcel.id,
+			}).onConflictDoNothing();
+
+			return { message: "Parcel linked to order", parcelId: foundParcel.id };
+		},
+	);
+
 	// Delete order handler
 	const deleteOrderHandler = async (request: any, reply: any) => {
 		const { id } = request.params;
@@ -499,26 +624,66 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 	const getParcelEventsHandler = async (request: any, _reply: any) => {
 		const { id } = request.params;
-		let numericId: number | null = null;
+		let foundParcel: any = null;
+
 		if (/^\d+$/.test(id)) {
-			numericId = parseInt(id, 10);
-		} else {
+			const found = await db
+				.select()
+				.from(parcels)
+				.where(eq(parcels.id, parseInt(id, 10)))
+				.limit(1);
+			if (found.length > 0) {
+				foundParcel = found[0];
+			}
+		}
+		if (!foundParcel) {
 			const found = await db
 				.select()
 				.from(parcels)
 				.where(eq(parcels.trackingNumber, id))
 				.limit(1);
 			if (found.length > 0) {
-				numericId = found[0].id;
+				foundParcel = found[0];
 			}
 		}
-		if (numericId === null) {
+
+		if (!foundParcel) {
+			const trackingInfo = await aggregator.aggregate(id);
+			if (trackingInfo) {
+				const events = [];
+				for (let i = 0; i < trackingInfo.events.length; i++) {
+					const ev = trackingInfo.events[i];
+					let eventLat: number | null = null;
+					let eventLng: number | null = null;
+					let locationName = ev.location || null;
+					if (!locationName && ev.description) locationName = extractLocationName(ev.description);
+					if (!locationName && ev.status) locationName = extractLocationName(ev.status);
+					if (locationName) {
+						const coords = await geocodeLocation(locationName);
+						if (coords) {
+							eventLat = coords.lat;
+							eventLng = coords.lng;
+						}
+					}
+					events.push({
+						id: i + 1,
+						parcelId: 0,
+						location: ev.location || null,
+						description: ev.description || ev.status,
+						timestamp: ev.date,
+						lat: eventLat,
+						lng: eventLng,
+					});
+				}
+				return stripNulls(events);
+			}
 			return [];
 		}
+
 		const events = await db
 			.select()
 			.from(parcelEvents)
-			.where(eq(parcelEvents.parcelId, numericId));
+			.where(eq(parcelEvents.parcelId, foundParcel.id));
 		return stripNulls(events);
 	};
 

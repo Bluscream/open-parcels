@@ -62,9 +62,9 @@ export class WebSocketBroker {
 	/**
 	 * Broadcasts an event to all sockets subscribed to the topic (or the global "all" topic)
 	 */
-	public broadcast(topic: string, data: unknown) {
+	public broadcast(topic: string, data: unknown, event = "parcel_update") {
 		const payload = JSON.stringify({
-			event: "parcel_update",
+			event,
 			topic,
 			data,
 		});
@@ -83,10 +83,44 @@ export class WebSocketBroker {
 				}
 			}
 		}
-		console.log(
-			`[WS] Broadcasted event on topic "${topic}" to ${count} subscribers.`,
-		);
 	}
 }
 
 export const wsBroker = new WebSocketBroker();
+
+// Live system logs broadcasting via WebSocket
+const originalLog = console.log;
+const originalInfo = console.info;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+const broadcastLog = (level: string, ...args: any[]) => {
+	const message = args.map(arg => {
+		if (arg instanceof Error) return arg.stack || arg.message;
+		return typeof arg === "object" ? JSON.stringify(arg) : String(arg);
+	}).join(" ");
+	
+	const logPayload = {
+		timestamp: new Date().toISOString(),
+		level,
+		message,
+	};
+	wsBroker.broadcast("logs", logPayload, "log_message");
+};
+
+console.log = (...args: any[]) => {
+	originalLog(...args);
+	broadcastLog("info", ...args);
+};
+console.info = (...args: any[]) => {
+	originalInfo(...args);
+	broadcastLog("info", ...args);
+};
+console.warn = (...args: any[]) => {
+	originalWarn(...args);
+	broadcastLog("warn", ...args);
+};
+console.error = (...args: any[]) => {
+	originalError(...args);
+	broadcastLog("error", ...args);
+};

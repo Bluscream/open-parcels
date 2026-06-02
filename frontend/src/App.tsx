@@ -1,11 +1,14 @@
-/* biome-ignore-all lint/suspicious/noExplicitAny: frontend uses any for dynamic props/components */
+/* biome-ignore-all lint/suspicious/noExplicitAny: fastify handlers use any for request/reply */
 /* biome-ignore-all lint/a11y: disable a11y rules for frontend prototype */
-import { Package, Shield } from "lucide-react";
+import { Map, Package, Shield, ShoppingBag, Plus } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { ManageInterface } from "./components/ManageInterface";
 import { MapDashboard } from "./components/MapDashboard";
+import { OrderDetail } from "./components/OrderDetail";
+import { OrdersTable } from "./components/OrdersTable";
 import { ParcelDetail } from "./components/ParcelDetail";
+import { ParcelsTable } from "./components/ParcelsTable";
 import { getGuestToken } from "./utils/auth";
 import "./index.css";
 
@@ -16,9 +19,103 @@ interface ToastInfo {
 	trackingNumber: string;
 }
 
+function parseTrackingAndOrder(input: string) {
+	let trackingNumber = "";
+	let orderNumber = "";
+	let source = "";
+
+	const trimmed = input.trim();
+	if (!trimmed) return { trackingNumber, orderNumber, source };
+
+	// Check if it's a URL
+	if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+		try {
+			const parseUrlParams = (urlString: string) => {
+				const url = new URL(urlString);
+				
+				// Extract source
+				if (url.hostname.includes("amazon")) {
+					source = "Amazon";
+				} else if (url.hostname.includes("ebay")) {
+					source = "eBay";
+				} else if (url.hostname.includes("dhl")) {
+					source = "DHL";
+				}
+
+				// Check query parameters
+				const params = new URLSearchParams(url.search);
+				for (const [key, val] of params.entries()) {
+					const lowerKey = key.toLowerCase();
+					if (lowerKey === "orderid" || lowerKey === "ordernumber" || lowerKey === "order_id" || lowerKey === "order_number") {
+						orderNumber = val;
+					} else if (lowerKey === "shipmentid" || lowerKey === "tracking" || lowerKey === "trackingid" || lowerKey === "trackingnumber" || lowerKey === "tracking_number" || lowerKey === "shipment_id") {
+						trackingNumber = val;
+					}
+					
+					// Recursively check if the value is itself a URL
+					if (val.startsWith("http://") || val.startsWith("https://")) {
+						parseUrlParams(val);
+					}
+				}
+
+				// Fallback to path parsing if not found in query params
+				if (!trackingNumber) {
+					// e.g. /parcel/JD000000001/ or /track/1Z99999...
+					const pathParts = url.pathname.split("/");
+					for (let i = 0; i < pathParts.length; i++) {
+						const part = pathParts[i];
+						if (part === "parcel" || part === "track" || part === "package") {
+							const nextPart = pathParts[i + 1];
+							if (nextPart) {
+								trackingNumber = nextPart;
+							}
+						}
+					}
+				}
+			};
+
+			parseUrlParams(trimmed);
+		} catch (e) {
+			console.error("URL parsing failed:", e);
+		}
+	}
+
+	// If it's not a URL, or URL parsing didn't find both:
+	if (!trackingNumber && !orderNumber) {
+		// Detect if it looks like an Amazon order number (e.g. 305-1827771-7197161)
+		const amazonOrderRegex = /\b\d{3}-\d{7}-\d{7}\b/;
+		const match = trimmed.match(amazonOrderRegex);
+		if (match) {
+			orderNumber = match[0];
+			const remaining = trimmed.replace(orderNumber, "").trim();
+			if (remaining && /^[a-zA-Z0-9]+$/.test(remaining)) {
+				trackingNumber = remaining;
+			}
+		} else {
+			if (trimmed.includes("-") && /\d/.test(trimmed)) {
+				orderNumber = trimmed;
+			} else {
+				trackingNumber = trimmed;
+			}
+		}
+	}
+
+	return { trackingNumber, orderNumber, source };
+}
+
 function App() {
 	const [currentPath, setCurrentPath] = useState(window.location.pathname);
 	const [toasts, setToasts] = useState<ToastInfo[]>([]);
+
+	// Add Parcel Modal States
+	const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+	const [rawInput, setRawInput] = useState("");
+	const [newTrackingNumber, setNewTrackingNumber] = useState("");
+	const [newOrderNumber, setNewOrderNumber] = useState("");
+	const [newName, setNewName] = useState("");
+	const [newCourier, setNewCourier] = useState("");
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [error, setError] = useState("");
 
 	useEffect(() => {
 		const handleLocationChange = () => {
@@ -113,9 +210,108 @@ function App() {
 		setCurrentPath(path);
 	};
 
+	const handleRawInputChange = (val: string) => {
+		setRawInput(val);
+		const parsed = parseTrackingAndOrder(val);
+		if (parsed.trackingNumber) {
+			setNewTrackingNumber(parsed.trackingNumber);
+		}
+		if (parsed.orderNumber) {
+			setNewOrderNumber(parsed.orderNumber);
+		}
+		if (parsed.source) {
+			setNewCourier(parsed.source);
+		}
+	};
+
+	const handleAdd = async (e: React.FormEvent) => {
+		e.preventDefault();
+		const tracking = newTrackingNumber.trim();
+		const order = newOrderNumber.trim();
+		const name = newName.trim();
+		const courier = newCourier.trim();
+
+		if (!tracking && !order) {
+			setError("Please enter at least a Tracking Number or an Order Number.");
+			return;
+		}
+
+		setIsSubmitting(true);
+		setError("");
+
+		try {
+			if (tracking) {
+				const res = await fetch(`/api/v1/parcels?token=${getGuestToken()}`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						trackingNumber: tracking,
+						status: "ordered",
+						name: name || undefined,
+						courier: courier || undefined,
+					}),
+				});
+
+				if (!res.ok) {
+					const data = await res.json().catch(() => ({}));
+					throw new Error(data.error || `HTTP error! Status: ${res.status}`);
+				}
+			}
+
+			if (order) {
+				const res = await fetch(`/api/v1/orders?token=${getGuestToken()}`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						orderNumber: order,
+						source: courier || "Amazon",
+						status: "ordered",
+					}),
+				});
+
+				if (!res.ok) {
+					const data = await res.json().catch(() => ({}));
+					throw new Error(data.error || `HTTP error! Status: ${res.status}`);
+				}
+			}
+
+			// Clear form and close modal
+			setRawInput("");
+			setNewTrackingNumber("");
+			setNewOrderNumber("");
+			setNewName("");
+			setNewCourier("");
+			setIsAddModalOpen(false);
+
+			// Navigate to details or orders page
+			if (tracking) {
+				navigateTo(`/parcel/${tracking}/`);
+			} else {
+				navigateTo("/orders");
+			}
+		} catch (err: any) {
+			console.error("Failed to add:", err);
+			setError(err.message || "An unexpected error occurred.");
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
 	const isManage = currentPath.startsWith("/manage");
 	const parcelMatch = currentPath.match(/^\/parcel\/([^/]+)\/?$/);
 	const selectedTrackingNumber = parcelMatch ? parcelMatch[1] : null;
+	const orderMatch = currentPath.match(/^\/order\/([^/]+)\/?$/);
+	const selectedOrderId = orderMatch ? orderMatch[1] : null;
+	const isParcelsTable = currentPath === "/parcels";
+	const isOrdersTable = currentPath === "/orders";
+	const isMap = !isManage && !selectedTrackingNumber && !selectedOrderId && !isParcelsTable && !isOrdersTable;
+
+	const navLink = (path: string) =>
+		currentPath === path || (path === "/" && isMap) ? "nav-link active" : "nav-link";
 
 	return (
 		<>
@@ -128,7 +324,62 @@ function App() {
 					>
 						OpenParcels
 					</h1>
-					<div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+
+					<nav className="app-nav">
+						<a
+							href="/"
+							id="nav-live-map"
+							className={navLink("/")}
+							onClick={(e) => navigateTo("/", e)}
+						>
+							<Map size={15} />
+							<span>Live Map</span>
+						</a>
+						<a
+							href="/parcels"
+							id="nav-parcels"
+							className={navLink("/parcels")}
+							onClick={(e) => navigateTo("/parcels", e)}
+						>
+							<Package size={15} />
+							<span>Parcels</span>
+						</a>
+						<a
+							href="/orders"
+							id="nav-orders"
+							className={navLink("/orders")}
+							onClick={(e) => navigateTo("/orders", e)}
+						>
+							<ShoppingBag size={15} />
+							<span>Orders</span>
+						</a>
+					</nav>
+
+					<div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+						<button
+							type="button"
+							onClick={() => setIsAddModalOpen(true)}
+							className="add-parcel-btn-header"
+							style={{
+								display: "flex",
+								alignItems: "center",
+								gap: "6px",
+								color: "var(--text-muted)",
+								background: "none",
+								border: "none",
+								cursor: "pointer",
+								fontSize: "14px",
+								fontWeight: 500,
+								padding: 0,
+								fontFamily: "var(--font-family)",
+								transition: "color 0.2s ease",
+							}}
+							onMouseOver={(e) => (e.currentTarget.style.color = "var(--text-main)")}
+							onMouseOut={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+						>
+							<Plus size={16} />
+							<span>Add</span>
+						</button>
 						<a
 							href="/manage"
 							onClick={(e) => navigateTo("/manage", e)}
@@ -144,19 +395,8 @@ function App() {
 							}}
 						>
 							<Shield size={16} />
-							<span>Admin Console</span>
+							<span>Manage</span>
 						</a>
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: "8px",
-								color: "var(--text-muted)",
-							}}
-						>
-							<Package size={20} />
-							<span>v1.0.0</span>
-						</div>
 					</div>
 				</header>
 			)}
@@ -167,11 +407,26 @@ function App() {
 					trackingNumber={selectedTrackingNumber}
 					onBack={() => navigateTo("/")}
 				/>
+			) : selectedOrderId ? (
+				<OrderDetail
+					orderId={selectedOrderId}
+					onBack={() => navigateTo("/orders")}
+					onSelectParcel={(trackingNr) => navigateTo(`/parcel/${trackingNr}/`)}
+				/>
+			) : isParcelsTable ? (
+				<ParcelsTable
+					onSelectParcel={(trackingNr) => navigateTo(`/parcel/${trackingNr}/`)}
+				/>
+			) : isOrdersTable ? (
+				<OrdersTable
+					onSelectOrder={(id) => navigateTo(`/order/${id}/`)}
+				/>
 			) : (
 				<MapDashboard
 					onSelectParcel={(trackingNr) => navigateTo(`/parcel/${trackingNr}/`)}
 				/>
 			)}
+
 
 			{/* Toast Notifications */}
 			<div className="toast-container">
@@ -198,6 +453,91 @@ function App() {
 					</div>
 				))}
 			</div>
+
+			{/* Add Modal */}
+			{isAddModalOpen && (
+				<div className="modal-overlay" onClick={() => setIsAddModalOpen(false)}>
+					<div className="modal-card" onClick={(e) => e.stopPropagation()}>
+						<div className="modal-header">
+							<h3>Add Tracking or Order</h3>
+							<button className="btn-icon-sm" onClick={() => setIsAddModalOpen(false)}>
+								&times;
+							</button>
+						</div>
+						<form onSubmit={handleAdd}>
+							<div className="modal-body">
+								{error && <div style={{ color: "#f87171", fontSize: "14px" }}>{error}</div>}
+								<div className="form-group">
+									<label className="label">Paste Link, Tracking, or Order Number</label>
+									<textarea
+										className="input"
+										style={{ minHeight: "60px", resize: "vertical", fontFamily: "var(--font-family)" }}
+										placeholder="Paste Amazon link, tracking number, or order number..."
+										value={rawInput}
+										onChange={(e) => handleRawInputChange(e.target.value)}
+										autoFocus
+									/>
+								</div>
+								<div className="form-row" style={{ display: "flex", gap: "12px" }}>
+									<div className="form-group" style={{ flex: 1 }}>
+										<label className="label">Tracking Number</label>
+										<input
+											type="text"
+											className="input"
+											placeholder="e.g. T6rZJNyqb"
+											value={newTrackingNumber}
+											onChange={(e) => setNewTrackingNumber(e.target.value)}
+										/>
+									</div>
+									<div className="form-group" style={{ flex: 1 }}>
+										<label className="label">Order Number</label>
+										<input
+											type="text"
+											className="input"
+											placeholder="e.g. 305-1827771-7197161"
+											value={newOrderNumber}
+											onChange={(e) => setNewOrderNumber(e.target.value)}
+										/>
+									</div>
+								</div>
+								<div className="form-group">
+									<label className="label">Description / Custom Name (Optional)</label>
+									<input
+										type="text"
+										className="input"
+										placeholder="e.g. New Shoes"
+										value={newName}
+										onChange={(e) => setNewName(e.target.value)}
+									/>
+								</div>
+								<div className="form-group">
+									<label className="label">Courier / Source (Optional)</label>
+									<input
+										type="text"
+										className="input"
+										placeholder="e.g. Amazon, DHL"
+										value={newCourier}
+										onChange={(e) => setNewCourier(e.target.value)}
+									/>
+								</div>
+							</div>
+							<div className="modal-footer">
+								<button
+									type="button"
+									className="btn"
+									onClick={() => setIsAddModalOpen(false)}
+									disabled={isSubmitting}
+								>
+									Cancel
+								</button>
+								<button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+									{isSubmitting ? "Adding..." : "Add"}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
 		</>
 	);
 }

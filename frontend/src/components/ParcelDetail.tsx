@@ -107,15 +107,40 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 			);
 			if (eventsRes.ok) {
 				const eventsData = await eventsRes.json();
-				// Sort events by timestamp desc for timeline listing
+				// Sort events by timestamp asc first to identify consecutive duplicates
 				const sortedEvents = Array.isArray(eventsData)
-					? eventsData.sort(
+					? [...eventsData].sort(
 							(a, b) =>
-								new Date(b.timestamp).getTime() -
-								new Date(a.timestamp).getTime(),
+								new Date(a.timestamp).getTime() -
+								new Date(b.timestamp).getTime(),
 						)
 					: [];
-				setEvents(sortedEvents);
+
+				const filteredEvents: ParcelEvent[] = [];
+				for (const ev of sortedEvents) {
+					if (filteredEvents.length === 0) {
+						filteredEvents.push(ev);
+						continue;
+					}
+					const prev = filteredEvents[filteredEvents.length - 1];
+					const prevMin = new Date(prev.timestamp).toISOString().substring(0, 16);
+					const currMin = new Date(ev.timestamp).toISOString().substring(0, 16);
+					const sameTime = prevMin === currMin;
+					const sameText = (prev.description || "").trim() === (ev.description || "").trim();
+
+					if (sameTime || sameText) {
+						continue;
+					}
+					filteredEvents.push(ev);
+				}
+
+				// Sort descending for timeline listing
+				const finalEvents = filteredEvents.sort(
+					(a, b) =>
+						new Date(b.timestamp).getTime() -
+						new Date(a.timestamp).getTime(),
+				);
+				setEvents(finalEvents);
 			}
 
 			// Fetch settings for home coordinates
@@ -165,18 +190,23 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 		if (!parcel || refreshing) return;
 		try {
 			setRefreshing(true);
-			// Trigger a live track update using the admin token
-			const res = await fetch(
-				`/api/v1/parcels/${parcel.id}/track?token=admin_secret_token`,
-				{
-					method: "POST",
-				},
-			);
-			if (!res.ok) {
-				throw new Error("Failed to refresh tracking information");
+			if (parcel.id === 0) {
+				// For non-db guest one-time lookups, we just query the endpoint again (which aggregates freshly)
+				await fetchDetails();
+			} else {
+				// Trigger a live track update using the admin token
+				const res = await fetch(
+					`/api/v1/parcels/${parcel.id}/track?token=${getGuestToken()}`,
+					{
+						method: "POST",
+					},
+				);
+				if (!res.ok) {
+					throw new Error("Failed to refresh tracking information");
+				}
+				// Reload details after update
+				await fetchDetails();
 			}
-			// Reload details after update
-			await fetchDetails();
 		} catch (err) {
 			alert(err instanceof Error ? err.message : "Error refreshing parcel");
 		} finally {
@@ -188,7 +218,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 		if (!parcel) return;
 		try {
 			const res = await fetch(
-				`/api/v1/parcels/${parcel.id}?token=admin_secret_token`,
+				`/api/v1/parcels/${parcel.id}?token=${getGuestToken()}`,
 				{
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
@@ -503,38 +533,40 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 											? `${parcel.name} (${parcel.trackingNumber})`
 											: parcel.trackingNumber}
 									</h2>
-									<button
-										onClick={() => {
-											setEditedName(parcel.name || "");
-											setIsEditingName(true);
-										}}
-										style={{
-											background: "none",
-											border: "none",
-											color: "var(--text-muted)",
-											cursor: "pointer",
-											padding: 0,
-											display: "flex",
-											alignItems: "center",
-										}}
-										className="hover-bright"
-										title="Edit label"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2"
-											strokeLinecap="round"
-											strokeLinejoin="round"
+									{parcel.id !== 0 && (
+										<button
+											onClick={() => {
+												setEditedName(parcel.name || "");
+												setIsEditingName(true);
+											}}
+											style={{
+												background: "none",
+												border: "none",
+												color: "var(--text-muted)",
+												cursor: "pointer",
+												padding: 0,
+												display: "flex",
+												alignItems: "center",
+											}}
+											className="hover-bright"
+											title="Edit label"
 										>
-											<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-											<path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-										</svg>
-									</button>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												width="14"
+												height="14"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="2"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+											>
+												<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+												<path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+											</svg>
+										</button>
+									)}
 								</div>
 							)}
 						</div>
@@ -568,18 +600,26 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 							alignItems: "center",
 						}}
 					>
-						<Calendar size={20} className="text-blue-400" />
+						<Calendar size={20} className={isDelivered ? "text-green-400" : "text-blue-400"} />
 						<div>
 							<div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-								Estimated Delivery
+								{isDelivered ? "Delivery Date" : "Estimated Delivery"}
 							</div>
 							<div style={{ fontSize: "15px", fontWeight: 500 }}>
-								{parcel.estimatedDeliveryStart
-									? new Date(parcel.estimatedDeliveryStart).toLocaleDateString(
-											undefined,
-											{ dateStyle: "long" },
-										)
-									: "Pending Information"}
+								{isDelivered ? (
+									events.length > 0
+										? formatDate(events[0].timestamp)
+										: parcel.updatedAt
+											? formatDate(parcel.updatedAt)
+											: "Delivered"
+								) : parcel.estimatedDeliveryStart ? (
+									new Date(parcel.estimatedDeliveryStart).toLocaleDateString(
+										undefined,
+										{ dateStyle: "long" },
+									)
+								) : (
+									"Pending Information"
+								)}
 							</div>
 						</div>
 					</div>

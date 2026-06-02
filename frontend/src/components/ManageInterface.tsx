@@ -14,6 +14,7 @@ import {
 	Plus,
 	Settings,
 	ShieldAlert,
+	Terminal,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -43,12 +44,14 @@ L.Icon.Default.mergeOptions({
 interface Parcel {
 	id: number;
 	trackingNumber: string;
+	name: string | null;
 	courier: string | null;
 	status: string;
 	lat: number | null;
 	lng: number | null;
 	estimatedDeliveryStart: string | null;
 	estimatedDeliveryEnd: string | null;
+	orderId?: number | null;
 }
 
 interface Order {
@@ -118,9 +121,80 @@ export const ManageInterface: React.FC = () => {
 		return !urlToken && !storedToken;
 	});
 	const [tokenInput, setTokenInput] = useState<string>("");
+
+	const getTabFromPath = (path: string): "parcels" | "orders" | "credentials" | "settings" | "logs" => {
+		if (path === "/manage/orders") return "orders";
+		if (path === "/manage/credentials") return "credentials";
+		if (path === "/manage/settings") return "settings";
+		if (path === "/manage/logs") return "logs";
+		return "parcels";
+	};
+
 	const [activeTab, setActiveTab] = useState<
-		"parcels" | "orders" | "credentials" | "settings"
-	>("parcels");
+		"parcels" | "orders" | "credentials" | "settings" | "logs"
+	>(() => getTabFromPath(window.location.pathname));
+
+	const handleTabChange = (tab: "parcels" | "orders" | "credentials" | "settings" | "logs") => {
+		setActiveTab(tab);
+		const newPath = tab === "parcels" ? "/manage" : `/manage/${tab}`;
+		window.history.pushState({}, "", newPath);
+		window.dispatchEvent(new Event("popstate"));
+	};
+
+	interface ServerLog {
+		timestamp: string;
+		level: string;
+		message: string;
+	}
+	const [logs, setLogs] = useState<ServerLog[]>([]);
+
+	useEffect(() => {
+		if (activeTab !== "logs") return;
+
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?token=${token}`;
+		console.log("[Logs-WS] Connecting to WebSocket logs stream:", wsUrl);
+		const ws = new WebSocket(wsUrl);
+
+		ws.onopen = () => {
+			console.log("[Logs-WS] WebSocket established. Subscribing to logs...");
+			ws.send(JSON.stringify({ action: "subscribe", topic: "logs" }));
+		};
+
+		ws.onmessage = (event) => {
+			try {
+				const payload = JSON.parse(event.data);
+				if (payload.event === "log_message" && payload.topic === "logs") {
+					setLogs((prev) => [...prev.slice(-499), payload.data]); // Keep last 500 logs
+				}
+			} catch (err) {
+				console.error("[Logs-WS] Error parsing message:", err);
+			}
+		};
+
+		ws.onerror = (err) => {
+			console.error("[Logs-WS] WebSocket error:", err);
+		};
+
+		ws.onclose = () => {
+			console.log("[Logs-WS] WebSocket connection closed.");
+		};
+
+		return () => {
+			if (ws.readyState === WebSocket.OPEN) {
+				ws.send(JSON.stringify({ action: "unsubscribe", topic: "logs" }));
+			}
+			ws.close();
+		};
+	}, [activeTab, token]);
+
+	useEffect(() => {
+		const handleLocationChange = () => {
+			setActiveTab(getTabFromPath(window.location.pathname));
+		};
+		window.addEventListener("popstate", handleLocationChange);
+		return () => window.removeEventListener("popstate", handleLocationChange);
+	}, []);
 
 	// Settings state
 	const [settingsForm, setSettingsForm] = useState({
@@ -154,10 +228,14 @@ export const ManageInterface: React.FC = () => {
 	const [editingParcelId, setEditingParcelId] = useState<number | null>(null);
 	const [parcelForm, setParcelForm] = useState({
 		trackingNumber: "",
+		name: "",
 		courier: "",
 		status: "ordered",
 		lat: "",
 		lng: "",
+		estimatedDeliveryStart: "",
+		estimatedDeliveryEnd: "",
+		orderId: "",
 	});
 
 	const [orderForm, setOrderForm] = useState({
@@ -176,6 +254,7 @@ export const ManageInterface: React.FC = () => {
 		service: "IMAP",
 		username: "",
 		password: "",
+		otpSecret: "",
 		host: "",
 		port: "",
 		tls: "true",
@@ -235,14 +314,31 @@ export const ManageInterface: React.FC = () => {
 		}
 	}, [token]);
 
+	// Probe if authentication is actually required when token is empty
+	useEffect(() => {
+		if (token === "") {
+			fetch("/api/v1/parcels")
+				.then((res) => {
+					if (res.status === 200) {
+						setShowTokenPrompt(false);
+					} else {
+						setShowTokenPrompt(true);
+					}
+				})
+				.catch(() => {
+					setShowTokenPrompt(true);
+				});
+		}
+	}, [token]);
+
 	// Fetch data
 	useEffect(() => {
-		if (!token) return;
+		if (!token && showTokenPrompt) return;
 		const timer = setTimeout(() => {
 			fetchData();
 		}, 0);
 		return () => clearTimeout(timer);
-	}, [token, fetchData]);
+	}, [token, fetchData, showTokenPrompt]);
 
 	const handleTokenSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -250,6 +346,23 @@ export const ManageInterface: React.FC = () => {
 		localStorage.setItem("openparcels_admin_token", tokenInput);
 		setToken(tokenInput);
 		setShowTokenPrompt(false);
+	};
+
+	// Helper to format Date strings to datetime-local input value
+	const formatDatetimeLocal = (dateStr: string | null | undefined) => {
+		if (!dateStr) return "";
+		try {
+			const d = new Date(dateStr);
+			if (Number.isNaN(d.getTime())) return "";
+			const year = d.getFullYear();
+			const month = String(d.getMonth() + 1).padStart(2, "0");
+			const day = String(d.getDate()).padStart(2, "0");
+			const hours = String(d.getHours()).padStart(2, "0");
+			const minutes = String(d.getMinutes()).padStart(2, "0");
+			return `${year}-${month}-${day}T${hours}:${minutes}`;
+		} catch {
+			return "";
+		}
 	};
 
 	// --- PARCEL HANDLERS ---
@@ -267,10 +380,18 @@ export const ManageInterface: React.FC = () => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					trackingNumber: parcelForm.trackingNumber,
+					name: parcelForm.name || null,
 					courier: parcelForm.courier || null,
 					status: parcelForm.status,
 					lat: parcelForm.lat ? parseFloat(parcelForm.lat) : null,
 					lng: parcelForm.lng ? parseFloat(parcelForm.lng) : null,
+					estimatedDeliveryStart: parcelForm.estimatedDeliveryStart
+						? new Date(parcelForm.estimatedDeliveryStart).toISOString()
+						: null,
+					estimatedDeliveryEnd: parcelForm.estimatedDeliveryEnd
+						? new Date(parcelForm.estimatedDeliveryEnd).toISOString()
+						: null,
+					orderId: parcelForm.orderId ? parseInt(parcelForm.orderId, 10) : null,
 				}),
 			});
 
@@ -279,10 +400,14 @@ export const ManageInterface: React.FC = () => {
 				setEditingParcelId(null);
 				setParcelForm({
 					trackingNumber: "",
+					name: "",
 					courier: "",
 					status: "ordered",
 					lat: "",
 					lng: "",
+					estimatedDeliveryStart: "",
+					estimatedDeliveryEnd: "",
+					orderId: "",
 				});
 				fetchData();
 			} else {
@@ -315,11 +440,15 @@ export const ManageInterface: React.FC = () => {
 	const openEditParcel = (parcel: Parcel) => {
 		setEditingParcelId(parcel.id);
 		setParcelForm({
-			trackingNumber: parcel.trackingNumber,
+			trackingNumber: parcel.trackingNumber || "",
+			name: parcel.name || "",
 			courier: parcel.courier || "",
-			status: parcel.status,
-			lat: parcel.lat !== null ? parcel.lat.toString() : "",
-			lng: parcel.lng !== null ? parcel.lng.toString() : "",
+			status: parcel.status || "ordered",
+			lat: typeof parcel.lat === "number" ? parcel.lat.toString() : "",
+			lng: typeof parcel.lng === "number" ? parcel.lng.toString() : "",
+			estimatedDeliveryStart: formatDatetimeLocal(parcel.estimatedDeliveryStart),
+			estimatedDeliveryEnd: formatDatetimeLocal(parcel.estimatedDeliveryEnd),
+			orderId: parcel.orderId ? parcel.orderId.toString() : "",
 		});
 		setShowParcelModal(true);
 	};
@@ -370,7 +499,42 @@ export const ManageInterface: React.FC = () => {
 				`/api/v1/parcels/${parcelId}/events?token=${token}`,
 			);
 			const data = await res.json();
-			setSelectedParcelEvents(data);
+			
+			// Sort events by timestamp asc first to identify consecutive duplicates
+			const sortedEvents = Array.isArray(data)
+				? [...data].sort(
+						(a, b) =>
+							new Date(a.timestamp).getTime() -
+							new Date(b.timestamp).getTime(),
+					)
+				: [];
+
+			const filteredEvents: ParcelEvent[] = [];
+			for (const ev of sortedEvents) {
+				if (filteredEvents.length === 0) {
+					filteredEvents.push(ev);
+					continue;
+				}
+				const prev = filteredEvents[filteredEvents.length - 1];
+				const prevMin = new Date(prev.timestamp).toISOString().substring(0, 16);
+				const currMin = new Date(ev.timestamp).toISOString().substring(0, 16);
+				const sameTime = prevMin === currMin;
+				const sameText = (prev.description || "").trim() === (ev.description || "").trim();
+
+				if (sameTime || sameText) {
+					continue;
+				}
+				filteredEvents.push(ev);
+			}
+
+			// Sort descending for timeline listing
+			const finalEvents = filteredEvents.sort(
+				(a, b) =>
+					new Date(b.timestamp).getTime() -
+					new Date(a.timestamp).getTime(),
+			);
+
+			setSelectedParcelEvents(finalEvents);
 		} catch (err) {
 			console.error(err);
 		}
@@ -437,6 +601,7 @@ export const ManageInterface: React.FC = () => {
 			serviceData = {
 				username: credForm.username,
 				password: credForm.password,
+				otpSecret: credForm.otpSecret || null,
 			};
 		}
 
@@ -459,6 +624,7 @@ export const ManageInterface: React.FC = () => {
 					service: "IMAP",
 					username: "",
 					password: "",
+					otpSecret: "",
 					host: "",
 					port: "",
 					tls: "true",
@@ -555,13 +721,13 @@ export const ManageInterface: React.FC = () => {
 							style={{ margin: "0 auto 16px auto", display: "block" }}
 						/>
 						<h3 style={{ textAlign: "center", marginTop: 0 }}>
-							Admin Authentication Required
+							Authentication Required
 						</h3>
 						<p
 							className="text-muted"
 							style={{ textAlign: "center", fontSize: "14px" }}
 						>
-							Please enter your <code>OPENPARCELS_TOKEN_ADMIN</code> token to
+							Please enter your <code>OPENPARCELS_TOKEN</code> token to
 							access management panel.
 						</p>
 						<form onSubmit={handleTokenSubmit}>
@@ -569,7 +735,7 @@ export const ManageInterface: React.FC = () => {
 								<input
 									type="password"
 									className="input"
-									placeholder="Enter admin token..."
+									placeholder="Enter access token..."
 									value={tokenInput}
 									onChange={(e) => setTokenInput(e.target.value)}
 									required
@@ -587,7 +753,7 @@ export const ManageInterface: React.FC = () => {
 				</div>
 			)}
 
-			{/* Main Admin UI */}
+			{/* Main Manage UI */}
 			{!showTokenPrompt && (
 				<>
 					<div className="manage-header">
@@ -595,37 +761,44 @@ export const ManageInterface: React.FC = () => {
 							<a href="/" className="btn-icon">
 								<ArrowLeft size={20} />
 							</a>
-							<h2 style={{ margin: 0 }}>Admin Management Console</h2>
+							<h2 style={{ margin: 0 }}>Management Console</h2>
 						</div>
 
 						<div className="manage-tabs glass-panel">
 							<button
 								className={`manage-tab ${activeTab === "parcels" ? "active" : ""}`}
-								onClick={() => setActiveTab("parcels")}
+								onClick={() => handleTabChange("parcels")}
 							>
 								<Package size={16} />
 								<span>Parcels</span>
 							</button>
 							<button
 								className={`manage-tab ${activeTab === "orders" ? "active" : ""}`}
-								onClick={() => setActiveTab("orders")}
+								onClick={() => handleTabChange("orders")}
 							>
 								<Clipboard size={16} />
 								<span>Orders</span>
 							</button>
 							<button
 								className={`manage-tab ${activeTab === "credentials" ? "active" : ""}`}
-								onClick={() => setActiveTab("credentials")}
+								onClick={() => handleTabChange("credentials")}
 							>
 								<Key size={16} />
 								<span>Credentials</span>
 							</button>
 							<button
 								className={`manage-tab ${activeTab === "settings" ? "active" : ""}`}
-								onClick={() => setActiveTab("settings")}
+								onClick={() => handleTabChange("settings")}
 							>
 								<Settings size={16} />
 								<span>Settings</span>
+							</button>
+							<button
+								className={`manage-tab ${activeTab === "logs" ? "active" : ""}`}
+								onClick={() => handleTabChange("logs")}
+							>
+								<Terminal size={16} />
+								<span>Logs</span>
 							</button>
 						</div>
 					</div>
@@ -645,10 +818,14 @@ export const ManageInterface: React.FC = () => {
 												setEditingParcelId(null);
 												setParcelForm({
 													trackingNumber: "",
+													name: "",
 													courier: "",
 													status: "ordered",
 													lat: "",
 													lng: "",
+													estimatedDeliveryStart: "",
+													estimatedDeliveryEnd: "",
+													orderId: "",
 												});
 												setShowParcelModal(true);
 											}}
@@ -1160,6 +1337,83 @@ export const ManageInterface: React.FC = () => {
 								</div>
 							</div>
 						)}
+
+						{/* LOGS TAB */}
+						{activeTab === "logs" && (
+							<div className="glass-panel" style={{ padding: "24px", display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: "500px" }}>
+								<div className="panel-header-actions" style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+									<h3 className="panel-title" style={{ margin: 0 }}>
+										Real-Time Server Logs
+									</h3>
+									<div style={{ display: "flex", gap: "8px" }}>
+										<button 
+											className="btn btn-secondary btn-sm"
+											onClick={() => {
+												const text = logs.map(l => `[${new Date(l.timestamp).toLocaleString()}] [${l.level.toUpperCase()}] ${l.message}`).join("\n");
+												navigator.clipboard.writeText(text);
+												alert("Logs copied to clipboard!");
+											}}
+											disabled={logs.length === 0}
+										>
+											Copy Logs
+										</button>
+										<button 
+											className="btn btn-secondary btn-sm text-red"
+											onClick={() => setLogs([])}
+											disabled={logs.length === 0}
+										>
+											Clear
+										</button>
+									</div>
+								</div>
+								
+								<div 
+									style={{
+										flex: 1,
+										background: "rgba(0,0,0,0.6)",
+										border: "1px solid rgba(255,255,255,0.05)",
+										borderRadius: "8px",
+										padding: "16px",
+										fontFamily: "'Fira Code', 'Courier New', monospace",
+										fontSize: "13px",
+										lineHeight: "1.6",
+										overflowY: "auto",
+										display: "flex",
+										flexDirection: "column",
+										gap: "6px",
+										color: "#e2e8f0"
+									}}
+									ref={(el) => {
+										if (el) el.scrollTop = el.scrollHeight;
+									}}
+								>
+									{logs.length === 0 && (
+										<div className="text-muted" style={{ textAlign: "center", padding: "64px" }}>
+											Waiting for live server logs... Perform some actions like refreshing tracking or changing settings.
+										</div>
+									)}
+									{logs.map((log, i) => {
+										let color = "#10b981"; // info: emerald green
+										if (log.level === "warn") color = "#f59e0b"; // warn: amber
+										if (log.level === "error") color = "#ef4444"; // error: red
+										
+										return (
+											<div key={i} style={{ display: "flex", gap: "12px", borderBottom: "1px solid rgba(255,255,255,0.02)", paddingBottom: "4px" }}>
+												<span style={{ color: "rgba(255,255,255,0.3)", minWidth: "120px" }}>
+													{new Date(log.timestamp).toLocaleTimeString()}
+												</span>
+												<span style={{ color, fontWeight: "bold", minWidth: "60px" }}>
+													[{log.level.toUpperCase()}]
+												</span>
+												<span style={{ flex: 1, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+													{log.message}
+												</span>
+											</div>
+										);
+									})}
+								</div>
+							</div>
+						)}
 					</div>
 				</>
 			)}
@@ -1198,6 +1452,38 @@ export const ManageInterface: React.FC = () => {
 									/>
 								</div>
 								<div className="form-group">
+									<label className="label">Parcel Label / Name</label>
+									<input
+										type="text"
+										className="input"
+										value={parcelForm.name}
+										onChange={(e) =>
+											setParcelForm({
+												...parcelForm,
+												name: e.target.value,
+											})
+										}
+										placeholder="e.g. Birthday Gift, Amazon Order"
+									/>
+								</div>
+								<div className="form-group">
+									<label className="label">Linked Order (Optional)</label>
+									<select
+										className="select"
+										value={parcelForm.orderId}
+										onChange={(e) =>
+											setParcelForm({ ...parcelForm, orderId: e.target.value })
+										}
+									>
+										<option value="">-- None (No Linked Order) --</option>
+										{orders.map((ord) => (
+											<option key={ord.id} value={ord.id}>
+												{ord.orderNumber} ({ord.source})
+											</option>
+										))}
+									</select>
+								</div>
+								<div className="form-group">
 									<label className="label">Courier Carrier</label>
 									<input
 										type="text"
@@ -1225,6 +1511,36 @@ export const ManageInterface: React.FC = () => {
 										<option value="return-sent">Return Sent</option>
 										<option value="return-accepted">Return Accepted</option>
 									</select>
+								</div>
+								<div className="form-row">
+									<div className="form-group" style={{ flex: 1 }}>
+										<label className="label">Est. Delivery Start</label>
+										<input
+											type="datetime-local"
+											className="input"
+											value={parcelForm.estimatedDeliveryStart}
+											onChange={(e) =>
+												setParcelForm({
+													...parcelForm,
+													estimatedDeliveryStart: e.target.value,
+												})
+											}
+										/>
+									</div>
+									<div className="form-group" style={{ flex: 1 }}>
+										<label className="label">Est. Delivery End</label>
+										<input
+											type="datetime-local"
+											className="input"
+											value={parcelForm.estimatedDeliveryEnd}
+											onChange={(e) =>
+												setParcelForm({
+													...parcelForm,
+													estimatedDeliveryEnd: e.target.value,
+												})
+											}
+										/>
+									</div>
 								</div>
 								<div className="form-row">
 									<div className="form-group" style={{ flex: 1 }}>
@@ -1483,6 +1799,21 @@ export const ManageInterface: React.FC = () => {
 										placeholder="Enter password/app-token"
 									/>
 								</div>
+
+								{credForm.service !== "IMAP" && (
+									<div className="form-group">
+										<label className="label">TOTP Secret Key (2FA) - Optional</label>
+										<input
+											type="text"
+											className="input"
+											value={credForm.otpSecret}
+											onChange={(e) =>
+												setCredForm({ ...credForm, otpSecret: e.target.value })
+											}
+											placeholder="e.g. JBSWY3DPEHPK3PXP"
+										/>
+									</div>
+								)}
 
 								{credForm.service === "IMAP" && (
 									<>
