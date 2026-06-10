@@ -11,6 +11,10 @@ import { loadRemoteRules, startRulesRefreshInterval } from "./services/ingest/ru
 
 // Load environment variables
 dotenv.config();
+// In dev, .env.local overrides .env so local settings (e.g. local rules files) take effect
+if (process.env.NODE_ENV !== "production") {
+	dotenv.config({ path: ".env.local", override: true });
+}
 
 const server = Fastify({
 	logger: true,

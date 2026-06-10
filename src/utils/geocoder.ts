@@ -1,3 +1,5 @@
+import { requestQueue } from "./requestQueue";
+
 // Location resolution via LOOKUP_URLS (e.g. https://lookup.minopia.de/api/location/{name})
 // In-process cache to avoid redundant requests within a server lifetime.
 const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
@@ -87,12 +89,12 @@ export async function geocodeLocation(
 	for (const baseUrl of baseUrls) {
 		const url = `${baseUrl}/api/location/${encodeURIComponent(locationName)}`;
 		try {
-			const resp = await fetch(url, {
+			const resp = await requestQueue.enqueue(url, () => fetch(url, {
 				headers: {
 					"User-Agent": "OpenParcels/1.0.0 (self-hosted parcel tracker)",
 					Accept: "application/json",
 				},
-			});
+			}));
 
 			if (!resp.ok) {
 				throw new Error(`HTTP ${resp.status} from ${resp.url}`);

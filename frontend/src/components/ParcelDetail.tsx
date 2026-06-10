@@ -90,6 +90,20 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 	const [loading, setLoading] = useState<boolean>(true);
 	const [refreshing, setRefreshing] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
+	const [refreshSeconds, setRefreshSeconds] = useState(0);
+
+	useEffect(() => {
+		let interval: any;
+		if (refreshing) {
+			setRefreshSeconds(0);
+			interval = setInterval(() => {
+				setRefreshSeconds((s) => s + 1);
+			}, 1000);
+		} else {
+			setRefreshSeconds(0);
+		}
+		return () => clearInterval(interval);
+	}, [refreshing]);
 	const [isEditingName, setIsEditingName] = useState(false);
 	const [editedName, setEditedName] = useState("");
 	const [homeLocation, setHomeLocation] = useState<{
@@ -442,7 +456,11 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 					}}
 				>
 					<RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-					{refreshing ? "Refreshing..." : "Refresh Tracking"}
+					{refreshing
+						? refreshSeconds > 3
+							? `Refreshing (Queued/Rate-Limited ${refreshSeconds}s)...`
+							: "Refreshing..."
+						: "Refresh Tracking"}
 				</button>
 			</div>
 

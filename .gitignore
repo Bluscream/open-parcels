@@ -148,4 +148,4 @@ vite.config.ts.timestamp-*
 imap-config.json
 packages/
 parsed_mails.json
-data.db
+data.db.env.local

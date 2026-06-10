@@ -7,6 +7,8 @@ import { credentials, parcelEvents, parcels } from "../../db/schema";
 import { decryptCredential, encryptCredential } from "../../utils/crypto";
 import { wsBroker } from "../websocket";
 import { BaseScraper, type ScraperResult } from "./index";
+import { requestQueue } from "../../utils/requestQueue";
+import { syncParcelStateFromEvents } from "../tracking/sync";
 
 function base32Decode(base32: string): Buffer {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -222,10 +224,10 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 			});
 
 			// Navigate to the ship-track page to check auth state
-			await this.page.goto(this.config.url, {
+			await requestQueue.enqueue(this.config.url, () => this.page!.goto(this.config.url, {
 				waitUntil: "load",
 				timeout: 60000,
-			});
+			}));
 
 			// Check if we are redirected to sign-in page
 			console.log(`[AmazonLiveScraper] Navigation complete. URL is: ${this.page.url()}`);
@@ -385,10 +387,10 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 
 				// Return to ship-track page after successful login
 				console.log(`[AmazonLiveScraper] Returning to ship-track page: ${this.config.url}`);
-				await this.page.goto(this.config.url, {
+				await requestQueue.enqueue(this.config.url, () => this.page!.goto(this.config.url, {
 					waitUntil: "load",
 					timeout: 60000,
-				});
+				}));
 			}
 
 			// Check if authenticated successfully now
@@ -650,6 +652,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					lng: driverLng,
 					source: "Amazon Live Map",
 				});
+				await syncParcelStateFromEvents(parcelId);
 			}
 
 			// 5. Fetch updated parcel nickname from DB to format WebSocket broadcast payload
@@ -764,6 +767,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 							}
 						}
 					}
+					await syncParcelStateFromEvents(parcelId);
 				}
 			}
 		} catch (err) {

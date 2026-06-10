@@ -117,6 +117,34 @@ function App() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState("");
 	const [isResolvingLink, setIsResolvingLink] = useState(false);
+	const [resolveSeconds, setResolveSeconds] = useState(0);
+	const [submitSeconds, setSubmitSeconds] = useState(0);
+
+	useEffect(() => {
+		let interval: any;
+		if (isResolvingLink) {
+			setResolveSeconds(0);
+			interval = setInterval(() => {
+				setResolveSeconds((s) => s + 1);
+			}, 1000);
+		} else {
+			setResolveSeconds(0);
+		}
+		return () => clearInterval(interval);
+	}, [isResolvingLink]);
+
+	useEffect(() => {
+		let interval: any;
+		if (isSubmitting) {
+			setSubmitSeconds(0);
+			interval = setInterval(() => {
+				setSubmitSeconds((s) => s + 1);
+			}, 1000);
+		} else {
+			setSubmitSeconds(0);
+		}
+		return () => clearInterval(interval);
+	}, [isSubmitting]);
 
 	useEffect(() => {
 		const handleLocationChange = () => {
@@ -531,7 +559,11 @@ function App() {
 								{isResolvingLink && (
 									<div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#60a5fa", fontSize: "13px", margin: "8px 0 16px 0", background: "rgba(96,165,250,0.1)", padding: "10px 14px", borderRadius: "8px", border: "1px solid rgba(96,165,250,0.2)" }}>
 										<div className="spinner-sm" style={{ width: "16px", height: "16px", border: "2px solid rgba(96,165,250,0.2)", borderTopColor: "#60a5fa", borderRadius: "50%", animation: "spin 0.8s linear infinite" }}></div>
-										<span style={{ fontWeight: "500" }}>Logging in and scraping actual Tracking ID & friendly item name...</span>
+										<span style={{ fontWeight: "500" }}>
+											{resolveSeconds > 3
+												? `Logging in and scraping (Queued/Rate-Limited, waiting ${resolveSeconds}s)...`
+												: "Logging in and scraping actual Tracking ID & friendly item name..."}
+										</span>
 									</div>
 								)}
 
@@ -592,7 +624,11 @@ function App() {
 									Cancel
 								</button>
 								<button type="submit" className="btn btn-primary" disabled={isSubmitting || isResolvingLink}>
-									{isSubmitting ? "Adding..." : "Add"}
+									{isSubmitting
+										? submitSeconds > 3
+											? `Adding (Queued/Rate-Limited ${submitSeconds}s)...`
+											: "Adding..."
+										: "Add"}
 								</button>
 							</div>
 						</form>

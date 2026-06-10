@@ -7,13 +7,13 @@ import { db } from "../db";
 import { client } from "../db";
 import {
 	credentials,
-	orderParcels,
 	orders,
 	parcelEvents,
 	parcels,
 	settings,
 } from "../db/schema";
 import { trackAndUpdateParcel, aggregator } from "../services/tracking/aggregator";
+import { syncParcelStateFromEvents } from "../services/tracking/sync";
 import { AmazonLiveScraper } from "../services/scrapers/amazon-live-scraper";
 import { wsBroker } from "../services/websocket";
 import { decryptCredential, encryptCredential } from "../utils/crypto";
@@ -26,8 +26,9 @@ const checkAuth = async (request: any, reply: any) => {
 		request.query.token ||
 		request.body?.token;
 
-	const configuredToken = process.env.OPENPARCELS_TOKEN;
-	const isAuthRequired = !!(configuredToken && configuredToken.trim() !== "");
+	const adminToken = process.env.OPENPARCELS_TOKEN_ADMIN || process.env.OPENPARCELS_TOKEN;
+	const guestToken = process.env.OPENPARCELS_TOKEN_GUEST;
+	const isAuthRequired = !!((adminToken && adminToken.trim() !== "") || (guestToken && guestToken.trim() !== ""));
 
 	// If no auth is required (no token configured):
 	if (!isAuthRequired) {
@@ -40,11 +41,20 @@ const checkAuth = async (request: any, reply: any) => {
 		return reply.code(401).send({ error: "Unauthorized: Missing token" });
 	}
 
-	if (token !== configuredToken) {
-		return reply.code(403).send({ error: "Forbidden: Invalid token" });
+	if (adminToken && token === adminToken) {
+		request.user = { isGuest: false, isAdmin: true };
+		return;
 	}
 
-	request.user = { isGuest: false, isAdmin: true };
+	if (guestToken && token === guestToken) {
+		request.user = { isGuest: true, isAdmin: false };
+		if (request.method !== "GET" && request.method !== "HEAD") {
+			return reply.code(403).send({ error: "Forbidden: Guest write blocked" });
+		}
+		return;
+	}
+
+	return reply.code(403).send({ error: "Forbidden: Invalid token" });
 };
 
 const stripNulls = (obj: any): any => {
@@ -107,16 +117,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		async (_request, _reply) => {
 			const allParcels = await db.select().from(parcels);
-			const links = await db.select().from(orderParcels);
-			const parcelToOrderMap = new Map<number, number>();
-			for (const link of links) {
-				parcelToOrderMap.set(link.parcelId, link.orderId);
-			}
-			const results = allParcels.map((p) => ({
-				...p,
-				orderId: parcelToOrderMap.get(p.id) || null,
-			}));
-			return stripNulls(results);
+			return stripNulls(allParcels);
 		},
 	);
 
@@ -176,9 +177,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			return reply.code(404).send({ error: "Parcel not found" });
 		}
 		const parcel = found[0];
-		const link = await db.select().from(orderParcels).where(eq(orderParcels.parcelId, parcel.id)).limit(1);
-		const orderId = link.length > 0 ? link[0].orderId : null;
-		return stripNulls({ ...parcel, orderId });
+		return stripNulls(parcel);
 	};
 
 	// GET /parcels/:identifier & GET /parcel/:identifier - Get a single parcel by ID or tracking number
@@ -303,19 +302,13 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					status,
 					lat: lat ? parseFloat(lat) : null,
 					lng: lng ? parseFloat(lng) : null,
+					orderId: orderId ? parseInt(orderId, 10) : null,
 					createdAt: new Date(),
 					updatedAt: new Date(),
 				})
 				.returning();
 
 			const insertedParcel = newParcel[0];
-
-			if (orderId) {
-				await db.insert(orderParcels).values({
-					orderId: parseInt(orderId, 10),
-					parcelId: insertedParcel.id,
-				}).onConflictDoNothing();
-			}
 
 			// Automatically trigger a live tracking query immediately upon creation
 			try {
@@ -364,6 +357,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			lng?: number | null;
 			estimatedDeliveryStart?: Date | null;
 			estimatedDeliveryEnd?: Date | null;
+			orderId?: number | null;
 		} = {
 			updatedAt: new Date(),
 		};
@@ -382,6 +376,9 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			updateData.estimatedDeliveryEnd = estimatedDeliveryEnd
 				? new Date(estimatedDeliveryEnd)
 				: null;
+		if (orderId !== undefined) {
+			updateData.orderId = (orderId !== null && orderId !== "") ? parseInt(orderId, 10) : null;
+		}
 
 		const updated = await db
 			.update(parcels)
@@ -393,20 +390,9 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			return reply.code(404).send({ error: "Parcel not found" });
 		}
 
-		if (orderId !== undefined) {
-			await db.delete(orderParcels).where(eq(orderParcels.parcelId, parseInt(id, 10)));
-			if (orderId !== null && orderId !== "") {
-				await db.insert(orderParcels).values({
-					orderId: parseInt(orderId, 10),
-					parcelId: parseInt(id, 10),
-				}).onConflictDoNothing();
-			}
-		}
-
 		const resultParcel = updated[0];
-		const finalOrderId = orderId !== undefined ? (orderId !== null && orderId !== "" ? parseInt(orderId, 10) : null) : null;
 
-		return { ...resultParcel, orderId: finalOrderId };
+		return resultParcel;
 	};
 
 	// PATCH /parcels/:id - Update parcel
@@ -466,10 +452,6 @@ export async function apiRoutes(fastify: FastifyInstance) {
 	const deleteParcelHandler = async (request: any, reply: any) => {
 		const { id } = request.params;
 
-		// Delete associated order links first
-		await db
-			.delete(orderParcels)
-			.where(eq(orderParcels.parcelId, parseInt(id, 10)));
 
 		// Delete associated events next
 		await db
@@ -628,6 +610,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 											trackingNumber: shipment.tracking_id,
 											status: "ordered",
 											courier: "Amazon",
+											orderId: insertedOrder.id,
 											createdAt: new Date(),
 											updatedAt: new Date(),
 										})
@@ -635,12 +618,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 									parcelId = newP[0].id;
 								} else {
 									parcelId = existingParcel[0].id;
+									await db.update(parcels).set({ orderId: insertedOrder.id }).where(eq(parcels.id, parcelId));
 								}
-
-								await db.insert(orderParcels).values({
-									orderId: insertedOrder.id,
-									parcelId: parcelId,
-								}).onConflictDoNothing();
 
 								trackAndUpdateParcel(parcelId).catch((err) => {
 									console.error(`[OrderAutoTrack] Failed to track parcel ${parcelId}:`, err);
@@ -679,18 +658,11 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		{ schema: { tags: ["Orders"] } },
 		async (request: any, _reply) => {
 			const { id } = request.params;
-			const links = await db
+			const results = await db
 				.select()
-				.from(orderParcels)
-				.where(eq(orderParcels.orderId, parseInt(id, 10)));
-			if (links.length === 0) return [];
-			const parcelIds = links.map((l) => l.parcelId);
-			const results = await Promise.all(
-				parcelIds.map((pid) =>
-					db.select().from(parcels).where(eq(parcels.id, pid)).limit(1)
-				)
-			);
-			return stripNulls(results.flatMap((r) => r));
+				.from(parcels)
+				.where(eq(parcels.orderId, parseInt(id, 10)));
+			return stripNulls(results);
 		},
 	);
 
@@ -714,10 +686,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 			if (!foundParcel) return reply.code(404).send({ error: "Parcel not found" });
 
-			await db.insert(orderParcels).values({
-				orderId: parseInt(id, 10),
-				parcelId: foundParcel.id,
-			}).onConflictDoNothing();
+			await db.update(parcels).set({ orderId: parseInt(id, 10) }).where(eq(parcels.id, foundParcel.id));
 
 			return { message: "Parcel linked to order", parcelId: foundParcel.id };
 		},
@@ -920,8 +889,10 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					source: source || "Manual",
 				})
 				.returning();
+			const insertedEvent = newEvent[0];
+			await syncParcelStateFromEvents(parseInt(id, 10));
 
-			return reply.code(201).send(newEvent[0]);
+			return reply.code(201).send(insertedEvent);
 		},
 	);
 
@@ -1465,7 +1436,6 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			try {
 				// Delete in safe order to respect foreign keys
 				await db.delete(parcelEvents);
-				await db.delete(orderParcels);
 				await db.delete(parcels);
 				await db.delete(orders);
 				await db.delete(credentials);
