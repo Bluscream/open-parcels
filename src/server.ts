@@ -1,20 +1,21 @@
+import dotenv from "dotenv";
+// Load environment variables first
+dotenv.config();
+// In dev, .env.local overrides .env so local settings (e.g. local rules files) take effect
+if (process.env.NODE_ENV !== "production") {
+	dotenv.config({ path: ".env.local", override: true });
+}
+
 import path from "node:path";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import fastifyWebsocket from "@fastify/websocket";
-import dotenv from "dotenv";
 import Fastify from "fastify";
 import { apiRoutes } from "./api/routes";
 import { loadRemoteRules, startRulesRefreshInterval } from "./services/ingest/rules-loader";
 
-// Load environment variables
-dotenv.config();
-// In dev, .env.local overrides .env so local settings (e.g. local rules files) take effect
-if (process.env.NODE_ENV !== "production") {
-	dotenv.config({ path: ".env.local", override: true });
-}
 
 const server = Fastify({
 	logger: true,
