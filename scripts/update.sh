@@ -28,6 +28,14 @@
 
 set -euo pipefail
 
+# Ensure Homebrew path is loaded (required on immutable OS like Bazzite)
+if [[ -d "/home/linuxbrew/.linuxbrew/bin" ]]; then
+    export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
+fi
+
+# Prevent IDE extensions from hijacking keyring auth with dummy tokens
+unset GITHUB_TOKEN
+
 # ── Config ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -129,7 +137,7 @@ if ${DO_DEPLOY} && [[ "${DEPLOY_TARGET}" != "distrobox" ]]; then
 fi
 
 if ${DO_BUILD} || ${DO_TEST} || ( ${DO_DEPLOY} && [[ "${DEPLOY_TARGET}" == "distrobox" ]] ); then
-    if ! distrobox list 2>/dev/null | grep -q "${DISTROBOX_NAME}"; then
+    if ! distrobox list 2>/dev/null | grep "${DISTROBOX_NAME}" >/dev/null; then
         error "Distrobox container '${DISTROBOX_NAME}' not found. Run with --setup first."
     fi
 fi
@@ -149,7 +157,7 @@ if ${DO_SETUP}; then
     header "Setup — Distrobox container"
 
     # ── Create Distrobox container if needed ─────────────────────────────────
-    if distrobox list 2>/dev/null | grep -q "${DISTROBOX_NAME}"; then
+    if distrobox list 2>/dev/null | grep "${DISTROBOX_NAME}" >/dev/null; then
         warn "Container '${DISTROBOX_NAME}' already exists — skipping creation."
     else
         log "Creating Distrobox container '${DISTROBOX_NAME}' (image: ${DISTROBOX_IMAGE})..."
