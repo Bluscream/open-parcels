@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { credentials, orderParcels, orders, parcelEvents, parcels } from "../../db/schema";
+import { credentials, orders, parcelEvents, parcels } from "../../db/schema";
 import { extractLocationName, geocodeLocation } from "../../utils/geocoder";
 import { AmazonLiveScraper } from "../scrapers/amazon-live-scraper";
+import { requestQueue } from "../../utils/requestQueue";
+import { syncParcelStateFromEvents } from "./sync";
 
 export interface TrackingEventData {
 	date: string;
@@ -91,14 +93,14 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 	private async fetchJson(apiPath: string): Promise<any> {
 		const urls = this.baseUrls;
 		for (const baseUrl of urls) {
-			const url = `${baseUrl}/api/v1/${apiPath}?fresh=true`;
+			const url = `${baseUrl}/api/v1/${apiPath}?fresh=true&wait=1`;
 			try {
-				const resp = await fetch(url, {
+				const resp = await requestQueue.enqueue(url, () => fetch(url, {
 					headers: {
 						"User-Agent": "OpenParcels/1.0.0 (self-hosted parcel tracker)",
 						Accept: "application/json",
 					},
-				});
+				}));
 				if (resp.ok) {
 					return await resp.json();
 				}
@@ -120,7 +122,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 			return null;
 		}
 
-		// Detect Amazon order/shipment info to route through the new flow
+		// Detect order IDs to route through the multi-step order→parcel flow
 		let orderId = "";
 		let subQuery = "";
 
@@ -129,6 +131,10 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 			orderId = parts[0];
 			subQuery = parts[1];
 		} else if (trackingNumber.match(/^\d{3}-\d{7}-\d{6,7}$/)) {
+			// Amazon order format: 123-4567890-1234567
+			orderId = trackingNumber;
+		} else if (trackingNumber.match(/^\d{16}$/)) {
+			// AliExpress order format: 16 numeric digits
 			orderId = trackingNumber;
 		} else if (trackingNumber.startsWith("http")) {
 			try {
@@ -140,18 +146,54 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 
 		if (orderId) {
 			console.log(`[UniversalLookupProvider] Running multi-step lookup flow for order: ${orderId}, subQuery: ${subQuery}`);
-			// Step 1: Lookup order first
+			// Step 1: Lookup order
 			const orderData = await this.fetchJson(`order/${orderId}`);
 			if (orderData?.success && orderData?.response) {
 				const orderResp = orderData.response;
-				const shipments = orderResp.shipments || [];
+				const shipments: any[] = orderResp.shipments || [];
 
 				const allEvents: any[] = [];
 				let finalStatus = "ordered";
 				let finalStatusDesc = orderResp.status_description || orderResp.status || "Ordered";
-				let finalCourier = "Amazon";
+				let finalCourier = orderResp.carrier || "Unknown";
 				let finalTrackingNumber = trackingNumber;
 				let finalEstimatedDelivery = "";
+
+				// If the order response already contains the carrier tracking number directly
+				// (e.g. AliExpress), skip the shipment URL step and go straight to parcel lookup
+				const directTrackingNumber =
+					(orderResp.tracking_numbers as string[] | undefined)?.[0] ||
+					(shipments[0]?.tracking_id as string | undefined);
+
+				if (directTrackingNumber && !directTrackingNumber.match(/^\d{3}-\d{7}-\d{6,7}$/) && !directTrackingNumber.match(/^\d{16}$/)) {
+					// It looks like a real carrier tracking number — go straight to parcel lookup
+					console.log(`[UniversalLookupProvider] Order ${orderId} has direct tracking number: ${directTrackingNumber}. Skipping shipment step.`);
+					finalTrackingNumber = directTrackingNumber;
+					if (shipments[0]?.carrier) finalCourier = shipments[0].carrier;
+
+					const parcelData = await this.fetchJson(`parcel/${encodeURIComponent(directTrackingNumber)}`);
+					if (parcelData?.success && parcelData?.response) {
+						const pr = parcelData.response;
+						if (pr.couriers?.length) finalCourier = pr.couriers[0];
+						if (pr.status_description) finalStatusDesc = pr.status_description;
+						if (pr.status) finalStatus = pr.status;
+						if (pr.estimated_delivery) finalEstimatedDelivery = pr.estimated_delivery;
+						if (Array.isArray(pr.events)) {
+							allEvents.push(...pr.events.map((e: any) => ({ ...e, source: finalCourier })));
+						}
+					}
+
+					const status = resolveUniversalLookupStatus({ status: finalStatus });
+					return {
+						trackingNumber: finalTrackingNumber,
+						courier: finalCourier,
+						status,
+						statusDescription: finalStatusDesc,
+						estimatedDelivery: finalEstimatedDelivery || undefined,
+						events: allEvents,
+						raw: orderData,
+					};
+				}
 
 				const targetShipments = subQuery
 					? shipments.filter((s: any) => s.tracking_id === subQuery || s.tracking_url?.includes(subQuery))
@@ -240,14 +282,14 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 		let lastError: Error | null = null;
 
 		for (const baseUrl of urls) {
-			const url = `${baseUrl}/api/v1/parcel/${encodeURIComponent(trackingNumber)}?fresh=true`;
+			const url = `${baseUrl}/api/v1/parcel/${encodeURIComponent(trackingNumber)}?fresh=true&wait=1`;
 			try {
-				const resp = await fetch(url, {
+				const resp = await requestQueue.enqueue(url, () => fetch(url, {
 					headers: {
 						"User-Agent": "OpenParcels/1.0.0 (self-hosted parcel tracker)",
 						Accept: "application/json",
 					},
-				});
+				}));
 
 				if (!resp.ok) {
 					throw new Error(`HTTP ${resp.status} from ${resp.url}`);
@@ -397,28 +439,35 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 		(parcel.courier && parcel.courier.toLowerCase() === "amazon") ||
 		parcel.trackingNumber?.toLowerCase().startsWith("de");
 
+	// AliExpress order ID is 16 numeric digits, or courier is explicitly "aliexpress"
+	const isAliExpress =
+		(parcel.courier && parcel.courier.toLowerCase() === "aliexpress") ||
+		/^\d{16}$/.test(parcel.trackingNumber || "");
+
 	let trackingInfo: any = null;
 
-	if (isAmazon) {
-		const links = await db
-			.select()
-			.from(orderParcels)
-			.where(eq(orderParcels.parcelId, parcelId))
-			.limit(1);
-		
+	// For marketplace orders (Amazon, AliExpress) where the tracking number stored
+	// is the order ID, look up the linked order to build the correct lookup query.
+	if (isAmazon || isAliExpress) {
 		let orderNo = "";
-		if (links.length > 0) {
+		if (parcel.orderId) {
 			const ord = await db
 				.select()
 				.from(orders)
-				.where(eq(orders.id, links[0].orderId))
+				.where(eq(orders.id, parcel.orderId))
 				.limit(1);
 			if (ord.length > 0) {
 				orderNo = ord[0].orderNumber;
 			}
 		}
 
-		trackingInfo = await aggregator.aggregate(orderNo ? `${orderNo}::${parcel.trackingNumber}` : parcel.trackingNumber);
+		if (isAmazon) {
+			// Amazon needs the compound orderNo::shipmentId form
+			trackingInfo = await aggregator.aggregate(orderNo ? `${orderNo}::${parcel.trackingNumber}` : parcel.trackingNumber);
+		} else {
+			// AliExpress: the order ID itself is the lookup key (16-digit)
+			trackingInfo = await aggregator.aggregate(orderNo || parcel.trackingNumber);
+		}
 	}
 
 	if (!trackingInfo) {
@@ -613,9 +662,11 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 							err,
 						);
 					});
-			}
 		}
 	}
+}
+
+	await syncParcelStateFromEvents(parcelId);
 
 	return true;
 }

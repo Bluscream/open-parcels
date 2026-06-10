@@ -1,36 +1,22 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import imaps from "imap-simple";
 
-const CONFIG_PATH = path.join(process.cwd(), "imap-config.json");
-const OUTPUT_DIR = path.join(process.env.TEMP || os.tmpdir(), "mails");
+const CONFIG_PATH = "/run/media/system/Data/Projects/nodejs/open-parcels/imap-config.json";
+const OUTPUT_DIR = "/var/mnt/nas_nfs/backups/Timo/mails";
 const CSV_PATH = path.join(OUTPUT_DIR, "mails.csv");
 const BATCH_SIZE = 50;
-
-// ── Live progress helpers ────────────────────────────────────────────────────
 
 function commitLine(line: string) {
 	console.log(line);
 }
 
-// ── CSV helpers ──────────────────────────────────────────────────────────────
-
-/** Wrap a field in double-quotes and escape any internal double-quotes. */
 function csvEscape(value: string): string {
 	const escaped = value.replace(/"/g, '""');
 	return `"${escaped}"`;
 }
 
-/** Write the CSV header if the file doesn't exist yet. */
-function initCsv() {
-	if (!fs.existsSync(CSV_PATH)) {
-		fs.writeFileSync(CSV_PATH, "eml_md5hash;unixtime;from;to;subject\n", "utf8");
-	}
-}
-
-/** Append one row to mails.csv synchronously (safe for sequential writes). */
 function csvAppend(md5: string, unixtime: number, from: string, to: string, subject: string) {
 	const row = [
 		csvEscape(md5),
@@ -41,8 +27,6 @@ function csvAppend(md5: string, unixtime: number, from: string, to: string, subj
 	].join(";");
 	fs.appendFileSync(CSV_PATH, `${row}\n`, "utf8");
 }
-
-// ── RFC 2047 MIME Header Decoder ─────────────────────────────────────────────
 
 function decodeMimeHeader(str: string): string {
 	return str.replace(
@@ -65,19 +49,16 @@ function decodeMimeHeader(str: string): string {
 					);
 				}
 			} catch (_e) {
-				// fallback to original
+				// fallback
 			}
 			return match;
 		},
 	);
 }
 
-// ── Filename sanitizer ───────────────────────────────────────────────────────
-
 function escapeFilename(subject: string): string {
 	return (
 		subject
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: Win32 filename restrictions include control characters 0x00-0x1F
 			.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
 			.replace(/\s+/g, "_")
 			.replace(/__+/g, "_")
@@ -85,8 +66,6 @@ function escapeFilename(subject: string): string {
 			.substring(0, 100)
 	);
 }
-
-// ── Header parser ────────────────────────────────────────────────────────────
 
 function parseFoldedHeader(headersText: string, name: string): string {
 	const re = new RegExp(`^${name}:\\s*([^\\r\\n]*(?:\\r?\\n[ \\t]+[^\\r\\n]*)*)`, "im");
@@ -118,17 +97,47 @@ function parseHeaders(headersText: string): {
 	return { unixStamp, subjectEscaped: escapeFilename(subject), subject, from, to };
 }
 
-// ── Per-account downloader ───────────────────────────────────────────────────
+function formatImapDate(date: Date): string {
+	const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+	const day = date.getDate().toString().padStart(2, "0");
+	const month = months[date.getMonth()];
+	const year = date.getFullYear();
+	return `${day}-${month}-${year}`;
+}
 
-// biome-ignore lint/suspicious/noExplicitAny: config is an arbitrary account details object
-async function downloadAccountEmails(config: any) {
+function getCutoffTimestamp(): number {
+	if (!fs.existsSync(CSV_PATH)) {
+		commitLine(`Warning: CSV file not found at ${CSV_PATH}. Using timestamp 0.`);
+		return 0;
+	}
+	try {
+		const content = fs.readFileSync(CSV_PATH, "utf8");
+		const lines = content.split(/\r?\n/);
+		let maxTs = 0;
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			const parts = line.split(";");
+			if (parts.length >= 2) {
+				const ts = parseInt(parts[1], 10);
+				if (!Number.isNaN(ts) && ts > maxTs) {
+					maxTs = ts;
+				}
+			}
+		}
+		return maxTs;
+	} catch (err) {
+		commitLine(`Error reading CSV file: ${(err as Error).message}. Using timestamp 0.`);
+		return 0;
+	}
+}
+
+async function downloadAccountEmails(config: any, cutoffTimestamp: number) {
 	const user: string = config.user;
 	commitLine(`\n► Connecting to IMAP for ${user}...`);
 
 	const imapConfig = {
 		imap: {
 			user,
-			// Strip spaces from app passwords (Google displays them with spaces)
 			password: (config.password as string).replace(/\s/g, ""),
 			host: (config.host as string) || "imap.gmail.com",
 			port: (config.port as number) || 993,
@@ -136,7 +145,6 @@ async function downloadAccountEmails(config: any) {
 			authTimeout: 30000,
 			connTimeout: 30000,
 			tlsOptions: {
-				// Accept self-signed / intercepted certs (common with ISP proxies)
 				rejectUnauthorized: false,
 			},
 		},
@@ -152,14 +160,14 @@ async function downloadAccountEmails(config: any) {
 	commitLine(`✓ Connected to ${user}`);
 
 	let accountTotal = 0;
-	let accountDone = 0;
+	let accountSaved = 0;
+	let accountSkipped = 0;
 	let accountErrors = 0;
 
 	try {
 		const boxes = await connection.getBoxes();
 		const folders: string[] = [];
 
-		// biome-ignore lint/suspicious/noExplicitAny: IMAP folder structure box is deeply nested and generic
 		function collectFolders(box: any, prefix = "") {
 			for (const name of Object.keys(box)) {
 				const fullPath = prefix
@@ -167,7 +175,11 @@ async function downloadAccountEmails(config: any) {
 					: name;
 				const currentBox = box[name];
 				if (!currentBox.attribs?.includes("NOSELECT")) {
-					folders.push(fullPath);
+					// Skip Trash, Junk, Spam folders to avoid unnecessary downloads
+					const lowerName = name.toLowerCase();
+					if (!lowerName.includes("trash") && !lowerName.includes("junk") && !lowerName.includes("spam") && !lowerName.includes("bin")) {
+						folders.push(fullPath);
+					}
 				}
 				if (currentBox.children) {
 					collectFolders(currentBox.children, fullPath);
@@ -176,7 +188,11 @@ async function downloadAccountEmails(config: any) {
 		}
 
 		collectFolders(boxes);
-		commitLine(`  Found ${folders.length} folders: ${folders.join(", ")}`);
+		commitLine(`  Found active folders: ${folders.join(", ")}`);
+
+		// Start searching from 1 day before cutoff to handle timezone mismatches safely
+		const searchDate = new Date((cutoffTimestamp - 24 * 60 * 60) * 1000);
+		const imapDateStr = formatImapDate(searchDate);
 
 		for (const folder of folders) {
 			commitLine(`\n  ▸ Opening [${folder}]...`);
@@ -187,45 +203,43 @@ async function downloadAccountEmails(config: any) {
 				continue;
 			}
 
-			// ── Phase 1: get UIDs only — no body download, returns immediately ──────
-			const uidMessages = await connection.search(["ALL"], {
+			// Search with SINCE date filter
+			const searchCriteria = [["SINCE", imapDateStr]];
+			const searchOptions = {
 				bodies: [],
 				struct: false,
-			});
+			};
 
-			const total = uidMessages.length;
-			accountTotal += total;
-
-			if (total === 0) {
-				commitLine(`  ○ [${folder}] is empty, skipping.`);
+			let uidMessages: any[];
+			try {
+				uidMessages = await connection.search(searchCriteria, searchOptions);
+			} catch (err) {
+				commitLine(`  ✗ Search failed in [${folder}]: ${(err as Error).message}`);
 				continue;
 			}
 
-			commitLine(`  ● [${folder}] — ${total} messages`);
+			const total = uidMessages.length;
+			if (total === 0) {
+				commitLine(`  ○ [${folder}] has no messages since ${imapDateStr}, skipping.`);
+				continue;
+			}
 
-			let folderDone = 0;
-			let folderErrors = 0;
+			commitLine(`  ● [${folder}] — ${total} messages to check`);
+			accountTotal += total;
 
 			const uids = uidMessages.map((m) => m.attributes.uid as number);
 
-			// ── Phase 2: fetch bodies in small batches via raw streaming IMAP ────
 			for (let i = 0; i < uids.length; i += BATCH_SIZE) {
 				const batchUids = uids.slice(i, i + BATCH_SIZE);
 
-				// Wrap the raw imap streaming fetch in a Promise
-				// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 				const batchMessages = await new Promise<any[]>((resolve, reject) => {
-					// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 					const collected: any[] = [];
 					const f = connection.imap.fetch(batchUids as any, {
 						bodies: ["HEADER", ""],
 						struct: true,
 					});
-					// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 					f.on("message", (msg: any) => {
-						// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 						const entry: any = { parts: [], attributes: {} };
-						// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 						msg.on("body", (stream: any, info: any) => {
 							const chunks: Buffer[] = [];
 							stream.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -236,7 +250,6 @@ async function downloadAccountEmails(config: any) {
 								});
 							});
 						});
-						// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 						msg.once("attributes", (attrs: any) => { entry.attributes = attrs; });
 						msg.once("end", () => collected.push(entry));
 					});
@@ -246,104 +259,82 @@ async function downloadAccountEmails(config: any) {
 
 				for (const msg of batchMessages) {
 					try {
-						// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 						const headerPart = msg.parts.find((p: any) => p.which === "HEADER");
-						// biome-ignore lint/suspicious/noExplicitAny: raw imap module
 						const fullPart = msg.parts.find((p: any) => p.which === "");
 
 						if (!fullPart) {
-							folderDone++;
-							accountDone++;
+							accountErrors++;
 							continue;
 						}
 
 						const headersText = headerPart ? headerPart.body : "";
 						const { unixStamp, subject, from, to } = parseHeaders(headersText);
-						const cleanUser = user.split("@")[0];
+
+						if (unixStamp <= cutoffTimestamp) {
+							accountSkipped++;
+							continue;
+						}
+
 						const rawBody: string = fullPart.body;
 						const md5 = crypto.createHash("md5").update(rawBody, "utf8").digest("hex");
 						const finalPath = path.join(OUTPUT_DIR, `${md5}.eml`);
 
-						folderDone++;
-						accountDone++;
-
 						if (fs.existsSync(finalPath)) {
-							console.log(`  [${cleanUser} | ${folder}] ${folderDone}/${total} — [dup] ${subject}`);
+							accountSkipped++;
 							continue;
 						}
 
 						await fs.promises.writeFile(finalPath, rawBody, "utf8");
 						csvAppend(md5, unixStamp, from, to, subject);
-						console.log(`  [${cleanUser} | ${folder}] ${folderDone}/${total} — ${subject}`);
-					} catch (_e) {
-						folderErrors++;
+						accountSaved++;
+						console.log(`  [${user} | ${folder}] Saved: ${subject} (${new Date(unixStamp * 1000).toLocaleString()})`);
+					} catch (err) {
 						accountErrors++;
-						folderDone++;
-						accountDone++;
+						console.log(`  [${user} | ${folder}] Error: ${(err as Error).message}`);
 					}
 				}
 			}
-
-			commitLine(
-				`  ✓ [${folder}] done — ${folderDone - folderErrors} saved, ${folderErrors} errors`,
-			);
 		}
 	} finally {
 		connection.end();
 	}
 
-	commitLine(
-		`\n✓ ${user} complete — ${accountDone - accountErrors}/${accountTotal} saved, ${accountErrors} errors`,
-	);
+	commitLine(`\n✓ ${user} complete: ${accountSaved} saved, ${accountSkipped} skipped, ${accountErrors} errors`);
 }
 
-// ── Entry point ──────────────────────────────────────────────────────────────
-
 async function main() {
+	const cutoffTimestamp = getCutoffTimestamp();
+	commitLine(`Cutoff timestamp: ${cutoffTimestamp} (${new Date(cutoffTimestamp * 1000).toLocaleString()})`);
+
 	if (!fs.existsSync(CONFIG_PATH)) {
-		const template = [
-			{
-				user: "example@gmail.com",
-				password: "google-app-password-here", // https://myaccount.google.com/apppasswords
-				host: "imap.gmail.com",
-				port: 993,
-				tls: true,
-			}
-		];
-		fs.writeFileSync(CONFIG_PATH, JSON.stringify(template, null, 2), "utf8");
-		commitLine(`[IMPORTANT] Created config template at: ${CONFIG_PATH}`);
-		commitLine(
-			"Edit the file and enter your Google App Passwords, then run again.",
-		);
+		commitLine(`Fatal: Config file not found at ${CONFIG_PATH}`);
+		process.exit(1);
+	}
+
+	const accounts = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+	// For this scrape run, we process any account configured that has a valid password
+	const activeAccounts = accounts.filter(
+		(a: any) => a.password && !a.password.includes("app-password-here")
+	);
+
+	if (activeAccounts.length === 0) {
+		commitLine("No active accounts to scrape. Check imap-config.json credentials.");
 		return;
 	}
 
-	commitLine(`Output directory: ${OUTPUT_DIR}`);
-	fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-	initCsv();
+	commitLine(`Processing accounts: ${activeAccounts.map((a: any) => a.user).join(", ")}`);
 
-	const accounts = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 	const startTime = Date.now();
-
-	const activeAccounts = accounts.filter(
-		// biome-ignore lint/suspicious/noExplicitAny: config is arbitrary
-		(a: any) => !a.disabled && !(a.password as string).includes("app-password-here"),
-	);
-	// biome-ignore lint/suspicious/noExplicitAny: config is arbitrary
-	const skipped = accounts.filter((a: any) => a.disabled || (a.password as string).includes("app-password-here"));
-	for (const a of skipped) commitLine(`Skipping ${a.disabled ? "disabled" : "unconfigured"} account: ${a.user}`);
-
 	await Promise.allSettled(
-		// biome-ignore lint/suspicious/noExplicitAny: config is arbitrary
 		activeAccounts.map((account: any) =>
-			downloadAccountEmails(account).catch((err: Error) =>
-				commitLine(`Error processing ${account.user}: ${err.message}`),
-			),
-		),
+			downloadAccountEmails(account, cutoffTimestamp).catch((err: Error) =>
+				commitLine(`Error processing ${account.user}: ${err.message}`)
+			)
+		)
 	);
 
 	const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-	commitLine(`\n✔ All done in ${elapsed}s — emails saved to: ${OUTPUT_DIR}`);
+	commitLine(`\n✔ All done in ${elapsed}s`);
 }
 
 main().catch((err) => {

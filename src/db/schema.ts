@@ -23,18 +23,10 @@ export const parcels = sqliteTable("parcels", {
 	}),
 	lat: real("lat"),
 	lng: real("lng"),
+	orderId: integer("order_id")
+		.references(() => orders.id),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
-
-export const orderParcels = sqliteTable("order_parcels", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	orderId: integer("order_id")
-		.notNull()
-		.references(() => orders.id),
-	parcelId: integer("parcel_id")
-		.notNull()
-		.references(() => parcels.id),
 });
 
 export const parcelEvents = sqliteTable("parcel_events", {

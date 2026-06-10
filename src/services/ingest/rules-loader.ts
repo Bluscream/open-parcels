@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import vm from "node:vm";
 import type { ParcelRule, OrderRule, ReturnRule, DunningRule } from "mail-parser-ts";
+import { requestQueue } from "../../utils/requestQueue";
 
 const CACHE_DIR = path.join(process.cwd(), ".scratch", "rules-cache");
 
@@ -72,7 +73,7 @@ export async function loadRemoteRules(): Promise<any[]> {
 
       try {
         console.log(`[RulesLoader] Fetching remote rules from: ${url}`);
-        const res = await fetch(url);
+        const res = await requestQueue.enqueue(url, () => fetch(url));
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
