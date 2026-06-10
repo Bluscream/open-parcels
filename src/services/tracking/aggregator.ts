@@ -88,6 +88,27 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 		return raw.split(",").map((url) => url.trim().replace(/\/+$/, ""));
 	}
 
+	private async fetchJson(apiPath: string): Promise<any> {
+		const urls = this.baseUrls;
+		for (const baseUrl of urls) {
+			const url = `${baseUrl}/api/v1/${apiPath}?fresh=true`;
+			try {
+				const resp = await fetch(url, {
+					headers: {
+						"User-Agent": "OpenParcels/1.0.0 (self-hosted parcel tracker)",
+						Accept: "application/json",
+					},
+				});
+				if (resp.ok) {
+					return await resp.json();
+				}
+			} catch (err: any) {
+				console.warn(`[UniversalLookupProvider] Failed to fetch ${apiPath} from ${baseUrl}:`, err.message || err);
+			}
+		}
+		return null;
+	}
+
 	async fetchTracking(
 		trackingNumber: string,
 	): Promise<StandardizedTrackingData | null> {
@@ -99,11 +120,127 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 			return null;
 		}
 
+		// Detect Amazon order/shipment info to route through the new flow
+		let orderId = "";
+		let subQuery = "";
+
+		if (trackingNumber.includes("::")) {
+			const parts = trackingNumber.split("::");
+			orderId = parts[0];
+			subQuery = parts[1];
+		} else if (trackingNumber.match(/^\d{3}-\d{7}-\d{6,7}$/)) {
+			orderId = trackingNumber;
+		} else if (trackingNumber.startsWith("http")) {
+			try {
+				const parsed = new URL(trackingNumber);
+				orderId = parsed.searchParams.get("orderId") || parsed.searchParams.get("orderID") || "";
+				subQuery = parsed.searchParams.get("shipmentId") || parsed.searchParams.get("trackingId") || "";
+			} catch (_) {}
+		}
+
+		if (orderId) {
+			console.log(`[UniversalLookupProvider] Running multi-step lookup flow for order: ${orderId}, subQuery: ${subQuery}`);
+			// Step 1: Lookup order first
+			const orderData = await this.fetchJson(`order/${orderId}`);
+			if (orderData?.success && orderData?.response) {
+				const orderResp = orderData.response;
+				const shipments = orderResp.shipments || [];
+
+				const allEvents: any[] = [];
+				let finalStatus = "ordered";
+				let finalStatusDesc = orderResp.status_description || orderResp.status || "Ordered";
+				let finalCourier = "Amazon";
+				let finalTrackingNumber = trackingNumber;
+				let finalEstimatedDelivery = "";
+
+				const targetShipments = subQuery
+					? shipments.filter((s: any) => s.tracking_id === subQuery || s.tracking_url?.includes(subQuery))
+					: shipments;
+
+				// Step 2: Iterate through shipments
+				for (const shipment of targetShipments) {
+					if (!shipment.tracking_url) continue;
+
+					// Lookup shipment using tracking_url
+					const shipmentData = await this.fetchJson(`shipment/${encodeURIComponent(shipment.tracking_url)}`);
+					if (shipmentData?.success && shipmentData?.response) {
+						const shipmentResp = shipmentData.response;
+						const carrierTrackingNumber = shipmentResp.tracking_number;
+
+						if (Array.isArray(shipmentResp.events)) {
+							allEvents.push(...shipmentResp.events.map((e: any) => ({ ...e, source: "Amazon" })));
+						}
+						if (shipmentResp.status_description) finalStatusDesc = shipmentResp.status_description;
+						if (shipmentResp.status) finalStatus = shipmentResp.status;
+						if (shipmentResp.estimated_delivery) finalEstimatedDelivery = shipmentResp.estimated_delivery;
+
+						// Step 3: Lookup parcel using tracking number from shipment if available
+						if (carrierTrackingNumber && carrierTrackingNumber !== shipment.tracking_id) {
+							finalTrackingNumber = carrierTrackingNumber;
+							const parcelData = await this.fetchJson(`parcel/${encodeURIComponent(carrierTrackingNumber)}`);
+							if (parcelData?.success && parcelData?.response) {
+								const parcelResp = parcelData.response;
+								if (parcelResp.couriers && parcelResp.couriers.length > 0) {
+									finalCourier = parcelResp.couriers[0];
+								}
+								if (parcelResp.status_description) {
+									finalStatusDesc = parcelResp.status_description;
+								}
+								if (parcelResp.status) {
+									finalStatus = parcelResp.status;
+								}
+								if (parcelResp.estimated_delivery) {
+									finalEstimatedDelivery = parcelResp.estimated_delivery;
+								}
+								if (Array.isArray(parcelResp.events)) {
+									allEvents.push(...parcelResp.events.map((e: any) => ({ ...e, source: finalCourier })));
+								}
+							}
+						}
+					}
+				}
+
+				const status = resolveUniversalLookupStatus({
+					status: finalStatus,
+					status_description: finalStatusDesc,
+				} as any);
+
+				const uniqueEventsMap = new Map<string, TrackingEventData>();
+				for (const ev of allEvents) {
+					const dateStr = ev.date || new Date().toISOString();
+					const desc = ev.status || ev.description || "Status Update";
+					const sig = `${new Date(dateStr).getTime()}-${desc}`;
+					uniqueEventsMap.set(sig, {
+						date: dateStr,
+						status: desc,
+						location: ev.location || undefined,
+						description: desc,
+						source: ev.source || ev.courier || finalCourier,
+					});
+				}
+
+				const events = Array.from(uniqueEventsMap.values()).sort(
+					(a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+				);
+
+				return {
+					trackingNumber: finalTrackingNumber,
+					courier: finalCourier,
+					status,
+					statusDescription: finalStatusDesc,
+					estimatedDelivery: finalEstimatedDelivery || undefined,
+					events,
+					raw: orderData,
+				};
+			}
+		}
+
+		// Fallback to standard parcel lookup
 		let body: any = null;
 		let lastError: Error | null = null;
 
 		for (const baseUrl of urls) {
-			const url = `${baseUrl}/api/parcel/${encodeURIComponent(trackingNumber)}?fresh=true`;
+			const url = `${baseUrl}/api/v1/parcel/${encodeURIComponent(trackingNumber)}?fresh=true`;
 			try {
 				const resp = await fetch(url, {
 					headers: {
@@ -127,7 +264,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 				}
 
 				body = resBody;
-				break; // Successfully got tracking data
+				break;
 			} catch (err: any) {
 				console.warn(
 					`[UniversalLookupProvider] Failed to fetch tracking for ${trackingNumber} from ${baseUrl}:`,
@@ -171,7 +308,6 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 
 			const status = resolveUniversalLookupStatus(r);
 
-			// carrier may be a number (internal ID) or a string name — prefer couriers[] or string carrier
 			const courierName =
 				typeof r.carrier === "string"
 					? r.carrier
@@ -180,7 +316,6 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 						: undefined;
 			const courier = courierName ?? r.status_description ?? "Unknown";
 
-			// Extract estimated delivery from period array if present
 			let estimatedDelivery: string | undefined;
 			if (Array.isArray(r.estimated_delivery?.period) && r.estimated_delivery!.period!.length > 0) {
 				estimatedDelivery = r.estimated_delivery!.period![0];
@@ -265,45 +400,25 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 	let trackingInfo: any = null;
 
 	if (isAmazon) {
-		const amzCred = await db
+		const links = await db
 			.select()
-			.from(credentials)
-			.where(eq(credentials.service, "Amazon"))
+			.from(orderParcels)
+			.where(eq(orderParcels.parcelId, parcelId))
 			.limit(1);
 		
-		if (amzCred.length > 0) {
-			console.log(`[Tracking] Amazon package detected. Launching local scraper for ${parcel.trackingNumber}...`);
-			try {
-				// Find linked order number
-				const links = await db
-					.select()
-					.from(orderParcels)
-					.where(eq(orderParcels.parcelId, parcelId))
-					.limit(1);
-				
-				let orderNo = "";
-				if (links.length > 0) {
-					const ord = await db
-						.select()
-						.from(orders)
-						.where(eq(orders.id, links[0].orderId))
-						.limit(1);
-					if (ord.length > 0) {
-						orderNo = ord[0].orderNumber;
-					}
-				}
-
-				const scraper = new AmazonLiveScraper({
-					serviceName: "Amazon",
-					url: "",
-				});
-				
-				trackingInfo = await scraper.scrapeTimeline(orderNo, parcel.trackingNumber);
-				console.log(`[Tracking] Amazon local scraper finished successfully. Found ${trackingInfo.events.length} events.`);
-			} catch (err) {
-				console.error("[Tracking] Local Amazon scraper failed:", err);
+		let orderNo = "";
+		if (links.length > 0) {
+			const ord = await db
+				.select()
+				.from(orders)
+				.where(eq(orders.id, links[0].orderId))
+				.limit(1);
+			if (ord.length > 0) {
+				orderNo = ord[0].orderNumber;
 			}
 		}
+
+		trackingInfo = await aggregator.aggregate(orderNo ? `${orderNo}::${parcel.trackingNumber}` : parcel.trackingNumber);
 	}
 
 	if (!trackingInfo) {
