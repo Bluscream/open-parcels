@@ -21,14 +21,14 @@ import { geocodeLocation, extractLocationName } from "../utils/geocoder";
 
 // Basic Auth hook to check token
 const checkAuth = async (request: any, reply: any) => {
-	const token =
-		request.headers.authorization?.replace("Bearer ", "") ||
-		request.query.token ||
-		request.body?.token;
+	// Read-only operations (GET, HEAD) never require token
+	if (request.method === "GET" || request.method === "HEAD") {
+		request.user = { isGuest: true, isAdmin: false };
+		return;
+	}
 
-	const adminToken = process.env.OPENPARCELS_TOKEN_ADMIN || process.env.OPENPARCELS_TOKEN;
-	const guestToken = process.env.OPENPARCELS_TOKEN_GUEST;
-	const isAuthRequired = !!((adminToken && adminToken.trim() !== "") || (guestToken && guestToken.trim() !== ""));
+	const configuredToken = process.env.OPENPARCELS_TOKEN;
+	const isAuthRequired = !!(configuredToken && configuredToken.trim() !== "");
 
 	// If no auth is required (no token configured):
 	if (!isAuthRequired) {
@@ -36,25 +36,21 @@ const checkAuth = async (request: any, reply: any) => {
 		return;
 	}
 
-	// Auth is required:
+	const token =
+		request.headers.authorization?.replace("Bearer ", "") ||
+		request.query.token ||
+		request.body?.token;
+
+	// Auth is required for write:
 	if (!token) {
 		return reply.code(401).send({ error: "Unauthorized: Missing token" });
 	}
 
-	if (adminToken && token === adminToken) {
-		request.user = { isGuest: false, isAdmin: true };
-		return;
+	if (token !== configuredToken) {
+		return reply.code(403).send({ error: "Forbidden: Invalid token" });
 	}
 
-	if (guestToken && token === guestToken) {
-		request.user = { isGuest: true, isAdmin: false };
-		if (request.method !== "GET" && request.method !== "HEAD") {
-			return reply.code(403).send({ error: "Forbidden: Guest write blocked" });
-		}
-		return;
-	}
-
-	return reply.code(403).send({ error: "Forbidden: Invalid token" });
+	request.user = { isGuest: false, isAdmin: true };
 };
 
 const stripNulls = (obj: any): any => {
@@ -139,6 +135,9 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.limit(1);
 		}
 		if (found.length === 0) {
+			if (/^\d+$/.test(identifier)) {
+				return reply.code(404).send({ error: "Parcel not found" });
+			}
 			const trackingInfo = await aggregator.aggregate(identifier);
 			if (trackingInfo) {
 				// Resolve temporary coordinates from the latest event if possible
@@ -753,6 +752,9 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		}
 
 		if (!foundParcel) {
+			if (/^\d+$/.test(id)) {
+				return [];
+			}
 			const trackingInfo = await aggregator.aggregate(id);
 			if (trackingInfo) {
 				const events = [];

@@ -24,7 +24,7 @@ export const parcels = sqliteTable("parcels", {
 	lat: real("lat"),
 	lng: real("lng"),
 	orderId: integer("order_id")
-		.references(() => orders.id),
+		.references(() => orders.id, { onDelete: "set null" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
