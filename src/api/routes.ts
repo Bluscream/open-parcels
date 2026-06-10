@@ -247,16 +247,15 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			}
 
 			try {
-				const scraper = new AmazonLiveScraper({
-					serviceName: "Amazon",
-					url: url,
-				});
-
-				const trackingInfo = await scraper.scrapeTimeline(orderNo, trackingNo || "temp-preview-id");
+				const trackingInfo = await aggregator.aggregate(orderNo ? `${orderNo}::${trackingNo}` : trackingNo || "temp-preview-id");
+				console.log(`[TrackingPreview] Amazon preview fetch completed. Events: ${trackingInfo?.events?.length || 0}`);
 				return reply.send({
-					trackingNumber: trackingInfo.trackingNumber || trackingNo,
-					itemName: trackingInfo.itemName || "",
-					orderNumber: orderNo,
+					trackingNumber: trackingInfo?.trackingNumber || trackingNo,
+					itemName: (trackingInfo as any)?.itemName || "",
+					provider: "Amazon",
+					status: trackingInfo?.status || "sent",
+					statusDescription: trackingInfo?.statusDescription || "In transit",
+					events: trackingInfo?.events || []
 				});
 			} catch (err: any) {
 				fastify.log.error(err);
@@ -604,7 +603,57 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				})
 				.returning();
 
-			return reply.code(201).send(newOrder[0]);
+			const insertedOrder = newOrder[0];
+
+			if (source.toLowerCase() === "amazon") {
+				try {
+					const trackingInfo = await aggregator.aggregate(orderNumber);
+					if (trackingInfo && trackingInfo.raw) {
+						const orderResp = (trackingInfo.raw as any).response;
+						if (orderResp && Array.isArray(orderResp.shipments)) {
+							for (const shipment of orderResp.shipments) {
+								if (!shipment.tracking_id) continue;
+
+								let existingParcel = await db
+									.select()
+									.from(parcels)
+									.where(eq(parcels.trackingNumber, shipment.tracking_id))
+									.limit(1);
+
+								let parcelId: number;
+								if (existingParcel.length === 0) {
+									const newP = await db
+										.insert(parcels)
+										.values({
+											trackingNumber: shipment.tracking_id,
+											status: "ordered",
+											courier: "Amazon",
+											createdAt: new Date(),
+											updatedAt: new Date(),
+										})
+										.returning();
+									parcelId = newP[0].id;
+								} else {
+									parcelId = existingParcel[0].id;
+								}
+
+								await db.insert(orderParcels).values({
+									orderId: insertedOrder.id,
+									parcelId: parcelId,
+								}).onConflictDoNothing();
+
+								trackAndUpdateParcel(parcelId).catch((err) => {
+									console.error(`[OrderAutoTrack] Failed to track parcel ${parcelId}:`, err);
+								});
+							}
+						}
+					}
+				} catch (err) {
+					console.error("[OrderAutoResolve] Error resolving order shipments:", err);
+				}
+			}
+
+			return reply.code(201).send(insertedOrder);
 		},
 	);
 
