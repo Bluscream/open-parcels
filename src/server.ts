@@ -12,6 +12,7 @@ import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import fastifyWebsocket from "@fastify/websocket";
+import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { apiRoutes } from "./api/routes";
 import { loadRemoteRules, startRulesRefreshInterval } from "./services/ingest/rules-loader";
@@ -26,6 +27,11 @@ server.register(cors, {
 	origin: true, // adjust in production
 });
 
+server.register(multipart, {
+	limits: {
+		fileSize: 500 * 1024 * 1024, // 500MB
+	},
+});
 server.register(fastifyWebsocket);
 
 server.register(swagger, {

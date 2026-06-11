@@ -15,12 +15,9 @@ import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import {
 	ArrowLeft,
 	Calendar,
-	CheckCircle,
 	MapPin,
 	Package,
 	RefreshCw,
-	RotateCcw,
-	Truck,
 } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
 import {
@@ -32,6 +29,7 @@ import {
 	getTransportMarkerIcon,
 } from "../utils/mapIcons";
 import { AnimatedRoute } from "./AnimatedRoute";
+import { CourierLogo } from "./CourierLogo";
 import { SharedMap, useMapFilters } from "./SharedMap";
 import { SplitContainer } from "./SplitContainer";
 
@@ -367,25 +365,6 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 		}
 	};
 
-	const getStatusIcon = (status: string, size = 16) => {
-		switch (status) {
-			case "ordered":
-				return <Package size={size} className="text-blue-400" />;
-			case "sent":
-				return <Truck size={size} className="text-yellow-400" />;
-			case "arriving":
-				return <Truck size={size} className="text-orange-400" />;
-			case "pickup":
-				return <MapPin size={size} className="text-purple-400" />;
-			case "delivered":
-				return <CheckCircle size={size} className="text-green-400" />;
-			case "return-accepted":
-				return <RotateCcw size={size} className="text-red-400" />;
-			default:
-				return <Package size={size} />;
-		}
-	};
-
 	const formatDate = (dateStr: string) => {
 		return new Date(dateStr).toLocaleString(undefined, {
 			dateStyle: "medium",
@@ -471,7 +450,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 							cursor: "pointer",
 						}}
 					>
-						<ArrowLeft size={16} /> Back to Dashboard
+						<ArrowLeft size={16} /> Back
 					</button>
 				</div>
 			</div>
@@ -577,7 +556,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 					}}
 					className="hover-bright"
 				>
-					<ArrowLeft size={20} /> Back to Dashboard
+					<ArrowLeft size={20} /> Back
 				</button>
 
 				<button
@@ -636,14 +615,17 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 						}}
 					>
 						<div
-							style={{
-								padding: "12px",
-								borderRadius: "12px",
-								background: "rgba(59, 130, 246, 0.1)",
-							}}
-						>
-							{getStatusIcon(parcel.status, 24)}
-						</div>
+						style={{
+							padding: "10px",
+							borderRadius: "12px",
+							background: "rgba(59, 130, 246, 0.08)",
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+						}}
+					>
+						<CourierLogo courier={parcel.courier} size={36} />
+					</div>
 						<div>
 							<div style={{ fontSize: "14px", color: "var(--text-muted)" }}>
 								{parcel.courier}

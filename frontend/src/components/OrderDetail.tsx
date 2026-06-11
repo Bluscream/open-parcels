@@ -200,7 +200,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack, onSel
 						padding: 0,
 					}}
 				>
-					<ArrowLeft size={20} /> Back to Orders
+					<ArrowLeft size={20} /> Back
 				</button>
 			</div>
 

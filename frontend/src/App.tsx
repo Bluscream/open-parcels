@@ -481,12 +481,24 @@ function App() {
 			) : selectedTrackingNumber ? (
 				<ParcelDetail
 					trackingNumber={selectedTrackingNumber}
-					onBack={() => navigateTo("/")}
+					onBack={() => {
+						if (window.history.length > 1) {
+							window.history.back();
+						} else {
+							navigateTo("/");
+						}
+					}}
 				/>
 			) : selectedOrderId ? (
 				<OrderDetail
 					orderId={selectedOrderId}
-					onBack={() => navigateTo("/orders")}
+					onBack={() => {
+						if (window.history.length > 1) {
+							window.history.back();
+						} else {
+							navigateTo("/orders");
+						}
+					}}
 					onSelectParcel={(trackingNr) => navigateTo(`/parcel/${trackingNr}/`)}
 				/>
 			) : isParcelsTable ? (
