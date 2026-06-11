@@ -1,6 +1,6 @@
 {
   "name": "open-parcels",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Self-hostable service that ingests and tracks parcels, returns and orders.",
   "main": "dist/server.js",
   "scripts": {
@@ -31,7 +31,7 @@
     "drizzle-orm": "^0.30.2",
     "fastify": "^4.26.2",
     "imap-simple": "^5.1.0",
-    "mail-parser-ts": "file:./packages/mail-parser-ts",
+    "mail-parser-ts": "^1.0.1",
     "mailparser": "^3.7.1",
     "playwright": "^1.42.1",
     "ssh2": "^1.17.0"
