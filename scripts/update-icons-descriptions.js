@@ -50,7 +50,7 @@ const METADATA_MAP = {
   },
   "hermes": {
     "description": "Parses Evri / Hermes parcel tracking updates and delivery notifications.",
-    "icon_url": "https://www.google.com/s2/favicons?domain=evri.com&sz=128"
+    "icon_url": "https://www.google.com/s2/favicons?domain=myhermes.de&sz=128"
   },
   "dpd_com_pl": {
     "description": "Parses DPD delivery tracking, scheduling updates, and receipt confirmations.",
