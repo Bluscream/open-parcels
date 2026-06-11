@@ -30,6 +30,7 @@ interface StatusData {
 	credentials: number;
 	events: number;
 	parcelsByStatus: { status: string; count: number }[];
+	ordersByStatus: { status: string; count: number }[];
 	dbSizeBytes: number;
 	nodeVersion: string;
 	env: string;
@@ -59,20 +60,28 @@ function formatBytes(bytes: number): string {
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
 	ordered: <ShoppingBag size={13} />,
+	placed: <ShoppingBag size={13} />,
+	confirmed: <ShoppingBag size={13} />,
 	sent: <Truck size={13} />,
+	shipped: <Truck size={13} />,
 	arriving: <Zap size={13} />,
 	delivered: <CheckCircle size={13} />,
 	"return-sent": <RotateCcw size={13} />,
 	"return-accepted": <Archive size={13} />,
+	unknown: <FileQuestion size={13} />,
 };
 
 const STATUS_COLOR: Record<string, string> = {
 	ordered: "#818cf8",
+	placed: "#818cf8",
+	confirmed: "#818cf8",
 	sent: "#60a5fa",
+	shipped: "#60a5fa",
 	arriving: "#f59e0b",
 	delivered: "#10b981",
 	"return-sent": "#f97316",
 	"return-accepted": "#a78bfa",
+	unknown: "rgba(255,255,255,0.4)",
 };
 
 export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
@@ -434,101 +443,201 @@ export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
 
 			{/* Middle row — status breakdown + system info */}
 			<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-				{/* Parcels by Status */}
-				<div className="glass-panel" style={{ padding: "20px" }}>
-					<h4
-						style={{
-							margin: "0 0 16px 0",
-							fontSize: "13px",
-							fontWeight: 600,
-							color: "var(--text-muted)",
-							textTransform: "uppercase",
-							letterSpacing: "0.06em",
-						}}
-					>
-						Parcels by Status
-					</h4>
-					{status?.parcelsByStatus && status.parcelsByStatus.length > 0 ? (
-						<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-							{status.parcelsByStatus.map((row) => {
-								const pct =
-									status.parcels > 0
-										? Math.round((row.count / status.parcels) * 100)
-										: 0;
-								const col =
-									STATUS_COLOR[row.status] || "rgba(255,255,255,0.4)";
-								return (
-									<div key={row.status}>
-										<div
-											style={{
-												display: "flex",
-												justifyContent: "space-between",
-												alignItems: "center",
-												marginBottom: "4px",
-											}}
-										>
+				{/* Left Column: Status Breakdowns */}
+				<div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+					{/* Parcels by Status */}
+					<div className="glass-panel" style={{ padding: "20px" }}>
+						<h4
+							style={{
+								margin: "0 0 16px 0",
+								fontSize: "13px",
+								fontWeight: 600,
+								color: "var(--text-muted)",
+								textTransform: "uppercase",
+								letterSpacing: "0.06em",
+							}}
+						>
+							Parcels by Status
+						</h4>
+						{status?.parcelsByStatus && status.parcelsByStatus.length > 0 ? (
+							<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+								{status.parcelsByStatus.map((row) => {
+									const pct =
+										status.parcels > 0
+											? Math.round((row.count / status.parcels) * 100)
+											: 0;
+									const col =
+										STATUS_COLOR[row.status] || "rgba(255,255,255,0.4)";
+									return (
+										<div key={row.status}>
 											<div
 												style={{
 													display: "flex",
+													justifyContent: "space-between",
 													alignItems: "center",
-													gap: "6px",
-													color: col,
-													fontSize: "13px",
+													marginBottom: "4px",
 												}}
 											>
-												{STATUS_ICON[row.status] || (
-													<FileQuestion size={13} />
-												)}
-												<span style={{ textTransform: "capitalize" }}>
-													{row.status}
-												</span>
-											</div>
-											<span
-												style={{
-													fontSize: "13px",
-													fontWeight: 600,
-													color: "#fff",
-												}}
-											>
-												{row.count}
-												<span
+												<div
 													style={{
-														color: "var(--text-muted)",
-														fontWeight: 400,
-														marginLeft: "4px",
+														display: "flex",
+														alignItems: "center",
+														gap: "6px",
+														color: col,
+														fontSize: "13px",
 													}}
 												>
-													({pct}%)
+													{STATUS_ICON[row.status] || (
+														<FileQuestion size={13} />
+													)}
+													<span style={{ textTransform: "capitalize" }}>
+														{row.status}
+													</span>
+												</div>
+												<span
+													style={{
+														fontSize: "13px",
+														fontWeight: 600,
+														color: "#fff",
+													}}
+												>
+													{row.count}
+													<span
+														style={{
+															color: "var(--text-muted)",
+															fontWeight: 400,
+															marginLeft: "4px",
+														}}
+													>
+														({pct}%)
+													</span>
 												</span>
-											</span>
-										</div>
-										<div
-											style={{
-												height: "4px",
-												background: "rgba(255,255,255,0.06)",
-												borderRadius: "99px",
-												overflow: "hidden",
-											}}
-										>
+											</div>
 											<div
 												style={{
-													height: "100%",
-													width: `${pct}%`,
-													background: col,
+													height: "4px",
+													background: "rgba(255,255,255,0.06)",
 													borderRadius: "99px",
-													transition: "width 0.5s ease",
+													overflow: "hidden",
 												}}
-											/>
+											>
+												<div
+													style={{
+														height: "100%",
+														width: `${pct}%`,
+														background: col,
+														borderRadius: "99px",
+														transition: "width 0.5s ease",
+													}}
+												/>
+											</div>
 										</div>
-									</div>
-								);
-							})}
-						</div>
-					) : (
-						<p className="text-muted" style={{ fontSize: "13px" }}>
-							No parcels yet.
-						</p>
-					)}
+									);
+								})}
+							</div>
+						) : (
+							<p className="text-muted" style={{ fontSize: "13px" }}>
+								No parcels yet.
+							</p>
+						)}
+					</div>
+
+					{/* Orders by Status */}
+					<div className="glass-panel" style={{ padding: "20px" }}>
+						<h4
+							style={{
+								margin: "0 0 16px 0",
+								fontSize: "13px",
+								fontWeight: 600,
+								color: "var(--text-muted)",
+								textTransform: "uppercase",
+								letterSpacing: "0.06em",
+							}}
+						>
+							Orders by Status
+						</h4>
+						{status?.ordersByStatus && status.ordersByStatus.length > 0 ? (
+							<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+								{status.ordersByStatus.map((row) => {
+									const pct =
+										status.orders > 0
+											? Math.round((row.count / status.orders) * 100)
+											: 0;
+									const col =
+										STATUS_COLOR[row.status] || "rgba(255,255,255,0.4)";
+									return (
+										<div key={row.status}>
+											<div
+												style={{
+													display: "flex",
+													justifyContent: "space-between",
+													alignItems: "center",
+													marginBottom: "4px",
+												}}
+											>
+												<div
+													style={{
+														display: "flex",
+														alignItems: "center",
+														gap: "6px",
+														color: col,
+														fontSize: "13px",
+													}}
+												>
+													{STATUS_ICON[row.status] || (
+														<FileQuestion size={13} />
+													)}
+													<span style={{ textTransform: "capitalize" }}>
+														{row.status}
+													</span>
+												</div>
+												<span
+													style={{
+														fontSize: "13px",
+														fontWeight: 600,
+														color: "#fff",
+													}}
+												>
+													{row.count}
+													<span
+														style={{
+															color: "var(--text-muted)",
+															fontWeight: 400,
+															marginLeft: "4px",
+														}}
+													>
+														({pct}%)
+													</span>
+												</span>
+											</div>
+											<div
+												style={{
+													height: "4px",
+													background: "rgba(255,255,255,0.06)",
+													borderRadius: "99px",
+													overflow: "hidden",
+												}}
+											>
+												<div
+													style={{
+														height: "100%",
+														width: `${pct}%`,
+														background: col,
+														borderRadius: "99px",
+														transition: "width 0.5s ease",
+													}}
+												/>
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						) : (
+							<p className="text-muted" style={{ fontSize: "13px" }}>
+								No orders yet.
+							</p>
+						)}
+					</div>
 				</div>
 
 				{/* System Info */}

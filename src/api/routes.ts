@@ -1371,6 +1371,12 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.from(parcels)
 				.groupBy(parcels.status);
 
+			// Count orders by status
+			const orderStatusCounts = await db
+				.select({ status: orders.status, count: count() })
+				.from(orders)
+				.groupBy(orders.status);
+
 			// DB file size
 			const dbPath = process.env.DB_PATH || path.join(process.cwd(), "data.db");
 			let dbSizeBytes = 0;
@@ -1386,6 +1392,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				credentials: credCount.count,
 				events: eventCount.count,
 				parcelsByStatus: statusCounts,
+				ordersByStatus: orderStatusCounts,
 				dbSizeBytes,
 				nodeVersion: process.version,
 				env: process.env.NODE_ENV || "production",
