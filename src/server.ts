@@ -27,9 +27,28 @@ server.register(cors, {
 	origin: true, // adjust in production
 });
 
+const parseMaxUploadSize = (): number => {
+	const defaultLimit = 1024 * 1024 * 1024; // 1GB default
+	const rawEnv = process.env.OPENPARCELS_MAX_UPLOAD_SIZE;
+	if (!rawEnv) return defaultLimit;
+
+	const trimmed = rawEnv.trim().toLowerCase();
+	if (trimmed.endsWith("gb") || trimmed.endsWith("g")) {
+		return parseInt(trimmed, 10) * 1024 * 1024 * 1024;
+	}
+	if (trimmed.endsWith("mb") || trimmed.endsWith("m")) {
+		return parseInt(trimmed, 10) * 1024 * 1024;
+	}
+	if (trimmed.endsWith("kb") || trimmed.endsWith("k")) {
+		return parseInt(trimmed, 10) * 1024;
+	}
+	const parsed = parseInt(trimmed, 10);
+	return isNaN(parsed) ? defaultLimit : parsed;
+};
+
 server.register(multipart, {
 	limits: {
-		fileSize: 500 * 1024 * 1024, // 500MB
+		fileSize: parseMaxUploadSize(),
 	},
 });
 server.register(fastifyWebsocket);
