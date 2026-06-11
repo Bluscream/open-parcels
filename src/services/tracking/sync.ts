@@ -59,39 +59,50 @@ export async function syncParcelStateFromEvents(parcelId: string): Promise<void>
 
 	const latestEvent = sortedEvents[0];
 
-	// Determine status from the latest event description, location, or source
-	const textToAnalyze = `${latestEvent.description || ""} ${latestEvent.location || ""}`.toLowerCase();
+	// Determine status chronologically through event history
+	let determinedStatus: string = "ordered";
+	const chronologicalEvents = [...events].sort(
+		(a, b) => a.timestamp.getTime() - b.timestamp.getTime() || a.id.localeCompare(b.id)
+	);
 
-	let determinedStatus: string = "sent";
-	if (
-		textToAnalyze.includes("delivered") ||
-		textToAnalyze.includes("zugestellt") ||
-		textToAnalyze.includes("successfully") ||
-		textToAnalyze.includes("abgeholt") ||
-		textToAnalyze.includes("picked up") ||
-		textToAnalyze.includes("pickup") ||
-		textToAnalyze.includes("delivery successful") ||
-		textToAnalyze.includes("bereit zur abholung") ||
-		textToAnalyze.includes("ready for pickup") ||
-		textToAnalyze.includes("delivered to") ||
-		textToAnalyze.includes("successful delivery")
-	) {
-		determinedStatus = "delivered";
-	} else if (
-		textToAnalyze.includes("return") ||
-		textToAnalyze.includes("rücksendung") ||
-		textToAnalyze.includes("returned")
-	) {
-		determinedStatus = "return";
-	} else if (
-		textToAnalyze.includes("out for delivery") ||
-		textToAnalyze.includes("zustellung heute") ||
-		textToAnalyze.includes("arriving") ||
-		textToAnalyze.includes("delivery") ||
-		textToAnalyze.includes("unterwegs") ||
-		textToAnalyze.includes("in transit")
-	) {
-		determinedStatus = "arriving";
+	for (const ev of chronologicalEvents) {
+		const evText = `${ev.description || ""} ${ev.location || ""}`.toLowerCase();
+		if (
+			evText.includes("delivered") ||
+			evText.includes("zugestellt") ||
+			evText.includes("successfully") ||
+			evText.includes("abgeholt") ||
+			evText.includes("picked up") ||
+			evText.includes("pickup") ||
+			evText.includes("delivery successful") ||
+			evText.includes("bereit zur abholung") ||
+			evText.includes("ready for pickup") ||
+			evText.includes("delivered to") ||
+			evText.includes("successful delivery")
+		) {
+			determinedStatus = "delivered";
+		} else if (
+			evText.includes("return") ||
+			evText.includes("rücksendung") ||
+			evText.includes("returned")
+		) {
+			determinedStatus = "return";
+		} else if (
+			evText.includes("out for delivery") ||
+			evText.includes("zustellung heute") ||
+			evText.includes("arriving") ||
+			evText.includes("delivery") ||
+			evText.includes("unterwegs") ||
+			evText.includes("in transit")
+		) {
+			if (determinedStatus !== "delivered" && determinedStatus !== "return") {
+				determinedStatus = "arriving";
+			}
+		} else {
+			if (determinedStatus === "ordered") {
+				determinedStatus = "sent";
+			}
+		}
 	}
 
 	// Find the most recent event that has a determined vehicle (not unknown/null)
