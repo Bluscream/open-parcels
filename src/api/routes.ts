@@ -179,14 +179,16 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		return "unknown";
 	};
 
+	const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
 	const getSingleParcelHandler = async (request: any, reply: any) => {
 		const { identifier } = request.params;
 		let found: any[] = [];
-		if (/^\d+$/.test(identifier)) {
+		if (isUuid(identifier)) {
 			found = await db
 				.select()
 				.from(parcels)
-				.where(eq(parcels.id, parseInt(identifier, 10)))
+				.where(eq(parcels.id, identifier))
 				.limit(1);
 		}
 		if (found.length === 0) {
@@ -197,7 +199,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.limit(1);
 		}
 		if (found.length === 0) {
-			if (/^\d+$/.test(identifier)) {
+			if (isUuid(identifier)) {
 				return reply.code(404).send({ error: "Parcel not found" });
 			}
 			const trackingInfo = await aggregator.aggregate(identifier);
@@ -364,7 +366,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					status,
 					lat: lat ? parseFloat(lat) : null,
 					lng: lng ? parseFloat(lng) : null,
-					orderId: orderId ? parseInt(orderId, 10) : null,
+					orderId: orderId || null,
 					addedAt: new Date(),
 					updatedAt: new Date(),
 				})
@@ -387,7 +389,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.limit(1);
 
 			const finalParcel = latestParcel[0] || insertedParcel;
-			const finalOrderId = orderId ? parseInt(orderId, 10) : null;
+			const finalOrderId = orderId || null;
 
 			return reply.code(201).send({ ...finalParcel, orderId: finalOrderId });
 		},
@@ -419,7 +421,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			lng?: number | null;
 			estimatedDeliveryStart?: Date | null;
 			estimatedDeliveryEnd?: Date | null;
-			orderId?: number | null;
+			orderId?: string | null;
 		} = {
 			updatedAt: new Date(),
 		};
@@ -439,13 +441,13 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				? new Date(estimatedDeliveryEnd)
 				: null;
 		if (orderId !== undefined) {
-			updateData.orderId = (orderId !== null && orderId !== "") ? parseInt(orderId, 10) : null;
+			updateData.orderId = (orderId !== null && orderId !== "") ? orderId : null;
 		}
 
 		const updated = await db
 			.update(parcels)
 			.set(updateData)
-			.where(eq(parcels.id, parseInt(id, 10)))
+			.where(eq(parcels.id, id))
 			.returning();
 
 		if (updated.length === 0) {
@@ -478,7 +480,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 	// Live tracking trigger handler
 	const trackParcelHandler = async (request: any, reply: any) => {
 		const { id } = request.params;
-		const success = await trackAndUpdateParcel(parseInt(id, 10));
+		const success = await trackAndUpdateParcel(id);
 		if (!success) {
 			return reply
 				.code(400)
@@ -487,7 +489,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		const updated = await db
 			.select()
 			.from(parcels)
-			.where(eq(parcels.id, parseInt(id, 10)))
+			.where(eq(parcels.id, id))
 			.limit(1);
 		return updated[0];
 	};
@@ -518,11 +520,11 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		// Delete associated events next
 		await db
 			.delete(parcelEvents)
-			.where(eq(parcelEvents.parcelId, parseInt(id, 10)));
+			.where(eq(parcelEvents.parcelId, id));
 
 		const deleted = await db
 			.delete(parcels)
-			.where(eq(parcels.id, parseInt(id, 10)))
+			.where(eq(parcels.id, id))
 			.returning();
 
 		if (deleted.length === 0) {
@@ -588,7 +590,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				.from(parcels)
 				.groupBy(parcels.orderId);
 
-			const countMap = new Map<number, number>();
+			const countMap = new Map<string, number>();
 			for (const row of counts) {
 				if (row.orderId !== null) {
 					countMap.set(row.orderId, row.cnt);
@@ -688,7 +690,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 									.where(eq(parcels.trackingNumber, shipment.tracking_id))
 									.limit(1);
 
-								let parcelId: number;
+								let parcelId: string;
 								if (existingParcel.length === 0) {
 									const newP = await db
 										.insert(parcels)
@@ -731,8 +733,53 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			const found = await db
 				.select()
 				.from(orders)
-				.where(eq(orders.id, parseInt(id, 10)))
+				.where(eq(orders.id, id))
 				.limit(1);
+			if (found.length === 0) return reply.code(404).send({ error: "Order not found" });
+			return stripNulls(found[0]);
+		},
+	);
+
+	// GET /order/:idOrOrderNumber - Get order by ID or order number
+	fastify.get(
+		"/order/:idOrOrderNumber",
+		{ schema: { tags: ["Orders"] } },
+		async (request: any, reply) => {
+			const { idOrOrderNumber } = request.params;
+			const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+			let found: any[] = [];
+			if (isUuid(idOrOrderNumber)) {
+				found = await db
+					.select()
+					.from(orders)
+					.where(eq(orders.id, idOrOrderNumber))
+					.limit(1);
+			} else {
+				found = await db
+					.select()
+					.from(orders)
+					.where(eq(orders.orderNumber, idOrOrderNumber))
+					.limit(1);
+			}
+
+			if (found.length === 0) return reply.code(404).send({ error: "Order not found" });
+			return stripNulls(found[0]);
+		},
+	);
+
+	// GET /order/:provider/:orderNumber - Get exact order by provider and order number
+	fastify.get(
+		"/order/:provider/:orderNumber",
+		{ schema: { tags: ["Orders"] } },
+		async (request: any, reply) => {
+			const { provider, orderNumber } = request.params;
+			const found = await db
+				.select()
+				.from(orders)
+				.where(and(eq(orders.source, provider), eq(orders.orderNumber, orderNumber)))
+				.limit(1);
+
 			if (found.length === 0) return reply.code(404).send({ error: "Order not found" });
 			return stripNulls(found[0]);
 		},
@@ -747,7 +794,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			const results = await db
 				.select()
 				.from(parcels)
-				.where(eq(parcels.orderId, parseInt(id, 10)));
+				.where(eq(parcels.orderId, id));
 			return stripNulls(results);
 		},
 	);
@@ -763,7 +810,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 			let foundParcel: any = null;
 			if (parcelId) {
-				const r = await db.select().from(parcels).where(eq(parcels.id, parseInt(parcelId, 10))).limit(1);
+				const r = await db.select().from(parcels).where(eq(parcels.id, parcelId)).limit(1);
 				if (r.length > 0) foundParcel = r[0];
 			} else if (trackingNumber) {
 				const r = await db.select().from(parcels).where(eq(parcels.trackingNumber, trackingNumber)).limit(1);
@@ -772,7 +819,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 			if (!foundParcel) return reply.code(404).send({ error: "Parcel not found" });
 
-			await db.update(parcels).set({ orderId: parseInt(id, 10) }).where(eq(parcels.id, foundParcel.id));
+			await db.update(parcels).set({ orderId: id }).where(eq(parcels.id, foundParcel.id));
 
 			return { message: "Parcel linked to order", parcelId: foundParcel.id };
 		},
@@ -783,7 +830,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		const { id } = request.params;
 		const deleted = await db
 			.delete(orders)
-			.where(eq(orders.id, parseInt(id, 10)))
+			.where(eq(orders.id, id))
 			.returning();
 
 		if (deleted.length === 0) {
@@ -817,11 +864,12 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		const { id } = request.params;
 		let foundParcel: any = null;
 
-		if (/^\d+$/.test(id)) {
+		const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+		if (isUuid(id)) {
 			const found = await db
 				.select()
 				.from(parcels)
-				.where(eq(parcels.id, parseInt(id, 10)))
+				.where(eq(parcels.id, id))
 				.limit(1);
 			if (found.length > 0) {
 				foundParcel = found[0];
@@ -839,7 +887,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		}
 
 		if (!foundParcel) {
-			if (/^\d+$/.test(id)) {
+			if (isUuid(id)) {
 				return [];
 			}
 			const trackingInfo = await aggregator.aggregate(id);
@@ -971,7 +1019,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			const newEvent = await db
 				.insert(parcelEvents)
 				.values({
-					parcelId: parseInt(id, 10),
+					parcelId: id,
 					location: location || null,
 					description,
 					timestamp: timestamp ? new Date(timestamp) : new Date(),
@@ -980,7 +1028,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				})
 				.returning();
 			const insertedEvent = newEvent[0];
-			await syncParcelStateFromEvents(parseInt(id, 10));
+			await syncParcelStateFromEvents(id);
 
 			return reply.code(201).send(insertedEvent);
 		},
@@ -991,7 +1039,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		const { id } = request.params;
 		const deleted = await db
 			.delete(parcelEvents)
-			.where(eq(parcelEvents.id, parseInt(id, 10)))
+			.where(eq(parcelEvents.id, id))
 			.returning();
 
 		if (deleted.length === 0) {
@@ -1050,11 +1098,20 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					.send({ error: "Forbidden: Admin token required" });
 			}
 			const allCreds = await db.select().from(credentials);
-			return allCreds.map((c) => ({
-				id: c.id,
-				service: c.service,
-				updatedAt: c.updatedAt.toISOString(),
-			}));
+			return allCreds.map((c) => {
+				let username = "";
+				try {
+					const decryptedStr = decryptCredential(c.encryptedData);
+					const data = JSON.parse(decryptedStr);
+					username = data.username || data.user || "";
+				} catch (e) {}
+				return {
+					id: c.id,
+					service: c.service,
+					username,
+					updatedAt: c.updatedAt.toISOString(),
+				};
+			});
 		},
 	);
 
@@ -1070,11 +1127,12 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					.code(403)
 					.send({ error: "Forbidden: Admin token required" });
 			}
-			const { service } = request.params;
+			const { idOrService } = request.params;
+			const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 			const found = await db
 				.select()
 				.from(credentials)
-				.where(eq(credentials.service, service))
+				.where(isUuid(idOrService) ? eq(credentials.id, idOrService) : eq(credentials.service, idOrService))
 				.limit(1);
 			if (found.length === 0) {
 				return reply
@@ -1106,6 +1164,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					type: "object",
 					required: ["service", "data"],
 					properties: {
+						id: { type: "string", nullable: true },
 						service: { type: "string" },
 						data: { type: "object" },
 					},
@@ -1114,7 +1173,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		async (request: any, reply) => {
 			const params = getParams(request);
-			const { service, data } = params;
+			const { id, service, data } = params;
 
 			if (!service || !data) {
 				return reply
@@ -1124,25 +1183,23 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 			const encryptedData = encryptCredential(JSON.stringify(data));
 
-			// Check if service already exists
-			const existing = await db
-				.select()
-				.from(credentials)
-				.where(eq(credentials.service, service))
-				.limit(1);
-
-			if (existing.length > 0) {
+			if (id) {
 				const updated = await db
 					.update(credentials)
 					.set({
+						service,
 						encryptedData,
 						updatedAt: new Date(),
 					})
-					.where(eq(credentials.service, service))
+					.where(eq(credentials.id, id))
 					.returning();
+				if (updated.length === 0) {
+					return reply.code(404).send({ error: "Credentials not found" });
+				}
 				return reply.code(200).send({
 					message: "Credentials updated successfully",
 					service: updated[0].service,
+					id: updated[0].id,
 				});
 			} else {
 				const inserted = await db
@@ -1156,6 +1213,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				return reply.code(201).send({
 					message: "Credentials created successfully",
 					service: inserted[0].service,
+					id: inserted[0].id,
 				});
 			}
 		},
@@ -1171,7 +1229,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			const { id } = request.params;
 			const deleted = await db
 				.delete(credentials)
-				.where(eq(credentials.id, parseInt(id, 10)))
+				.where(eq(credentials.id, id))
 				.returning();
 
 			if (deleted.length === 0) {
@@ -1195,7 +1253,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			const { id } = request.params;
 			const deleted = await db
 				.delete(credentials)
-				.where(eq(credentials.id, parseInt(id, 10)))
+				.where(eq(credentials.id, id))
 				.returning();
 
 			if (deleted.length === 0) {
@@ -1617,8 +1675,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 						if (!trackingData) continue;
 
-						let dbOrderId: number | null = null;
-						let dbParcelId: number | null = null;
+						let dbOrderId: string | null = null;
+						let dbParcelId: string | null = null;
 
 						const platformName = trackingData.platform?.name || "Unknown";
 						const orderNo = trackingData.platform?.order_number;

@@ -450,7 +450,7 @@ export class TrackingAggregator {
 export const aggregator = new TrackingAggregator();
 
 // Helper function to query provider and update DB
-export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
+export async function trackAndUpdateParcel(parcelId: string): Promise<boolean> {
 	const found = await db
 		.select()
 		.from(parcels)
@@ -639,14 +639,29 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 				db.select()
 					.from(credentials)
 					.where(eq(credentials.service, "Amazon"))
-					.limit(1)
-					.then(async (amzCred) => {
-						if (amzCred.length > 0) {
+					.then(async (amzCreds) => {
+						if (amzCreds.length > 0) {
 							const { decryptCredential } = require("../../utils/crypto");
 							try {
-								const decrypted = JSON.parse(
-									decryptCredential(amzCred[0].encryptedData),
-								);
+								// Find the credential that matches this tracking number in its urls map
+								let selectedCred = amzCreds[0];
+								let decrypted: any = null;
+
+								for (const cred of amzCreds) {
+									try {
+										const dec = JSON.parse(decryptCredential(cred.encryptedData));
+										if (dec.urls?.[currentParcel.trackingNumber]) {
+											selectedCred = cred;
+											decrypted = dec;
+											break;
+										}
+									} catch (_) {}
+								}
+
+								if (!decrypted) {
+									decrypted = JSON.parse(decryptCredential(selectedCred.encryptedData));
+								}
+
 								const trackingUrl =
 									decrypted.urls?.[currentParcel.trackingNumber] ||
 									decrypted.shipTrackUrl ||

@@ -1,7 +1,8 @@
+import crypto from "node:crypto";
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const orders = sqliteTable("orders", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
+	id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
 	source: text("source").notNull(), // e.g. Amazon, eBay
 	orderNumber: text("order_number").notNull(),
 	status: text("status").notNull(),
@@ -11,7 +12,7 @@ export const orders = sqliteTable("orders", {
 });
 
 export const parcels = sqliteTable("parcels", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
+	id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
 	trackingNumber: text("tracking_number").notNull().unique(),
 	name: text("name"),
 	courier: text("courier"),
@@ -24,7 +25,7 @@ export const parcels = sqliteTable("parcels", {
 	}),
 	lat: real("lat"),
 	lng: real("lng"),
-	orderId: integer("order_id")
+	orderId: text("order_id")
 		.references(() => orders.id, { onDelete: "set null" }),
 	lastVehicle: text("last_vehicle"),
 	lastEventDescription: text("last_event_description"),
@@ -33,8 +34,8 @@ export const parcels = sqliteTable("parcels", {
 });
 
 export const parcelEvents = sqliteTable("parcel_events", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	parcelId: integer("parcel_id")
+	id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+	parcelId: text("parcel_id")
 		.notNull()
 		.references(() => parcels.id),
 	location: text("location"),
@@ -47,7 +48,7 @@ export const parcelEvents = sqliteTable("parcel_events", {
 });
 
 export const auditLogs = sqliteTable("audit_logs", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
+	id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
 	action: text("action").notNull(),
 	actor: text("actor").notNull(), // User or System
 	details: text("details"),
@@ -55,8 +56,8 @@ export const auditLogs = sqliteTable("audit_logs", {
 });
 
 export const credentials = sqliteTable("credentials", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	service: text("service").notNull().unique(), // e.g. IMAP, Amazon, eBay
+	id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+	service: text("service").notNull(), // e.g. IMAP, Amazon, eBay
 	encryptedData: text("encrypted_data").notNull(), // Encrypted JSON string of credentials/tokens
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

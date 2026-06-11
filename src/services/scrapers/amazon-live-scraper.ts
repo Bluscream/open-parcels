@@ -127,7 +127,7 @@ export interface AmazonLiveCredentials {
 }
 
 export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
-	public static activeScrapers = new Map<number, AmazonLiveScraper>();
+	public static activeScrapers = new Map<string, AmazonLiveScraper>();
 
 	private browserContext: BrowserContext | null = null;
 	private page: Page | null = null;
@@ -135,7 +135,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 	private isPolling = false;
 	private pollInterval: NodeJS.Timeout | null = null;
 	private memoizationCount = 0;
-	private parcelId: number | null = null;
+	private parcelId: string | null = null;
 
 	/**
 	 * Initializes browser, loads cookies, or logs in if necessary
@@ -468,7 +468,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 	/**
 	 * Starts high-frequency polling when a parcel is out for delivery/active
 	 */
-	public async startLivePolling(parcelId: number, trackingNumber: string) {
+	public async startLivePolling(parcelId: string, trackingNumber: string) {
 		if (this.isPolling) return;
 		this.isPolling = true;
 		this.parcelId = parcelId;
@@ -517,7 +517,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 	 * Polls real-time deans-proxy coordinates and then resolves text via /memoize
 	 */
 	private async pollRealTimeUpdate(
-		parcelId: number,
+		parcelId: string,
 		trackingNumber: string,
 	): Promise<boolean> {
 		if (!this.page || !this.csrfToken) return false;
@@ -696,7 +696,7 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 	/**
 	 * Syncs historical timeline coordinates using /get-state
 	 */
-	private async syncTimelineState(parcelId: number, trackingNumber: string) {
+	private async syncTimelineState(parcelId: string, trackingNumber: string) {
 		if (!this.page || !this.csrfToken) return;
 
 		try {
