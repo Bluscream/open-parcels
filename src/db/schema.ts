@@ -5,7 +5,8 @@ export const orders = sqliteTable("orders", {
 	source: text("source").notNull(), // e.g. Amazon, eBay
 	orderNumber: text("order_number").notNull(),
 	status: text("status").notNull(),
-	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	placedAt: integer("placed_at", { mode: "timestamp" }),
+	addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -25,7 +26,8 @@ export const parcels = sqliteTable("parcels", {
 	lng: real("lng"),
 	orderId: integer("order_id")
 		.references(() => orders.id, { onDelete: "set null" }),
-	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	lastVehicle: text("last_vehicle"),
+	addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -39,6 +41,7 @@ export const parcelEvents = sqliteTable("parcel_events", {
 	timestamp: integer("timestamp", { mode: "timestamp" }).notNull(),
 	lat: real("lat"),
 	lng: real("lng"),
+	vehicle: text("vehicle"),
 	source: text("source"),
 });
 

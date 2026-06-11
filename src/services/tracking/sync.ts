@@ -2,6 +2,27 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { parcels, parcelEvents } from "../../db/schema";
 
+export function determineSingleEventVehicle(description: string, location?: string | null): string {
+	const text = `${description || ""} ${location || ""}`.toLowerCase();
+	const planeWords = ["plane", "flight", "air", "aircraft", "airplane", "flug", "luft", "flying"];
+	// Use whole-word matching for ship to avoid false positives from "shipment", "shipping", etc.
+	const shipWords = ["\\bship\\b", "\\bboat\\b", "\\bschiff\\b", "\\bboot\\b", "\\bocean\\b", "\\bsea\\b", "\\bvessel\\b", "\\bcontainer\\b", "\\bport\\b"];
+	const heliWords = ["helicopter", "heli", "hubschrauber"];
+	const trainWords = ["train", "rail", "bahn", "zug", "railway"];
+	const bikeWords = ["bike", "bicycle", "fahrrad", "cycling", "radfahrer"];
+	const vanWords = ["van", "delivery vehicle", "zustellfahrzeug", "delivery", "carrier", "courier", "post", "filiale", "outlet"];
+	const truckWords = ["truck", "lkw", "hauler", "laster", "freight", "cargo", "transit", "sorting", "road", "vehicle", "fahrzeug"];
+
+	if (planeWords.some(w => text.includes(w))) return "plane";
+	if (shipWords.some(w => new RegExp(w).test(text))) return "ship";
+	if (heliWords.some(w => text.includes(w))) return "heli";
+	if (trainWords.some(w => text.includes(w))) return "train";
+	if (bikeWords.some(w => text.includes(w))) return "bike";
+	if (vanWords.some(w => text.includes(w))) return "van";
+	if (truckWords.some(w => text.includes(w))) return "truck";
+	return "unknown";
+}
+
 export async function syncParcelStateFromEvents(parcelId: number): Promise<void> {
 	const events = await db
 		.select()
@@ -9,6 +30,20 @@ export async function syncParcelStateFromEvents(parcelId: number): Promise<void>
 		.where(eq(parcelEvents.parcelId, parcelId));
 
 	if (events.length === 0) return;
+
+	// Backfill/sync vehicles for any event that doesn't have it set in DB
+	for (const event of events) {
+		if (!event.vehicle) {
+			const parsedVehicle = determineSingleEventVehicle(event.description, event.location);
+			if (parsedVehicle !== "unknown") {
+				event.vehicle = parsedVehicle;
+				await db
+					.update(parcelEvents)
+					.set({ vehicle: parsedVehicle })
+					.where(eq(parcelEvents.id, event.id));
+			}
+		}
+	}
 
 	// Sort events: most recent first (by timestamp descending, then id descending as fallback)
 	const sortedEvents = [...events].sort(
@@ -52,15 +87,21 @@ export async function syncParcelStateFromEvents(parcelId: number): Promise<void>
 		determinedStatus = "arriving";
 	}
 
+	// Find the most recent event that has a determined vehicle (not unknown/null)
+	const eventWithVehicle = sortedEvents.find(e => e.vehicle && e.vehicle !== "unknown");
+	const determinedVehicle = eventWithVehicle?.vehicle || "unknown";
+
 	const updateData: {
 		status: string;
 		lat: number | null;
 		lng: number | null;
+		lastVehicle: string;
 		updatedAt: Date;
 	} = {
 		status: determinedStatus,
 		lat: null,
 		lng: null,
+		lastVehicle: determinedVehicle,
 		updatedAt: new Date(),
 	};
 

@@ -1,8 +1,10 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: frontend uses any for dynamic props/components */
 /* biome-ignore-all lint/a11y: disable a11y rules for frontend prototype */
+import { createColumnHelper } from "@tanstack/react-table";
 import { Key, Plus, Trash2, X, Edit } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
+import { DataTable } from "./DataTable";
 
 interface CredentialService {
 	id: number;
@@ -118,82 +120,60 @@ export const ManageCredentials: React.FC<Props> = ({
 		}
 	};
 
+	const ch = createColumnHelper<CredentialService>();
+	const credColumns = [
+		ch.accessor("service", {
+			header: "Service",
+			cell: info => (
+				<span className="bold-cell" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+					<Key size={14} style={{ color: "#f59e0b" }} />
+					{info.getValue()}
+				</span>
+			),
+		}),
+		ch.accessor("updatedAt", {
+			header: "Last Modified",
+			cell: info => new Date(info.getValue()).toLocaleString(),
+		}),
+		ch.display({
+			id: "actions",
+			header: () => <span style={{ float: "right" }}>Actions</span>,
+			cell: ({ row }) => (
+				<div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+					<button className="btn-icon-sm" onClick={() => editCredentials(row.original.service)} title="Edit">
+						<Edit size={14} />
+					</button>
+					<button className="btn-icon-sm text-red" onClick={() => deleteCredentials(row.original.id)} title="Delete">
+						<Trash2 size={14} />
+					</button>
+				</div>
+			),
+			enableSorting: false,
+			meta: { headerStyle: { textAlign: "right" } },
+		}),
+	];
+
 	return (
 		<>
 			{/* CREDENTIALS TABLE */}
 			<div className="glass-panel" style={{ padding: "24px" }}>
 				<div className="panel-header-actions">
 					<h3 className="panel-title" style={{ margin: 0 }}>
-						{" "}
-						modular Scrapers Credentials
+						Scraper Service Credentials
 					</h3>
-					<button
-						className="btn btn-primary btn-sm"
-						onClick={() => setShowCredModal(true)}
-					>
+					<button className="btn btn-primary btn-sm" onClick={() => setShowCredModal(true)}>
 						<Plus size={14} /> Setup Service
 					</button>
 				</div>
-
-				<div className="table-wrapper">
-					<table className="table">
-						<thead>
-							<tr>
-								<th>Service</th>
-								<th>Last Modified</th>
-								<th style={{ textAlign: "right" }}>Actions</th>
-							</tr>
-						</thead>
-						<tbody>
-							{credentialsList.map((cred) => (
-								<tr key={cred.id}>
-									<td
-										className="bold-cell"
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: "8px",
-										}}
-									>
-										<Key size={14} className="text-yellow-400" />
-										{cred.service}
-									</td>
-									<td>{new Date(cred.updatedAt).toLocaleString()}</td>
-									<td style={{ textAlign: "right" }}>
-										<div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-											<button
-												className="btn-icon-sm"
-												onClick={() => editCredentials(cred.service)}
-												title="Edit"
-											>
-												<Edit size={14} />
-											</button>
-											<button
-												className="btn-icon-sm text-red"
-												onClick={() => deleteCredentials(cred.id)}
-												title="Delete"
-											>
-												<Trash2 size={14} />
-											</button>
-										</div>
-									</td>
-								</tr>
-							))}
-							{credentialsList.length === 0 && (
-								<tr>
-									<td
-										colSpan={3}
-										style={{ textAlign: "center", padding: "32px" }}
-										className="text-muted"
-									>
-										No scraper credentials stored. Modular scrapers will use
-										defaults or skip.
-									</td>
-								</tr>
-							)}
-						</tbody>
-					</table>
-				</div>
+				<DataTable
+					columns={credColumns}
+					data={credentialsList}
+					emptyText="No scraper credentials stored. Modular scrapers will use defaults or skip."
+					emptySearchText="No credentials match your search."
+					searchPlaceholder="Search service…"
+					defaultSortId="service"
+					defaultSortDesc={false}
+				/>
 			</div>
 
 			{/* Credentials Form Modal */}

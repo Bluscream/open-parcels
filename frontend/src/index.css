@@ -413,6 +413,8 @@ body {
 	font-weight: 600;
 	padding: 12px 16px;
 	border-bottom: 1px solid var(--panel-border);
+	white-space: nowrap;
+	user-select: none;
 }
 
 .table td {
@@ -438,6 +440,126 @@ body {
 .bold-cell {
 	font-weight: 600;
 	color: var(--text-main);
+}
+
+/* ── Sortable column headers ───────────────────────────────── */
+.th-sortable {
+	cursor: pointer;
+}
+.th-sortable:hover {
+	color: var(--text-main);
+	background: rgba(255, 255, 255, 0.03);
+}
+.th-inner {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+.sort-icon {
+	flex-shrink: 0;
+	opacity: 0.4;
+	transition: opacity 0.15s ease;
+}
+.sort-icon-active {
+	opacity: 1;
+	color: var(--accent);
+}
+.th-sortable:hover .sort-icon {
+	opacity: 0.7;
+}
+
+/* ── Table Controls (search + filters) ────────────────────── */
+.table-controls {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 16px;
+	flex-shrink: 0;
+}
+
+.table-search-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 1;
+	min-width: 180px;
+}
+
+.table-search-icon {
+	position: absolute;
+	left: 11px;
+	color: var(--text-muted);
+	pointer-events: none;
+}
+
+.table-search {
+	font-family: var(--font-family);
+	width: 100%;
+	background: rgba(0, 0, 0, 0.2);
+	border: 1px solid var(--panel-border);
+	color: var(--text-main);
+	padding: 7px 32px 7px 32px;
+	border-radius: 8px;
+	font-size: 13px;
+	outline: none;
+	transition: all 0.2s ease;
+}
+
+.table-search:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+	background: rgba(0, 0, 0, 0.3);
+}
+
+.table-search::placeholder {
+	color: var(--text-muted);
+}
+
+.table-search-clear {
+	position: absolute;
+	right: 8px;
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	padding: 3px;
+	border-radius: 4px;
+	transition: color 0.15s ease;
+}
+.table-search-clear:hover {
+	color: var(--text-main);
+}
+
+.table-filter-select {
+	font-family: var(--font-family);
+	background: rgba(0, 0, 0, 0.2);
+	border: 1px solid var(--panel-border);
+	color: var(--text-main);
+	padding: 7px 12px;
+	border-radius: 8px;
+	font-size: 13px;
+	outline: none;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+}
+.table-filter-select:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.table-count-badge {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-main);
+	flex-shrink: 0;
+	padding: 4px 10px;
+	background: rgba(59, 130, 246, 0.12);
+	border: 1px solid rgba(59, 130, 246, 0.2);
+	border-radius: 20px;
+	white-space: nowrap;
 }
 
 /* Tags */
@@ -497,6 +619,18 @@ body {
 	background: rgba(239, 68, 68, 0.15);
 	color: #f87171;
 	border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.status-syncing {
+	background: rgba(148, 163, 184, 0.12);
+	color: #94a3b8;
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	animation: pulse-syncing 2s ease-in-out infinite;
+}
+
+@keyframes pulse-syncing {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.55; }
 }
 
 /* Modals */

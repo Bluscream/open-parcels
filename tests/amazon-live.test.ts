@@ -48,7 +48,7 @@ async function runTests() {
 			trackingNumber: testTrackingNr,
 			name: "Mock Nike Shoes",
 			status: "ordered",
-			createdAt: new Date(),
+			addedAt: new Date(),
 			updatedAt: new Date(),
 		})
 		.returning();

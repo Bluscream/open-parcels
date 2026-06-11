@@ -13,33 +13,35 @@ import {
 	settings,
 } from "../db/schema";
 import { trackAndUpdateParcel, aggregator } from "../services/tracking/aggregator";
-import { syncParcelStateFromEvents } from "../services/tracking/sync";
+import { syncParcelStateFromEvents, determineSingleEventVehicle } from "../services/tracking/sync";
 import { AmazonLiveScraper } from "../services/scrapers/amazon-live-scraper";
 import { wsBroker } from "../services/websocket";
 import { decryptCredential, encryptCredential } from "../utils/crypto";
-import { geocodeLocation, extractLocationName } from "../utils/geocoder";
+import { geocodeLocation, extractLocationName, isLikelyLocation } from "../utils/geocoder";
 
 // Basic Auth hook to check token
 const checkAuth = async (request: any, reply: any) => {
-	// Read-only operations (GET, HEAD) never require token
-	if (request.method === "GET" || request.method === "HEAD") {
-		request.user = { isGuest: true, isAdmin: false };
-		return;
-	}
-
 	const configuredToken = process.env.OPENPARCELS_TOKEN;
 	const isAuthRequired = !!(configuredToken && configuredToken.trim() !== "");
+
+	const token =
+		request.headers.authorization?.replace("Bearer ", "") ||
+		request.query.token ||
+		request.body?.token;
+
+	const isAdmin = !isAuthRequired || (!!token && token === configuredToken);
+
+	// Read-only operations (GET, HEAD) never require token
+	if (request.method === "GET" || request.method === "HEAD") {
+		request.user = { isGuest: true, isAdmin };
+		return;
+	}
 
 	// If no auth is required (no token configured):
 	if (!isAuthRequired) {
 		request.user = { isGuest: false, isAdmin: true };
 		return;
 	}
-
-	const token =
-		request.headers.authorization?.replace("Bearer ", "") ||
-		request.query.token ||
-		request.body?.token;
 
 	// Auth is required for write:
 	if (!token) {
@@ -102,9 +104,27 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								lng: { type: "number", nullable: true },
 								estimatedDeliveryStart: { type: "string", nullable: true },
 								estimatedDeliveryEnd: { type: "string", nullable: true },
-								createdAt: { type: "string" },
+								addedAt: { type: "string" },
 								updatedAt: { type: "string" },
 								orderId: { type: "number", nullable: true },
+								lastVehicle: { type: "string", nullable: true },
+								events: {
+									type: "array",
+									items: {
+										type: "object",
+										properties: {
+											id: { type: "number" },
+											parcelId: { type: "number" },
+											location: { type: "string", nullable: true },
+											description: { type: "string" },
+											timestamp: { type: "string" },
+											lat: { type: "number", nullable: true },
+											lng: { type: "number", nullable: true },
+											vehicle: { type: "string", nullable: true },
+											source: { type: "string", nullable: true },
+										},
+									},
+								},
 							},
 						},
 					},
@@ -113,9 +133,35 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		async (_request, _reply) => {
 			const allParcels = await db.select().from(parcels);
-			return stripNulls(allParcels);
+			const result = [];
+			for (const p of allParcels) {
+				const evs = await db
+					.select()
+					.from(parcelEvents)
+					.where(eq(parcelEvents.parcelId, p.id));
+				result.push({
+					...p,
+					events: evs,
+				});
+			}
+			return stripNulls(result);
 		},
 	);
+
+	// Delegate to the shared vehicle classifier so there's one source of truth.
+	const determineRouteTransportMethod = (events: any[]): string => {
+		if (!events || events.length === 0) return "unknown";
+		const sortedEventsDesc = [...events].sort((a: any, b: any) => {
+			const timeA = a.timestamp ? new Date(a.timestamp).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+			const timeB = b.timestamp ? new Date(b.timestamp).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+			return timeB - timeA;
+		});
+		for (const event of sortedEventsDesc) {
+			const v = determineSingleEventVehicle(event.description || "", event.status || event.location || "");
+			if (v !== "unknown") return v;
+		}
+		return "unknown";
+	};
 
 	const getSingleParcelHandler = async (request: any, reply: any) => {
 		const { identifier } = request.params;
@@ -147,7 +193,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					(a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
 				);
 				for (const ev of sortedEventsDesc) {
-					let locationName = ev.location || null;
+					let locationName = (ev.location && isLikelyLocation(ev.location)) ? ev.location : null;
 					if (!locationName && ev.description) locationName = extractLocationName(ev.description);
 					if (!locationName && ev.status) locationName = extractLocationName(ev.status);
 					if (locationName) {
@@ -167,10 +213,11 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					lat,
 					lng,
 					estimatedDeliveryStart: trackingInfo.estimatedDelivery || null,
-					createdAt: new Date().toISOString(),
+					addedAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString(),
 					temp: true,
 					orderId: null,
+					lastVehicle: determineRouteTransportMethod(trackingInfo.events),
 				});
 			}
 			return reply.code(404).send({ error: "Parcel not found" });
@@ -302,7 +349,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					lat: lat ? parseFloat(lat) : null,
 					lng: lng ? parseFloat(lng) : null,
 					orderId: orderId ? parseInt(orderId, 10) : null,
-					createdAt: new Date(),
+					addedAt: new Date(),
 					updatedAt: new Date(),
 				})
 				.returning();
@@ -505,7 +552,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								source: { type: "string" },
 								orderNumber: { type: "string" },
 								status: { type: "string" },
-								createdAt: { type: "string" },
+								placedAt: { type: "string", nullable: true },
+								addedAt: { type: "string" },
 								updatedAt: { type: "string" },
 							},
 						},
@@ -532,13 +580,14 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						source: { type: "string" },
 						orderNumber: { type: "string" },
 						status: { type: "string" },
+						placedAt: { type: "string", nullable: true },
 					},
 				},
 			},
 		},
 		async (request: any, reply) => {
 			const params = getParams(request);
-			const { source, orderNumber, status } = params;
+			const { source, orderNumber, status, placedAt } = params;
 
 			if (!source || !orderNumber || !status) {
 				return reply.code(400).send({
@@ -579,7 +628,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					source,
 					orderNumber,
 					status,
-					createdAt: new Date(),
+					placedAt: placedAt ? new Date(placedAt) : null,
+					addedAt: new Date(),
 					updatedAt: new Date(),
 				})
 				.returning();
@@ -610,7 +660,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 											status: "ordered",
 											courier: "Amazon",
 											orderId: insertedOrder.id,
-											createdAt: new Date(),
+											addedAt: new Date(),
 											updatedAt: new Date(),
 										})
 										.returning();
@@ -762,7 +812,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					const ev = trackingInfo.events[i];
 					let eventLat: number | null = null;
 					let eventLng: number | null = null;
-					let locationName = ev.location || null;
+					let locationName = (ev.location && isLikelyLocation(ev.location)) ? ev.location : null;
 					if (!locationName && ev.description) locationName = extractLocationName(ev.description);
 					if (!locationName && ev.status) locationName = extractLocationName(ev.status);
 					if (locationName) {
@@ -775,7 +825,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					events.push({
 						id: i + 1,
 						parcelId: 0,
-						location: ev.location || null,
+						location: locationName,
 						description: ev.description || ev.status,
 						timestamp: ev.date,
 						lat: eventLat,
@@ -888,6 +938,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					location: location || null,
 					description,
 					timestamp: timestamp ? new Date(timestamp) : new Date(),
+					vehicle: determineSingleEventVehicle(description, location),
 					source: source || "Manual",
 				})
 				.returning();

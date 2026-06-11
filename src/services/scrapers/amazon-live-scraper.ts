@@ -8,7 +8,7 @@ import { decryptCredential, encryptCredential } from "../../utils/crypto";
 import { wsBroker } from "../websocket";
 import { BaseScraper, type ScraperResult } from "./index";
 import { requestQueue } from "../../utils/requestQueue";
-import { syncParcelStateFromEvents } from "../tracking/sync";
+import { syncParcelStateFromEvents, determineSingleEventVehicle } from "../tracking/sync";
 
 function base32Decode(base32: string): Buffer {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -650,6 +650,9 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 					timestamp: new Date(),
 					lat: driverLat,
 					lng: driverLng,
+					vehicle: determineSingleEventVehicle(description, "In transit (Live)") !== "unknown"
+						? determineSingleEventVehicle(description, "In transit (Live)")
+						: "van",
 					source: "Amazon Live Map",
 				});
 				await syncParcelStateFromEvents(parcelId);
@@ -762,6 +765,9 @@ export class AmazonLiveScraper extends BaseScraper<AmazonLiveCredentials> {
 									timestamp: time,
 									lat,
 									lng,
+									vehicle: determineSingleEventVehicle(description, "Timeline Route") !== "unknown"
+										? determineSingleEventVehicle(description, "Timeline Route")
+										: "van",
 									source: "Amazon Live Map",
 								});
 							}

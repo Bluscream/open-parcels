@@ -1,37 +1,58 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: dynamic API data */
-import { RefreshCw, ShoppingBag, Hash, Calendar, Trash2 } from "lucide-react";
+import { createColumnHelper } from "@tanstack/react-table";
+import { ShoppingBag, Hash, Calendar, Trash2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getGuestToken } from "../utils/auth";
+import { DataTable } from "./DataTable";
 
 interface Order {
 	id: number;
 	source: string;
 	orderNumber: string;
 	status: string;
-	createdAt: string;
+	placedAt?: string;
+	addedAt: string;
 	updatedAt: string;
 }
 
 function fmtDate(iso?: string) {
 	if (!iso) return "—";
-	return new Date(iso).toLocaleString(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	});
+	return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+	placed: "Placed",
+	confirmed: "Confirmed",
+	ordered: "Ordered",
+	shipped: "Dispatched",
+	sent: "Dispatched",
+	arriving: "Arriving Today",
+	delivered: "Delivered",
+	"return-sent": "Return Sent",
+	"return-accepted": "Return Accepted",
+	unknown: "Syncing",
+};
+
+const ORDER_STATUS_CLASS: Record<string, string> = {
+	placed: "status-ordered",
+	confirmed: "status-ordered",
+	ordered: "status-ordered",
+	shipped: "status-sent",
+	sent: "status-sent",
+	arriving: "status-arriving",
+	delivered: "status-delivered",
+	"return-sent": "status-return-sent",
+	"return-accepted": "status-return-accepted",
+	unknown: "status-syncing",
+};
 
 function OrderStatusTag({ status }: { status: string }) {
-	const s = status.toLowerCase();
-	let cls = "";
-	if (s.includes("deliver") || s.includes("complet")) cls = "status-delivered";
-	else if (s.includes("ship") || s.includes("sent")) cls = "status-shipped";
-	else if (s.includes("process")) cls = "status-processing";
-	else if (s.includes("return")) cls = "status-return-sent";
-	else if (s.includes("order") || s.includes("pending")) cls = "status-ordered";
-	else cls = "status-sent";
-
-	return <span className={`status-tag ${cls}`}>{status}</span>;
+	const cls = ORDER_STATUS_CLASS[status] ?? "status-syncing";
+	const label = ORDER_STATUS_LABELS[status] ?? status;
+	return <span className={`status-tag ${cls}`}>{label}</span>;
 }
+
+const ch = createColumnHelper<Order>();
 
 export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) => void }) {
 	const [orders, setOrders] = useState<Order[]>([]);
@@ -42,16 +63,10 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 		setLoading(true);
 		setError(null);
 		try {
-			const token = getGuestToken();
-			const res = await fetch("/api/v1/orders", {
-				headers: { Authorization: `Bearer ${token}` },
-			});
+			const res = await fetch("/api/v1/orders", { headers: { Authorization: `Bearer ${getGuestToken()}` } });
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data = await res.json();
-			const sorted = Array.isArray(data)
-				? data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-				: [];
-			setOrders(sorted);
+			setOrders(Array.isArray(data) ? data : []);
 		} catch (e: any) {
 			setError(e.message ?? "Failed to load orders");
 		} finally {
@@ -60,26 +75,63 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 	};
 
 	const deleteOrder = async (id: number) => {
-		if (!confirm("Are you sure you want to delete this order?")) return;
-		try {
-			const token = getGuestToken();
-			const res = await fetch(`/api/v1/orders/${id}?token=${token}`, {
-				method: "DELETE",
-			});
-			if (res.ok) {
-				load();
-			} else {
-				alert("Failed to delete order");
-			}
-		} catch (err) {
-			console.error(err);
-			alert("Error deleting order");
-		}
+		if (!confirm("Delete this order?")) return;
+		const res = await fetch(`/api/v1/orders/${id}?token=${getGuestToken()}`, { method: "DELETE" });
+		if (res.ok) load(); else alert("Failed to delete order");
 	};
 
-	useEffect(() => {
-		load();
-	}, []);
+	useEffect(() => { load(); }, []);
+
+	const columns = [
+		ch.accessor("id", {
+			header: () => <><Hash size={12} style={{ display: "inline", marginRight: 4 }} />ID</>,
+			cell: info => <span className="bold-cell mono">{info.getValue()}</span>,
+			meta: { cellStyle: { width: "60px" } },
+		}),
+		ch.accessor("source", {
+			header: "Source",
+			cell: info => <span className="bold-cell">{info.getValue()}</span>,
+		}),
+		ch.accessor("orderNumber", {
+			header: "Order Number",
+			cell: info => <span className="mono">{info.getValue()}</span>,
+		}),
+		ch.accessor("status", {
+			header: "Status",
+			cell: info => <OrderStatusTag status={info.getValue()} />,
+		}),
+		ch.accessor("placedAt", {
+			header: () => <><Calendar size={12} style={{ display: "inline", marginRight: 4 }} />Placed</>,
+			cell: info => <span className="text-muted">{fmtDate(info.getValue())}</span>,
+		}),
+		ch.accessor("addedAt", {
+			header: "Added",
+			cell: info => <span className="text-muted">{fmtDate(info.getValue())}</span>,
+		}),
+		ch.accessor("updatedAt", {
+			header: "Updated",
+			cell: info => <span className="text-muted">{fmtDate(info.getValue())}</span>,
+		}),
+		ch.display({
+			id: "actions",
+			header: () => <span style={{ float: "right" }}>Actions</span>,
+			cell: ({ row }) => (
+				<div style={{ display: "flex", justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
+					<button
+						type="button"
+						className="btn-icon-sm text-red"
+						onClick={e => { e.stopPropagation(); deleteOrder(row.original.id); }}
+						title="Delete Order"
+						style={{ display: "inline-flex" }}
+					>
+						<Trash2 size={14} />
+					</button>
+				</div>
+			),
+			enableSorting: false,
+			meta: { headerStyle: { textAlign: "right" } },
+		}),
+	];
 
 	return (
 		<div className="table-page-container">
@@ -95,63 +147,19 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 				</button>
 			</div>
 
-			{error && <div className="table-error glass-panel">{error}</div>}
-
-			<div className="glass-panel table-panel">
-				<div className="table-wrapper">
-					<table className="table">
-						<thead>
-							<tr>
-								<th><Hash size={12} style={{display:"inline",marginRight:4}}/>ID</th>
-								<th>Source</th>
-								<th>Order Number</th>
-								<th>Status</th>
-								<th><Calendar size={12} style={{display:"inline",marginRight:4}}/>Created</th>
-								<th>Updated</th>
-								<th style={{ textAlign: "right" }}>Actions</th>
-							</tr>
-						</thead>
-						<tbody>
-							{loading && (
-								<tr>
-									<td colSpan={7} className="table-placeholder">
-										<RefreshCw size={18} className="spin" /> Loading…
-									</td>
-								</tr>
-							)}
-							{!loading && orders.length === 0 && (
-								<tr>
-									<td colSpan={7} className="table-placeholder">No orders found.</td>
-								</tr>
-							)}
-							{orders.map((o) => (
-								<tr key={o.id} onClick={() => onSelectOrder?.(o.id)} style={{ cursor: onSelectOrder ? "pointer" : undefined }}>
-									<td className="bold-cell mono">{o.id}</td>
-									<td className="bold-cell">{o.source}</td>
-									<td className="mono">{o.orderNumber}</td>
-									<td><OrderStatusTag status={o.status} /></td>
-									<td className="text-muted">{fmtDate(o.createdAt)}</td>
-									<td className="text-muted">{fmtDate(o.updatedAt)}</td>
-									<td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-										<button
-											type="button"
-											className="btn-icon-sm text-red"
-											onClick={(e) => {
-												e.stopPropagation();
-												deleteOrder(o.id);
-											}}
-											title="Delete Order"
-											style={{ display: "inline-flex", marginLeft: "auto" }}
-										>
-											<Trash2 size={14} />
-										</button>
-									</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			</div>
+			<DataTable
+				columns={columns}
+				data={orders}
+				loading={loading}
+				error={error}
+				emptyText="No orders found."
+				emptySearchText="No orders match your search."
+				searchPlaceholder="Search source, order number, status…"
+				defaultSortId="placedAt"
+				defaultSortDesc
+				totalCount={orders.length}
+				onRowClick={onSelectOrder ? (o) => onSelectOrder(o.id) : undefined}
+			/>
 		</div>
 	);
 }
