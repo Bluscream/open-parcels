@@ -17,6 +17,7 @@ data/
 coverage/
 tests/
 unraid/
+docker/
 .cache/
 Thumbs.db
 .DS_Store
