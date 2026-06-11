@@ -107,6 +107,29 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack, onSel
 		}
 	};
 
+	const [markingDelivered, setMarkingDelivered] = useState(false);
+
+	const handleMarkAllDelivered = async () => {
+		if (!confirm("Are you sure you want to mark all parcels in this order as delivered? This will manually lock their status.")) return;
+		setMarkingDelivered(true);
+		try {
+			const res = await fetch(`/api/v1/admin/orders/${orderId}/mark-delivered?token=${token}`, {
+				method: "POST",
+			});
+			if (res.ok) {
+				await load();
+			} else {
+				const data = await res.json().catch(() => ({}));
+				alert(data.error || "Failed to mark all as delivered");
+			}
+		} catch (err) {
+			console.error(err);
+			alert("Error marking all as delivered");
+		} finally {
+			setMarkingDelivered(false);
+		}
+	};
+
 	useEffect(() => {
 		load();
 	}, [orderId]);
@@ -285,6 +308,19 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack, onSel
 							<div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>In Transit</div>
 						</div>
 					</div>
+
+					{/* Mark All Delivered Button */}
+					{linkedParcels.length > 0 && deliveredCount < linkedParcels.length && (
+						<button
+							onClick={handleMarkAllDelivered}
+							disabled={markingDelivered}
+							className="btn btn-secondary"
+							style={{ width: "100%", gap: "8px", cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center" }}
+						>
+							<CheckCircle size={15} />
+							{markingDelivered ? "Marking…" : "Mark all as delivered"}
+						</button>
+					)}
 
 					{/* Timestamps */}
 					<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

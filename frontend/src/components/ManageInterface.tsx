@@ -79,6 +79,7 @@ export const ManageInterface: React.FC = () => {
 		home_name: "",
 		home_latitude: "",
 		home_longitude: "",
+		home_postal_code: "",
 	});
 
 	const [credentialsList, setCredentialsList] = useState<CredentialService[]>(
@@ -111,6 +112,7 @@ export const ManageInterface: React.FC = () => {
 						dataS.home_longitude !== undefined
 							? dataS.home_longitude.toString()
 							: "",
+					home_postal_code: dataS.home_postal_code || "",
 				});
 			}
 		} catch (err) {

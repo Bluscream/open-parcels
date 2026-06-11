@@ -96,6 +96,76 @@ export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
 	const [ingestMsg, setIngestMsg] = useState<string | null>(null);
 	const [ingestError, setIngestError] = useState<string | null>(null);
 	const [ingesting, setIngesting] = useState(false);
+	const [syncingParcels, setSyncingParcels] = useState(false);
+	const [syncingOrders, setSyncingOrders] = useState(false);
+	const [reloadingRules, setReloadingRules] = useState(false);
+
+	const handleSyncParcels = async () => {
+		setSyncingParcels(true);
+		setIngestMsg(null);
+		setIngestError(null);
+		try {
+			const res = await fetch(`/api/v1/admin/sync-parcels?token=${token}`, {
+				method: "POST",
+			});
+			const data = await res.json();
+			if (res.ok) {
+				setIngestMsg(data.message || "Started syncing parcels in background");
+				fetchStatus();
+				onRefresh();
+			} else {
+				setIngestError(data.error || "Failed to sync parcels");
+			}
+		} catch (err) {
+			setIngestError("Network error during parcel sync");
+		} finally {
+			setSyncingParcels(false);
+		}
+	};
+
+	const handleSyncOrders = async () => {
+		setSyncingOrders(true);
+		setIngestMsg(null);
+		setIngestError(null);
+		try {
+			const res = await fetch(`/api/v1/admin/sync-orders?token=${token}`, {
+				method: "POST",
+			});
+			const data = await res.json();
+			if (res.ok) {
+				setIngestMsg(data.message || "Started syncing orders in background");
+				fetchStatus();
+				onRefresh();
+			} else {
+				setIngestError(data.error || "Failed to sync orders");
+			}
+		} catch (err) {
+			setIngestError("Network error during order sync");
+		} finally {
+			setSyncingOrders(false);
+		}
+	};
+
+	const handleReloadRules = async () => {
+		setReloadingRules(true);
+		setIngestMsg(null);
+		setIngestError(null);
+		try {
+			const res = await fetch(`/api/v1/admin/reload-rules?token=${token}`, {
+				method: "POST",
+			});
+			const data = await res.json();
+			if (res.ok) {
+				setIngestMsg(`${data.message}. Loaded ${data.count} rules.`);
+			} else {
+				setIngestError(data.error || "Failed to reload rules");
+			}
+		} catch (err) {
+			setIngestError("Network error during rules reload");
+		} finally {
+			setReloadingRules(false);
+		}
+	};
 
 	const handleIngestClick = () => emailInputRef.current?.click();
 
@@ -752,6 +822,60 @@ export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
 					<Mail size={11} style={{ marginRight: "4px" }} />
 					Upload a single <code>.eml</code> file or a <code>.zip</code> archive containing multiple <code>.eml</code> files.
 					The system will scan them for order information and tracking numbers to automatically ingest.
+				</p>
+			</div>
+
+			{/* Sync & Rules */}
+			<div className="glass-panel" style={{ padding: "20px" }}>
+				<h4
+					style={{
+						margin: "0 0 16px 0",
+						fontSize: "13px",
+						fontWeight: 600,
+						color: "var(--text-muted)",
+						textTransform: "uppercase",
+						letterSpacing: "0.06em",
+					}}
+				>
+					Sync & Rules
+				</h4>
+				<div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+					<button
+						onClick={handleSyncParcels}
+						disabled={syncingParcels}
+						className="btn btn-secondary"
+						style={{ gap: "8px" }}
+					>
+						<RefreshCw size={15} className={syncingParcels ? "spin" : ""} />
+						Sync All Parcels
+					</button>
+
+					<button
+						onClick={handleSyncOrders}
+						disabled={syncingOrders}
+						className="btn btn-secondary"
+						style={{ gap: "8px" }}
+					>
+						<RefreshCw size={15} className={syncingOrders ? "spin" : ""} />
+						Sync All Orders
+					</button>
+
+					<button
+						onClick={handleReloadRules}
+						disabled={reloadingRules}
+						className="btn btn-secondary"
+						style={{ gap: "8px" }}
+					>
+						<RefreshCw size={15} className={reloadingRules ? "spin" : ""} />
+						Reload Rules
+					</button>
+				</div>
+				<p
+					className="text-muted"
+					style={{ marginTop: "12px", fontSize: "12px" }}
+				>
+					<Zap size={11} style={{ marginRight: "4px" }} />
+					Sync All Parcels triggers background tracking updates for all parcels. Sync All Orders polls the lookup servers for all order updates and new parcels. Reload Rules updates the email parser rules.
 				</p>
 			</div>
 

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { credentials, orders, parcelEvents, parcels } from "../../db/schema";
+import { credentials, orders, parcelEvents, parcels, settings } from "../../db/schema";
 import { extractLocationName, geocodeLocation, isLikelyLocation } from "../../utils/geocoder";
 import { AmazonLiveScraper } from "../scrapers/amazon-live-scraper";
 import { requestQueue } from "../../utils/requestQueue";
@@ -114,10 +114,10 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 		return raw.split(",").map((url) => url.trim().replace(/\/+$/, ""));
 	}
 
-	private async fetchJson(apiPath: string): Promise<any> {
+	public async fetchJson(apiPath: string, extraParams = ""): Promise<any> {
 		const urls = this.baseUrls;
 		for (const baseUrl of urls) {
-			const url = `${baseUrl}/api/v1/${apiPath}?fresh=true&wait=1`;
+			const url = `${baseUrl}/api/v1/${apiPath}?fresh=true&wait=1${extraParams}`;
 			try {
 				const resp = await requestQueue.enqueue(url, () => fetch(url, {
 					headers: {
@@ -146,6 +146,22 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 			return null;
 		}
 
+		// Fetch home_postal_code from DB settings to forward to lookup services (for GLS, etc.)
+		let homePostalCode = "";
+		try {
+			const dbSettings = await db.select().from(settings);
+			const settingsMap = Object.fromEntries(
+				dbSettings.map((s) => [s.key, s.value]),
+			);
+			homePostalCode = settingsMap.home_postal_code || process.env.HOME_POSTAL_CODE || process.env.POSTAL_CODE || "";
+		} catch (e) {
+			console.error("[UniversalLookupProvider] Failed to fetch postal code from settings:", e);
+		}
+
+		const extraParams = homePostalCode
+			? `&zip=${encodeURIComponent(homePostalCode)}&postal_code=${encodeURIComponent(homePostalCode)}&postcode=${encodeURIComponent(homePostalCode)}`
+			: "";
+
 		// Detect order IDs to route through the multi-step order→parcel flow
 		let orderId = "";
 		let subQuery = "";
@@ -171,7 +187,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 		if (orderId) {
 			console.log(`[UniversalLookupProvider] Running multi-step lookup flow for order: ${orderId}, subQuery: ${subQuery}`);
 			// Step 1: Lookup order
-			const orderData = await this.fetchJson(`order/${orderId}`);
+			const orderData = await this.fetchJson(`order/${orderId}`, extraParams);
 			if (orderData?.success && orderData?.response) {
 				const orderResp = orderData.response;
 				const shipments: any[] = orderResp.shipments || [];
@@ -195,7 +211,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 					finalTrackingNumber = directTrackingNumber;
 					if (shipments[0]?.carrier) finalCourier = shipments[0].carrier;
 
-					const parcelData = await this.fetchJson(`parcel/${encodeURIComponent(directTrackingNumber)}`);
+					const parcelData = await this.fetchJson(`parcel/${encodeURIComponent(directTrackingNumber)}`, extraParams);
 					if (parcelData?.success && parcelData?.response) {
 						const pr = parcelData.response;
 						if (pr.couriers?.length) finalCourier = pr.couriers[0];
@@ -228,7 +244,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 					if (!shipment.tracking_url) continue;
 
 					// Lookup shipment using tracking_url
-					const shipmentData = await this.fetchJson(`shipment/${encodeURIComponent(shipment.tracking_url)}`);
+					const shipmentData = await this.fetchJson(`shipment/${encodeURIComponent(shipment.tracking_url)}`, extraParams);
 					if (shipmentData?.success && shipmentData?.response) {
 						const shipmentResp = shipmentData.response;
 						const carrierTrackingNumber = shipmentResp.tracking_number;
@@ -243,7 +259,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 						// Step 3: Lookup parcel using tracking number from shipment if available
 						if (carrierTrackingNumber && carrierTrackingNumber !== shipment.tracking_id) {
 							finalTrackingNumber = carrierTrackingNumber;
-							const parcelData = await this.fetchJson(`parcel/${encodeURIComponent(carrierTrackingNumber)}`);
+							const parcelData = await this.fetchJson(`parcel/${encodeURIComponent(carrierTrackingNumber)}`, extraParams);
 							if (parcelData?.success && parcelData?.response) {
 								const parcelResp = parcelData.response;
 								if (parcelResp.couriers && parcelResp.couriers.length > 0) {
@@ -306,7 +322,7 @@ export class UniversalLookupProvider implements TrackingApiProvider {
 		let lastError: Error | null = null;
 
 		for (const baseUrl of urls) {
-			const url = `${baseUrl}/api/v1/parcel/${encodeURIComponent(trackingNumber)}?fresh=true&wait=1`;
+			const url = `${baseUrl}/api/v1/parcel/${encodeURIComponent(trackingNumber)}?fresh=true&wait=1${extraParams}`;
 			try {
 				const resp = await requestQueue.enqueue(url, () => fetch(url, {
 					headers: {
@@ -459,6 +475,10 @@ export async function trackAndUpdateParcel(parcelId: string): Promise<boolean> {
 	if (found.length === 0) return false;
 
 	const parcel = found[0];
+	if (parcel.isManualStatus) {
+		console.log(`[Tracking] Skipping background update for manually-overridden parcel: ${parcel.trackingNumber} (${parcel.status})`);
+		return true;
+	}
 	const isAmazon =
 		(parcel.courier && parcel.courier.toLowerCase() === "amazon") ||
 		parcel.trackingNumber?.toLowerCase().startsWith("de");
