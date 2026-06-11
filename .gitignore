@@ -149,3 +149,7 @@ imap-config.json
 packages/
 parsed_mails.json
 data.db.env.local
+
+check_parcel.js
+fix_ship_cache.js
+migrate_event_vehicle.js
