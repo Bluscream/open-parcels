@@ -5,6 +5,15 @@ export interface WsMessage {
 	topic: string;
 }
 
+export interface LogItem {
+	timestamp: string;
+	level: string;
+	message: string;
+}
+
+const logHistory: LogItem[] = [];
+const MAX_LOG_HISTORY = 200;
+
 export class WebSocketBroker {
 	// Map of socket stream to its set of subscribed topics
 	private connections = new Map<SocketStream, Set<string>>();
@@ -23,7 +32,6 @@ export class WebSocketBroker {
 
 				if (message.action === "subscribe") {
 					subscribedTopics.add(message.topic);
-					console.log(`[WS] Socket subscribed to topic: ${message.topic}`);
 					// Send acknowledgment
 					connection.socket.send(
 						JSON.stringify({
@@ -32,6 +40,20 @@ export class WebSocketBroker {
 							success: true,
 						}),
 					);
+
+					// Send recent log history to the newly subscribed client
+					if (message.topic === "logs") {
+						for (const logItem of logHistory) {
+							connection.socket.send(
+								JSON.stringify({
+									event: "log_message",
+									topic: "logs",
+									data: logItem,
+								}),
+							);
+						}
+					}
+					console.log(`[WS] Socket subscribed to topic: ${message.topic}`);
 				} else if (message.action === "unsubscribe") {
 					subscribedTopics.delete(message.topic);
 					console.log(`[WS] Socket unsubscribed from topic: ${message.topic}`);
@@ -105,6 +127,12 @@ const broadcastLog = (level: string, ...args: any[]) => {
 		level,
 		message,
 	};
+
+	logHistory.push(logPayload);
+	if (logHistory.length > MAX_LOG_HISTORY) {
+		logHistory.shift();
+	}
+
 	wsBroker.broadcast("logs", logPayload, "log_message");
 };
 
