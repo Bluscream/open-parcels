@@ -15,7 +15,7 @@ import fastifyWebsocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { apiRoutes } from "./api/routes";
-import { loadRemoteRules, startRulesRefreshInterval } from "./services/ingest/rules-loader";
+import { loadRemoteRules } from "./services/ingest/rules-loader";
 
 
 const server = Fastify({
@@ -117,7 +117,7 @@ const start = async () => {
 		await loadRemoteRules().catch(err => {
 			console.error("Failed to load remote rules at startup:", err);
 		});
-		startRulesRefreshInterval();
+
 
 		const port = parseInt(process.env.PORT || "3000", 10);
 		await server.listen({ port, host: "0.0.0.0" });

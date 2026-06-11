@@ -2,7 +2,7 @@ import { requestQueue } from "./requestQueue";
 
 // Location resolution via LOOKUP_URLS (e.g. https://lookup.minopia.de/api/location/{name})
 // In-process cache to avoid redundant requests within a server lifetime.
-const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
+const geocodeCache = new Map<string, { lat: number; lng: number; postalCode?: string } | null>();
 
 /**
  * Attempts to extract a location name from a status or event description string.
@@ -67,7 +67,7 @@ export function isLikelyLocation(text: string): boolean {
  */
 export async function geocodeLocation(
 	locationName: string,
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<{ lat: number; lng: number; postalCode?: string } | null> {
 	if (!locationName || !isLikelyLocation(locationName)) {
 		return null;
 	}
@@ -85,7 +85,7 @@ export async function geocodeLocation(
 		return geocodeCache.get(key)!;
 	}
 
-	let result: { lat: number; lng: number } | null = null;
+	let result: { lat: number; lng: number; postalCode?: string } | null = null;
 	let lastError: any = null;
 
 	for (const baseUrl of baseUrls) {
@@ -108,9 +108,10 @@ export async function geocodeLocation(
 				continue;
 			}
 
-			const { latitude, longitude } = body.response as {
+			const { latitude, longitude, postal_code } = body.response as {
 				latitude?: number;
 				longitude?: number;
+				postal_code?: string;
 			};
 
 			if (
@@ -119,7 +120,7 @@ export async function geocodeLocation(
 				!Number.isNaN(latitude) &&
 				!Number.isNaN(longitude)
 			) {
-				result = { lat: latitude, lng: longitude };
+				result = { lat: latitude, lng: longitude, postalCode: postal_code };
 				break;
 			}
 		} catch (err: any) {

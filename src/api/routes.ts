@@ -12,9 +12,10 @@ import {
 	parcels,
 	settings,
 } from "../db/schema";
-import { trackAndUpdateParcel, aggregator } from "../services/tracking/aggregator";
+import { trackAndUpdateParcel, aggregator, UniversalLookupProvider } from "../services/tracking/aggregator";
 import { syncParcelStateFromEvents, determineSingleEventVehicle } from "../services/tracking/sync";
 import { getActiveParcelRules } from "../services/ingest/rules-loader";
+import { pollEmails } from "../services/ingest/imap";
 import { AmazonLiveScraper } from "../services/scrapers/amazon-live-scraper";
 import { wsBroker } from "../services/websocket";
 import { decryptCredential, encryptCredential } from "../utils/crypto";
@@ -409,6 +410,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			estimatedDeliveryStart,
 			estimatedDeliveryEnd,
 			orderId,
+			isManualStatus,
 		} = params;
 
 		const updateData: {
@@ -422,12 +424,14 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			estimatedDeliveryStart?: Date | null;
 			estimatedDeliveryEnd?: Date | null;
 			orderId?: string | null;
+			isManualStatus?: number;
 		} = {
 			updatedAt: new Date(),
 		};
 
 		if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
 		if (name !== undefined) updateData.name = name;
+		if (isManualStatus !== undefined) updateData.isManualStatus = isManualStatus ? 1 : 0;
 		if (courier !== undefined) updateData.courier = courier;
 		if (status !== undefined) updateData.status = status;
 		if (lat !== undefined) updateData.lat = lat ? parseFloat(lat) : null;
@@ -1309,11 +1313,18 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					process.env.TZ ||
 					"Europe/Berlin";
 
+				const home_postal_code =
+					settingsMap.home_postal_code ||
+					process.env.HOME_POSTAL_CODE ||
+					process.env.POSTAL_CODE ||
+					"";
+
 				return {
 					home_latitude: parseFloat(home_latitude),
 					home_longitude: parseFloat(home_longitude),
 					home_name,
 					timezone,
+					home_postal_code,
 				};
 			} catch (_err) {
 				return reply.code(500).send({ error: "Failed to fetch settings" });
@@ -1334,6 +1345,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						home_longitude: { type: "number" },
 						home_name: { type: "string" },
 						timezone: { type: "string" },
+						home_postal_code: { type: "string" },
 					},
 				},
 			},
@@ -1346,6 +1358,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 					"home_longitude",
 					"home_name",
 					"timezone",
+					"home_postal_code",
 				];
 
 				for (const key of allowedKeys) {
@@ -1620,10 +1633,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				console.log(`[IngestEmails] Received file: ${data.filename}, size: ${fileBuffer.length} bytes`);
 				const filename = data.filename.toLowerCase();
 
-				// Load rules first to ensure they are up to date
-				await loadRemoteRules().catch((err) => {
-					console.error("[IngestEmails] Failed to load remote rules:", err);
-				});
+
 
 				interface EmlItem {
 					name: string;
@@ -1760,7 +1770,199 @@ export async function apiRoutes(fastify: FastifyInstance) {
 				};
 			} catch (err: any) {
 				console.error("[IngestEmails] Failed:", err);
-				return reply.code(500).send({ error: `Ingestion failed: ${err.message || err}` });
+				return reply.code(500).send({ error: `Failed to process emails: ${err.message || err}` });
+			}
+		},
+	);
+
+	// Helper function to sync order from LOOKUP_URLS
+	const syncOrder = async (orderId: string): Promise<boolean> => {
+		const found = await db
+			.select()
+			.from(orders)
+			.where(eq(orders.id, orderId))
+			.limit(1);
+		if (found.length === 0) return false;
+		const order = found[0];
+
+		const isLookupSource = ["amazon", "aliexpress"].includes(order.source.toLowerCase());
+		if (!isLookupSource) return false;
+
+		// Fetch home_postal_code from DB settings to forward to lookup services (for GLS, etc.)
+		let homePostalCode = "";
+		try {
+			const dbSettings = await db.select().from(settings);
+			const settingsMap = Object.fromEntries(
+				dbSettings.map((s) => [s.key, s.value]),
+			);
+			homePostalCode = settingsMap.home_postal_code || process.env.HOME_POSTAL_CODE || process.env.POSTAL_CODE || "";
+		} catch (_) {}
+
+		const extraParams = homePostalCode
+			? `&zip=${encodeURIComponent(homePostalCode)}&postal_code=${encodeURIComponent(homePostalCode)}&postcode=${encodeURIComponent(homePostalCode)}`
+			: "";
+
+		const provider = new UniversalLookupProvider();
+		const orderData = await provider.fetchJson(`order/${order.orderNumber}`, extraParams);
+		if (orderData?.success && orderData?.response) {
+			const orderResp = orderData.response;
+			await db
+				.update(orders)
+				.set({
+					status: orderResp.status || order.status,
+					updatedAt: new Date(),
+				})
+				.where(eq(orders.id, orderId));
+
+			const shipments: any[] = orderResp.shipments || [];
+			for (const shipment of shipments) {
+				const trackingId = shipment.tracking_id || shipment.tracking_number;
+				if (!trackingId) continue;
+
+				const existingParcel = await db
+					.select()
+					.from(parcels)
+					.where(eq(parcels.trackingNumber, trackingId))
+					.limit(1);
+
+				if (existingParcel.length === 0) {
+					const [newParcel] = await db
+						.insert(parcels)
+						.values({
+							trackingNumber: trackingId,
+							status: "ordered",
+							courier: shipment.carrier || orderResp.carrier || "Unknown",
+							orderId: order.id,
+							addedAt: new Date(),
+							updatedAt: new Date(),
+						})
+						.returning();
+					
+					trackAndUpdateParcel(newParcel.id).catch(err => 
+						console.error(`[SyncOrder] Failed to track new parcel ${newParcel.id}:`, err)
+					);
+				} else {
+					if (!existingParcel[0].orderId) {
+						await db
+							.update(parcels)
+							.set({ orderId: order.id, updatedAt: new Date() })
+							.where(eq(parcels.id, existingParcel[0].id));
+					}
+				}
+			}
+			return true;
+		}
+		return false;
+	};
+
+	// POST /admin/reload-rules - Manually reload parsing rules
+	fastify.post(
+		"/admin/reload-rules",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (request: any, reply) => {
+			try {
+				const rules = await loadRemoteRules();
+				return { message: "Rules reloaded successfully", count: rules.length };
+			} catch (err: any) {
+				console.error("[ReloadRules] Failed:", err);
+				return reply.code(500).send({ error: `Failed to reload rules: ${err.message || err}` });
+			}
+		},
+	);
+
+	// POST /admin/sync-parcels - Trigger background track updates for all parcels
+	fastify.post(
+		"/admin/sync-parcels",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (request: any, reply) => {
+			try {
+				const allParcels = await db.select().from(parcels);
+				(async () => {
+					console.log(`[SyncParcels] Starting sync of ${allParcels.length} parcel(s)...`);
+					for (const p of allParcels) {
+						try {
+							await trackAndUpdateParcel(p.id);
+						} catch (e) {
+							console.error(`[SyncParcels] Failed to sync parcel ${p.id}:`, e);
+						}
+					}
+					console.log("[SyncParcels] Finished syncing all parcels.");
+				})().catch(err => console.error("[SyncParcels] Background error:", err));
+
+				return { message: `Started syncing ${allParcels.length} parcel(s) in the background` };
+			} catch (err: any) {
+				console.error("[SyncParcels] Failed:", err);
+				return reply.code(500).send({ error: `Failed to sync parcels: ${err.message || err}` });
+			}
+		},
+	);
+
+	// POST /admin/sync-orders - Trigger background sync updates for all orders
+	fastify.post(
+		"/admin/sync-orders",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (request: any, reply) => {
+			try {
+				const allOrders = await db.select().from(orders);
+				(async () => {
+					console.log(`[SyncOrders] Starting sync of ${allOrders.length} order(s)...`);
+					for (const o of allOrders) {
+						try {
+							await syncOrder(o.id);
+						} catch (e) {
+							console.error(`[SyncOrders] Failed to sync order ${o.id}:`, e);
+						}
+					}
+					console.log("[SyncOrders] Finished syncing all orders.");
+				})().catch(err => console.error("[SyncOrders] Background error:", err));
+
+				return { message: `Started syncing ${allOrders.length} order(s) in the background` };
+			} catch (err: any) {
+				console.error("[SyncOrders] Failed:", err);
+				return reply.code(500).send({ error: `Failed to sync orders: ${err.message || err}` });
+			}
+		},
+	);
+
+	// POST /admin/orders/:id/mark-delivered - Mark all parcels under an order as manually delivered
+	fastify.post(
+		"/admin/orders/:id/mark-delivered",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (request: any, reply) => {
+			const { id } = request.params;
+			try {
+				const orderParcels = await db
+					.select()
+					.from(parcels)
+					.where(eq(parcels.orderId, id));
+
+				if (orderParcels.length === 0) {
+					return { message: "No parcels linked to this order to mark as delivered" };
+				}
+
+				for (const p of orderParcels) {
+					await db
+						.update(parcels)
+						.set({
+							status: "delivered",
+							isManualStatus: 1,
+							updatedAt: new Date(),
+						})
+						.where(eq(parcels.id, p.id));
+				}
+
+				return { message: `Successfully marked ${orderParcels.length} parcel(s) as delivered manually` };
+			} catch (err: any) {
+				console.error("[OrderMarkDelivered] Failed:", err);
+				return reply.code(500).send({ error: `Failed to mark order parcels as delivered: ${err.message || err}` });
 			}
 		},
 	);

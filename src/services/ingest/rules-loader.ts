@@ -168,15 +168,6 @@ export function getActiveRules(): ParcelRule[] {
   return activeParcelRules;
 }
 
-export function startRulesRefreshInterval() {
-  const refreshInterval = 24 * 60 * 60 * 1000; // 24 hours
-  setInterval(async () => {
-    console.log("[RulesLoader] Running scheduled 24h remote rules refresh...");
-    await loadRemoteRules().catch(err => {
-      console.error("[RulesLoader] Scheduled remote rules refresh failed:", err);
-    });
-  }, refreshInterval);
-}
 
 function compileRulesFromJs(jsContent: string): any[] {
   const sandbox = { exports: {} as any, module: { exports: {} as any } };

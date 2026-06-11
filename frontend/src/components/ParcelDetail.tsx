@@ -65,6 +65,7 @@ interface Parcel {
 	addedAt: string;
 	updatedAt: string;
 	lastVehicle?: string | null;
+	isManualStatus?: number;
 }
 
 interface ParcelEvent {
@@ -338,6 +339,37 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 			alert(err instanceof Error ? err.message : "Error refreshing parcel");
 		} finally {
 			setRefreshing(false);
+		}
+	};
+
+	const handleToggleManualDelivery = async () => {
+		if (!parcel) return;
+		const makeDelivered = parcel.status !== "delivered";
+		try {
+			const res = await fetch(
+				`/api/v1/parcels/${parcel.id}?token=${getGuestToken()}`,
+				{
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						status: makeDelivered ? "delivered" : "sent",
+						isManualStatus: makeDelivered,
+					}),
+				},
+			);
+			if (res.ok) {
+				const updated = await res.json();
+				setParcel(updated);
+				// If we unmarked it as delivered, refresh to get its real tracking status
+				if (!makeDelivered) {
+					await handleRefresh();
+				}
+			} else {
+				alert("Failed to toggle delivery status");
+			}
+		} catch (err) {
+			console.error(err);
+			alert("Error toggling delivery status");
 		}
 	};
 
@@ -730,17 +762,40 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 						<div
 							style={{
 								marginLeft: "auto",
-								padding: "6px 12px",
-								borderRadius: "8px",
-								background: "rgba(255, 255, 255, 0.05)",
-								border: "1px solid var(--panel-border)",
-								textTransform: "uppercase",
-								fontSize: "12px",
-								fontWeight: 600,
-								letterSpacing: "0.5px",
+								display: "flex",
+								alignItems: "center",
+								gap: "10px",
 							}}
 						>
-							{STATUS_LABELS[parcel.status] || parcel.status}
+							{parcel.id !== 0 && (
+								<button
+									onClick={handleToggleManualDelivery}
+									className="btn btn-secondary btn-sm"
+									style={{
+										fontSize: "12px",
+										padding: "4px 10px",
+										borderColor: parcel.isManualStatus ? "#3b82f6" : "rgba(255,255,255,0.1)",
+										borderRadius: "6px",
+										cursor: "pointer",
+									}}
+								>
+									{parcel.status === "delivered" ? "Mark Not Delivered" : "Mark Delivered"}
+								</button>
+							)}
+							<div
+								style={{
+									padding: "6px 12px",
+									borderRadius: "8px",
+									background: "rgba(255, 255, 255, 0.05)",
+									border: "1px solid var(--panel-border)",
+									textTransform: "uppercase",
+									fontSize: "12px",
+									fontWeight: 600,
+									letterSpacing: "0.5px",
+								}}
+							>
+								{STATUS_LABELS[parcel.status] || parcel.status}
+							</div>
 						</div>
 					</div>
 

@@ -45,6 +45,7 @@ interface SettingsForm {
 	home_name: string;
 	home_latitude: string;
 	home_longitude: string;
+	home_postal_code: string;
 }
 
 interface Props {
@@ -74,6 +75,7 @@ export const ManageSettings: React.FC<Props> = ({
 					home_name: settingsForm.home_name,
 					home_latitude: parseFloat(settingsForm.home_latitude),
 					home_longitude: parseFloat(settingsForm.home_longitude),
+					home_postal_code: settingsForm.home_postal_code,
 				}),
 			});
 			if (res.ok) {
@@ -103,6 +105,7 @@ export const ManageSettings: React.FC<Props> = ({
 					...settingsForm,
 					home_latitude: data.lat.toString(),
 					home_longitude: data.lng.toString(),
+					home_postal_code: data.postalCode || settingsForm.home_postal_code || "",
 				});
 			} else {
 				alert("Location not found");
@@ -221,6 +224,28 @@ export const ManageSettings: React.FC<Props> = ({
 							placeholder="e.g. Home (Frankfurt)"
 							required
 						/>
+					</div>
+
+					<div className="form-group">
+						<label className="label">Home Postal Code</label>
+						<input
+							type="text"
+							className="input"
+							value={settingsForm.home_postal_code}
+							onChange={(e) =>
+								setSettingsForm({
+									...settingsForm,
+									home_postal_code: e.target.value,
+								})
+							}
+							placeholder="e.g. 55120"
+						/>
+						<small
+							className="text-muted"
+							style={{ fontSize: "11px", marginTop: "4px" }}
+						>
+							Optional. Used by GLS and some other couriers to verify recipient identity.
+						</small>
 					</div>
 
 					<div className="form-row">
