@@ -20,7 +20,8 @@ interface Order {
 	source: string;
 	orderNumber: string;
 	status: string;
-	createdAt: string;
+	placedAt?: string;
+	addedAt: string;
 	updatedAt: string;
 }
 
@@ -289,8 +290,13 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack, onSel
 					<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
 						<div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
 							<Calendar size={14} className="text-blue-400" />
-							<span style={{ color: "var(--text-muted)" }}>Created</span>
-							<span style={{ marginLeft: "auto" }}>{fmtDate(order.createdAt)}</span>
+							<span style={{ color: "var(--text-muted)" }}>Placed</span>
+							<span style={{ marginLeft: "auto" }}>{fmtDate(order.placedAt)}</span>
+						</div>
+						<div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
+							<Calendar size={14} className="text-blue-400" />
+							<span style={{ color: "var(--text-muted)" }}>Added</span>
+							<span style={{ marginLeft: "auto" }}>{fmtDate(order.addedAt)}</span>
 						</div>
 						<div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
 							<RefreshCw size={14} className="text-blue-400" />

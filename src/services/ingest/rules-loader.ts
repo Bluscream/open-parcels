@@ -51,7 +51,10 @@ export async function loadRemoteRules(): Promise<any[]> {
 
     if (url.startsWith("file://")) {
       try {
-        const filePath = decodeURIComponent(url.substring(7));
+        let filePath = decodeURIComponent(url.substring(7));
+        if (filePath.startsWith("/") && filePath[2] === ":") {
+          filePath = filePath.substring(1);
+        }
         fileName = path.basename(filePath);
         console.log(`[RulesLoader] Loading local file rules from: ${filePath}`);
         jsContent = await fs.readFile(filePath, "utf-8");

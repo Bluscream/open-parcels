@@ -13,9 +13,9 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
-import { generateCurvedPath, getTransportMarkerIcon, iconHome } from "../utils/mapIcons";
+import { generateCurvedPath, getTransportMarkerIcon, iconHome, determineTransportMethod } from "../utils/mapIcons";
 import { AnimatedRoute } from "./AnimatedRoute";
-import { SharedMap } from "./SharedMap";
+import { SharedMap, useMapFilters } from "./SharedMap";
 import { SplitContainer } from "./SplitContainer";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
@@ -35,11 +35,73 @@ interface Parcel {
 	lng?: number;
 	estimatedDelivery?: string;
 	transportMethod?: string;
+	events?: any[];
 }
 
 interface MapDashboardProps {
 	onSelectParcel?: (trackingNumber: string) => void;
 }
+
+const DashboardMapContent: React.FC<{
+	homeCoords: { lat: number; lng: number } | null;
+	activeParcels: Parcel[];
+	onSelectParcel?: (trackingNumber: string) => void;
+	getStatusIcon: (status: string) => React.ReactNode;
+}> = ({ homeCoords, activeParcels, onSelectParcel, getStatusIcon }) => {
+	const { filters } = useMapFilters();
+
+	return (
+		<>
+			{homeCoords && filters.home && (
+				<Marker position={[homeCoords.lat, homeCoords.lng]} icon={iconHome} zIndexOffset={-100}>
+					<Popup className="custom-popup">
+						<div className="popup-content">
+							<strong style={{ color: "#10b981" }}>Home</strong>
+							<div className="status-info">Destination</div>
+						</div>
+					</Popup>
+				</Marker>
+			)}
+			{activeParcels
+				.filter((p) => p.lat && p.lng)
+				.map((parcel) => (
+					<div key={parcel.id}>
+						{homeCoords && filters.futurePath && (
+							<AnimatedRoute
+								positions={generateCurvedPath([
+									[parcel.lat!, parcel.lng!],
+									[homeCoords.lat, homeCoords.lng],
+								]) as [number, number][]}
+								color="#a78bfa"
+							/>
+						)}
+						{filters.parcel && (
+							<Marker position={[parcel.lat!, parcel.lng!]} icon={getTransportMarkerIcon(parcel.transportMethod)} zIndexOffset={1000}>
+								<Popup className="custom-popup">
+									<div className="popup-content">
+										<strong
+											className="tracking-number"
+											style={{ cursor: "pointer" }}
+											onClick={() => onSelectParcel?.(parcel.trackingNumber)}
+										>
+											{parcel.name
+												? `${parcel.name} (${parcel.trackingNumber})`
+												: parcel.trackingNumber}
+										</strong>
+										<div className="courier-info">{parcel.courier}</div>
+										<div className="status-info">
+											{getStatusIcon(parcel.status)}
+											<span>{parcel.status.toUpperCase()}</span>
+										</div>
+									</div>
+								</Popup>
+							</Marker>
+						)}
+					</div>
+				))}
+		</>
+	);
+};
 
 export const MapDashboard: React.FC<MapDashboardProps> = ({
 	onSelectParcel,
@@ -55,7 +117,6 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 			})
 			.then((data) => {
 				if (Array.isArray(data)) {
-					// Map backend fields to frontend interface if necessary
 					setParcels(
 						data.map((p: any) => ({
 							...p,
@@ -64,8 +125,8 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							estimatedDelivery: p.estimatedDeliveryStart
 								? new Date(p.estimatedDeliveryStart).toLocaleDateString()
 								: "Pending",
-							// A heuristic: if courier is explicitly a flight/ship, or rely on a DB field later
-							transportMethod: p.courier?.toLowerCase().includes("air") ? "plane" : "unknown"
+							events: p.events,
+							transportMethod: p.lastVehicle || determineTransportMethod(p.events || [])
 						})),
 					);
 				}
@@ -138,51 +199,12 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 								: undefined
 						}
 					>
-						{homeCoords && (
-							<Marker position={[homeCoords.lat, homeCoords.lng]} icon={iconHome}>
-								<Popup className="custom-popup">
-									<div className="popup-content">
-										<strong style={{ color: "#10b981" }}>Home</strong>
-										<div className="status-info">Destination</div>
-									</div>
-								</Popup>
-							</Marker>
-						)}
-						{activeParcels
-							.filter((p) => p.lat && p.lng)
-							.map((parcel) => (
-								<div key={parcel.id}>
-									{homeCoords && (
-										<AnimatedRoute
-											positions={generateCurvedPath([
-												[parcel.lat!, parcel.lng!],
-												[homeCoords.lat, homeCoords.lng],
-											]) as [number, number][]}
-											color="#a78bfa"
-										/>
-									)}
-									<Marker position={[parcel.lat!, parcel.lng!]} icon={getTransportMarkerIcon(parcel.transportMethod)}>
-										<Popup className="custom-popup">
-											<div className="popup-content">
-												<strong
-													className="tracking-number"
-													style={{ cursor: "pointer" }}
-													onClick={() => onSelectParcel?.(parcel.trackingNumber)}
-												>
-													{parcel.name
-														? `${parcel.name} (${parcel.trackingNumber})`
-														: parcel.trackingNumber}
-												</strong>
-												<div className="courier-info">{parcel.courier}</div>
-												<div className="status-info">
-													{getStatusIcon(parcel.status)}
-													<span>{parcel.status.toUpperCase()}</span>
-												</div>
-											</div>
-										</Popup>
-									</Marker>
-								</div>
-							))}
+						<DashboardMapContent
+							homeCoords={homeCoords}
+							activeParcels={activeParcels}
+							onSelectParcel={onSelectParcel}
+							getStatusIcon={getStatusIcon}
+						/>
 					</SharedMap>
 				</div>
 			</div>

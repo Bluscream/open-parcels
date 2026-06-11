@@ -75,7 +75,8 @@ async function main() {
 							source: platformName,
 							orderNumber: orderNo,
 							status: trackingData.type || "ordered",
-							createdAt: new Date(),
+							placedAt: mail.date || null,
+							addedAt: new Date(),
 							updatedAt: new Date(),
 						})
 						.returning();
@@ -133,7 +134,7 @@ async function main() {
 											status: "ordered",
 											courier: carrier || platformName,
 											orderId: dbOrderId,
-											createdAt: new Date(),
+											addedAt: new Date(),
 											updatedAt: new Date(),
 										})
 										.returning();
@@ -180,7 +181,7 @@ async function main() {
 							name: trackingData.items?.[0]?.name || null,
 							courier: courierName,
 							status: trackingData.type || "ordered",
-							createdAt: new Date(),
+							addedAt: new Date(),
 							updatedAt: new Date(),
 						})
 						.returning();

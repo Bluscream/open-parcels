@@ -23,7 +23,9 @@ export function extractLocationName(text: string): string | null {
 			"today", "tomorrow",
 			"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
 			"hermes", "dhl", "ups", "fedex",
-			"depot", "hub", "sorting", "delivery",
+			"depot", "hub", "sorting", "delivery", "transit", "facility", "center",
+			"filiale", "kürze", "region", "empfänger", "zustellbasis", "zustellfahrzeug",
+			"origin", "outlet", "parcel", "package"
 		];
 		if (!blacklist.includes(word)) return match[1];
 	}

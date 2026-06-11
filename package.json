@@ -32,7 +32,8 @@
     "imap-simple": "^5.1.0",
     "mail-parser-ts": "file:./packages/mail-parser-ts",
     "mailparser": "^3.7.1",
-    "playwright": "^1.42.1"
+    "playwright": "^1.42.1",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@types/imap-simple": "^4.2.9",

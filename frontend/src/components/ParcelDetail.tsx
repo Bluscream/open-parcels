@@ -25,13 +25,14 @@ import {
 import { getGuestToken } from "../utils/auth";
 import {
 	generateCurvedPath,
-	iconCurrent,
 	iconHome,
 	iconIntermediate,
 	iconSource,
+	determineTransportMethod,
+	getTransportMarkerIcon,
 } from "../utils/mapIcons";
 import { AnimatedRoute } from "./AnimatedRoute";
-import { SharedMap } from "./SharedMap";
+import { SharedMap, useMapFilters } from "./SharedMap";
 import { SplitContainer } from "./SplitContainer";
 
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
@@ -45,6 +46,7 @@ const STATUS_LABELS: Record<string, string> = {
 	ordered: "Ordered",
 	sent: "Dispatched",
 	arriving: "Arriving",
+	pickup: "Ready for Pickup",
 	delivered: "Delivered",
 	"return-accepted": "Return Accepted",
 };
@@ -62,8 +64,9 @@ interface Parcel {
 	lng?: number;
 	estimatedDeliveryStart?: string;
 	estimatedDeliveryEnd?: string;
-	createdAt: string;
+	addedAt: string;
 	updatedAt: string;
+	lastVehicle?: string | null;
 }
 
 interface ParcelEvent {
@@ -80,6 +83,108 @@ interface ParcelDetailProps {
 	trackingNumber: string;
 	onBack: () => void;
 }
+
+const ParcelDetailMapContent: React.FC<{
+	routePoints: { lat: number; lng: number; description: string; timestamp: string }[];
+	home: { lat: number; lng: number; name: string };
+	isDelivered: boolean;
+	latestPoint: { lat: number; lng: number } | null;
+	formatDate: (dateStr: string) => string;
+	lastVehicle?: string | null;
+}> = ({ routePoints, home, isDelivered, latestPoint, formatDate, lastVehicle }) => {
+	const { filters } = useMapFilters();
+
+	return (
+		<>
+			{/* Draw Route Polyline connecting geocoded timeline events (Active Flow) */}
+			{routePoints.length > 1 && filters.takenPath && (
+				<AnimatedRoute
+					positions={generateCurvedPath(
+						routePoints.map((p) => [p.lat, p.lng]) as [number, number][]
+					)}
+					color="#3b82f6"
+					dashArray="0, 0"
+				/>
+			)}
+
+			{/* Draw Polyline to Home Destination if not delivered (Future Flow - More Transparent) */}
+			{latestPoint && !isDelivered && filters.futurePath && (
+				<AnimatedRoute
+					positions={generateCurvedPath([
+						[latestPoint.lat, latestPoint.lng],
+						[home.lat, home.lng],
+					]) as [number, number][]}
+					color="#a78bfa"
+				/>
+			)}
+
+			{/* Markers for all intermediate points on the route */}
+			{routePoints.map((point, idx) => {
+				const isSource = idx === 0;
+				const isCurrent = idx === routePoints.length - 1;
+
+				if (isSource && !filters.source) return null;
+				if (isCurrent && !filters.parcel) return null;
+				if (!isSource && !isCurrent && !filters.stops) return null;
+
+				const markerIcon = isSource
+					? iconSource
+					: isCurrent
+						? getTransportMarkerIcon(lastVehicle || determineTransportMethod(routePoints))
+						: iconIntermediate;
+
+				return (
+					<Marker key={idx} position={[point.lat, point.lng]} icon={markerIcon} zIndexOffset={isCurrent ? 1000 : undefined}>
+						<Popup className="custom-popup">
+							<div className="popup-content">
+								<strong className="tracking-number">
+									{isSource
+										? "🟢 Source Depot"
+										: isCurrent
+											? "📍 Current Location"
+											: "📦 Intermediate Stop"}
+								</strong>
+								<div style={{ fontSize: "13px", margin: "4px 0" }}>
+									{point.description}
+								</div>
+								<div
+									style={{
+										fontSize: "11px",
+										color: "var(--text-muted)",
+									}}
+								>
+									{formatDate(point.timestamp)}
+								</div>
+							</div>
+						</Popup>
+					</Marker>
+				);
+			})}
+
+			{/* Marker for Destination Home */}
+			{!isDelivered && filters.home && (
+				<Marker position={[home.lat, home.lng]} icon={iconHome} zIndexOffset={-100}>
+					<Popup className="custom-popup">
+						<div className="popup-content">
+							<strong className="tracking-number">
+								🏠 Destination ({home.name})
+							</strong>
+							<div
+								style={{
+									fontSize: "12px",
+									color: "var(--text-muted)",
+									marginTop: "4px",
+								}}
+							>
+								Shipment is heading here.
+							</div>
+						</div>
+					</Popup>
+				</Marker>
+			)}
+		</>
+	);
+};
 
 export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 	trackingNumber,
@@ -221,12 +326,9 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 				// For non-db guest one-time lookups, we just query the endpoint again (which aggregates freshly)
 				await fetchDetails();
 			} else {
-				// Trigger a live track update using the admin token
+				// Trigger a live track update (GET does not require admin token)
 				const res = await fetch(
 					`/api/v1/parcels/${parcel.id}/track?token=${getGuestToken()}`,
-					{
-						method: "POST",
-					},
 				);
 				if (!res.ok) {
 					throw new Error("Failed to refresh tracking information");
@@ -273,6 +375,8 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 				return <Truck size={size} className="text-yellow-400" />;
 			case "arriving":
 				return <Truck size={size} className="text-orange-400" />;
+			case "pickup":
+				return <MapPin size={size} className="text-purple-400" />;
 			case "delivered":
 				return <CheckCircle size={size} className="text-green-400" />;
 			case "return-accepted":
@@ -287,6 +391,33 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 			dateStyle: "medium",
 			timeStyle: "short",
 		});
+	};
+
+	const getRelativeTime = (dateStr: string) => {
+		const date = new Date(dateStr);
+		if (Number.isNaN(date.getTime())) return "";
+		const diffMs = date.getTime() - Date.now();
+		const diffSeconds = Math.round(diffMs / 1000);
+		const diffMinutes = Math.round(diffSeconds / 60);
+		const diffHours = Math.round(diffMinutes / 60);
+		const diffDays = Math.round(diffHours / 24);
+
+		const absDays = Math.abs(diffDays);
+		const absHours = Math.abs(diffHours);
+		const absMinutes = Math.abs(diffMinutes);
+
+		let text = "";
+		if (absDays >= 1) {
+			text = absDays === 1 ? "1 day" : `${absDays} days`;
+		} else if (absHours >= 1) {
+			text = absHours === 1 ? "1 hour" : `${absHours} hours`;
+		} else if (absMinutes >= 1) {
+			text = absMinutes === 1 ? "1 minute" : `${absMinutes} minutes`;
+		} else {
+			return "just now";
+		}
+
+		return diffMs > 0 ? `in ${text}` : `${text} ago`;
 	};
 
 	if (loading) {
@@ -350,7 +481,7 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 	const home = homeLocation || DEFAULT_HOME;
 
 	// Calculate route points from events (oldest first for line direction)
-	const routePoints = [...events]
+	const rawRoutePoints = [...events]
 		.filter((e) => e.lat !== null && e.lat !== undefined && e.lng !== null && e.lng !== undefined)
 		.sort(
 			(a, b) =>
@@ -363,6 +494,19 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 			timestamp: e.timestamp,
 		}))
 		.filter((e) => !Number.isNaN(e.lat) && !Number.isNaN(e.lng));
+
+	// Filter out consecutive duplicate coordinates, keeping only the last one
+	const routePoints = [];
+	for (let i = 0; i < rawRoutePoints.length; i++) {
+		const current = rawRoutePoints[i];
+		if (i < rawRoutePoints.length - 1) {
+			const next = rawRoutePoints[i + 1];
+			if (current.lat === next.lat && current.lng === next.lng) {
+				continue;
+			}
+		}
+		routePoints.push(current);
+	}
 
 	const hasLocation =
 		routePoints.length > 0 ||
@@ -639,15 +783,15 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 							<div style={{ fontSize: "15px", fontWeight: 500 }}>
 								{isDelivered ? (
 									events.length > 0
-										? formatDate(events[0].timestamp)
+										? `${formatDate(events[0].timestamp)} (${getRelativeTime(events[0].timestamp)})`
 										: parcel.updatedAt
-											? formatDate(parcel.updatedAt)
+											? `${formatDate(parcel.updatedAt)} (${getRelativeTime(parcel.updatedAt)})`
 											: "Delivered"
 								) : parcel.estimatedDeliveryStart ? (
-									new Date(parcel.estimatedDeliveryStart).toLocaleDateString(
+									`${new Date(parcel.estimatedDeliveryStart).toLocaleDateString(
 										undefined,
 										{ dateStyle: "long" },
-									)
+									)} (${getRelativeTime(parcel.estimatedDeliveryStart)})`
 								) : (
 									"Pending Information"
 								)}
@@ -804,88 +948,14 @@ export const ParcelDetail: React.FC<ParcelDetailProps> = ({
 										: undefined
 								}
 							>
-
-								{/* Draw Route Polyline connecting geocoded timeline events (Active Flow) */}
-								{routePoints.length > 1 && (
-									<AnimatedRoute
-										positions={generateCurvedPath(
-											routePoints.map((p) => [p.lat, p.lng]) as [number, number][]
-										)}
-										color="#3b82f6"
-										dashArray="0, 0"
-									/>
-								)}
-
-								{/* Draw Polyline to Home Destination if not delivered (Future Flow - More Transparent) */}
-								{latestPoint && !isDelivered && (
-									<AnimatedRoute
-										positions={generateCurvedPath([
-											[latestPoint.lat, latestPoint.lng],
-											[home.lat, home.lng],
-										]) as [number, number][]}
-										color="#a78bfa"
-									/>
-								)}
-
-								{/* Markers for all intermediate points on the route */}
-								{routePoints.map((point, idx) => {
-									const isSource = idx === 0;
-									const isCurrent = idx === routePoints.length - 1;
-									const markerIcon = isSource
-										? iconSource
-										: isCurrent
-											? iconCurrent
-											: iconIntermediate;
-
-									return (
-										<Marker key={idx} position={[point.lat, point.lng]} icon={markerIcon}>
-											<Popup className="custom-popup">
-												<div className="popup-content">
-													<strong className="tracking-number">
-														{isSource
-															? "🟢 Source Depot"
-															: isCurrent
-																? "📍 Current Location"
-																: "📦 Intermediate Stop"}
-													</strong>
-													<div style={{ fontSize: "13px", margin: "4px 0" }}>
-														{point.description}
-													</div>
-													<div
-														style={{
-															fontSize: "11px",
-															color: "var(--text-muted)",
-														}}
-													>
-														{formatDate(point.timestamp)}
-													</div>
-												</div>
-											</Popup>
-										</Marker>
-									);
-								})}
-
-								{/* Marker for Destination Home */}
-								{!isDelivered && (
-									<Marker position={[home.lat, home.lng]} icon={iconHome}>
-										<Popup className="custom-popup">
-											<div className="popup-content">
-												<strong className="tracking-number">
-													🏠 Destination ({home.name})
-												</strong>
-												<div
-													style={{
-														fontSize: "12px",
-														color: "var(--text-muted)",
-														marginTop: "4px",
-													}}
-												>
-													Shipment is heading here.
-												</div>
-											</div>
-										</Popup>
-									</Marker>
-								)}
+								<ParcelDetailMapContent
+									routePoints={routePoints}
+									home={home}
+									isDelivered={isDelivered}
+									latestPoint={latestPoint}
+									formatDate={formatDate}
+									lastVehicle={parcel.lastVehicle}
+								/>
 							</SharedMap>
 						</div>
 					) : (

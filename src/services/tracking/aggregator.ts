@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { credentials, orders, parcelEvents, parcels } from "../../db/schema";
-import { extractLocationName, geocodeLocation } from "../../utils/geocoder";
+import { extractLocationName, geocodeLocation, isLikelyLocation } from "../../utils/geocoder";
 import { AmazonLiveScraper } from "../scrapers/amazon-live-scraper";
 import { requestQueue } from "../../utils/requestQueue";
-import { syncParcelStateFromEvents } from "./sync";
+import { syncParcelStateFromEvents, determineSingleEventVehicle } from "./sync";
 
 export interface TrackingEventData {
 	date: string;
@@ -56,14 +56,35 @@ function resolveUniversalLookupStatus(r: {
 	is_return?: boolean;
 	status?: string;
 	estimated_delivery?: { status?: string };
+	events?: { status?: string }[];
 }): string {
 	// Most reliable: boolean flags
 	if (r.is_return === true) return "return";
 	if (r.delivered === true) return "delivered";
 
+	// Check latest event for precise state
+	const latestEvent = r.events && r.events.length > 0 ? r.events[r.events.length - 1] : null;
+	const latestDesc = (latestEvent?.status ?? "").toLowerCase();
+
+	const isPickupReady = (
+		latestDesc.includes("abholbereit") ||
+		latestDesc.includes("bereit zur abholung") ||
+		latestDesc.includes("available for pickup") ||
+		latestDesc.includes("ready for pickup") ||
+		latestDesc.includes("bereitgestellt") ||
+		latestDesc === "pickup"
+	) && !(
+		latestDesc.includes("shortly") ||
+		latestDesc.includes("in kürze") ||
+		latestDesc.includes("bald")
+	);
+
+	if (isPickupReady) return "pickup";
+
 	// Second most reliable: normalized status on estimated_delivery object
 	const edStatus = r.estimated_delivery?.status?.toLowerCase() ?? "";
-	if (edStatus === "pickup" || edStatus === "delivered") return "delivered";
+	if (edStatus === "delivered") return "delivered";
+	if (edStatus === "pickup") return "pickup";
 	if (edStatus === "out_for_delivery" || edStatus === "delivery") return "arriving";
 	if (edStatus === "in_transit") return "sent";
 	if (edStatus === "ordered" || edStatus === "pending") return "ordered";
@@ -72,10 +93,13 @@ function resolveUniversalLookupStatus(r: {
 	const rawStatus = (r.status ?? "").toLowerCase();
 	if (
 		rawStatus.includes("zugestellt") ||
-		rawStatus.includes("delivered") ||
-		rawStatus === "pickup"
+		rawStatus.includes("delivered")
 	) return "delivered";
-	if (rawStatus.includes("unterwegs") || rawStatus.includes("out for delivery")) return "arriving";
+	if (
+		rawStatus.includes("unterwegs") ||
+		rawStatus.includes("out for delivery")
+	) return "arriving";
+	if (rawStatus === "pickup") return "pickup";
 	if (rawStatus.includes("return") || rawStatus.includes("rücksendung")) return "return";
 
 	return "sent";
@@ -485,12 +509,12 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 
 	const isRecycled = lastEventDate &&
 		trackingInfo.status === "delivered" &&
-		lastEventDate.getTime() < parcel.createdAt.getTime() - 30 * 24 * 60 * 60 * 1000;
+		lastEventDate.getTime() < parcel.addedAt.getTime() - 30 * 24 * 60 * 60 * 1000;
 
 	if (isRecycled) {
 		console.warn(
 			`[Tracking] Reused/recycled tracking number detected for ${parcel.trackingNumber}. ` +
-			`Tracking returns 'delivered' on ${lastEventDate.toISOString()} but parcel was created on ${parcel.createdAt.toISOString()}. Ignoring tracking updates.`,
+			`Tracking returns 'delivered' on ${lastEventDate.toISOString()} but parcel was created on ${parcel.addedAt.toISOString()}. Ignoring tracking updates.`,
 		);
 		return true;
 	}
@@ -570,7 +594,7 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 			let eventLat: number | null = null;
 			let eventLng: number | null = null;
 
-			let locationName = ev.location || null;
+			let locationName = (ev.location && isLikelyLocation(ev.location)) ? ev.location : null;
 			if (!locationName && ev.description) locationName = extractLocationName(ev.description);
 			if (!locationName && ev.status) locationName = extractLocationName(ev.status);
 			if (locationName) {
@@ -583,11 +607,12 @@ export async function trackAndUpdateParcel(parcelId: number): Promise<boolean> {
 
 			await db.insert(parcelEvents).values({
 				parcelId,
-				location: ev.location || null,
+				location: locationName,
 				description: ev.description || ev.status,
 				timestamp: evDate,
 				lat: eventLat,
 				lng: eventLng,
+				vehicle: determineSingleEventVehicle(ev.description || ev.status, locationName),
 				source: ev.source || trackingInfo.courier || null,
 			});
 		}
