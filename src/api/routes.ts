@@ -1,7 +1,7 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: fastify handlers use any for request/reply */
 import fs from "node:fs";
 import path from "node:path";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db";
 import { client } from "../db";
@@ -596,7 +596,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			},
 		},
 		async (_request, _reply) => {
-			const allOrders = await db.select().from(orders);
+			const allOrders = await db.select().from(orders).orderBy(desc(orders.placedAt));
 			const counts = await db
 				.select({
 					orderId: parcels.orderId,
