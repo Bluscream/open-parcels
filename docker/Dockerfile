@@ -42,8 +42,8 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 COPY --from=backend-builder /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=backend-builder /app/src/db/schema.ts ./src/db/schema.ts
 
-COPY docker/start.sh ./docker/start.sh
-RUN chmod +x ./docker/start.sh
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
 
 # Setup env for production
 ENV NODE_ENV=production
@@ -51,4 +51,4 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["./docker/start.sh"]
+CMD ["./start.sh"]
