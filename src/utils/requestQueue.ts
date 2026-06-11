@@ -27,6 +27,21 @@ class RequestQueue {
 			domain = url;
 		}
 
+		// Bypass rate limiting entirely for local/private network hosts and tailscale domains
+		const isLocal =
+			domain === "localhost" ||
+			domain === "127.0.0.1" ||
+			domain === "::1" ||
+			domain.startsWith("172.") ||
+			domain.startsWith("192.168.") ||
+			domain.startsWith("10.") ||
+			domain.endsWith(".local") ||
+			domain.endsWith(".ts.net");
+
+		if (isLocal) {
+			return fn();
+		}
+
 		return new Promise<T>((resolve, reject) => {
 			if (!this.queues.has(domain)) {
 				this.queues.set(domain, []);

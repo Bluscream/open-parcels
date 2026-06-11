@@ -1,6 +1,6 @@
 {
     "name":  "open-parcels",
-    "version":  "1.0.2",
+    "version":  "1.0.3",
     "description":  "Self-hostable service that ingests and tracks parcels, returns and orders.",
     "main":  "dist/server.js",
     "scripts":  {
