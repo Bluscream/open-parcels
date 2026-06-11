@@ -24,6 +24,17 @@ export function determineSingleEventVehicle(description: string, location?: stri
 }
 
 export async function syncParcelStateFromEvents(parcelId: string): Promise<void> {
+	const parcelQuery = await db
+		.select()
+		.from(parcels)
+		.where(eq(parcels.id, parcelId))
+		.limit(1);
+
+	if (parcelQuery.length > 0 && parcelQuery[0].isManualStatus) {
+		console.log(`[Sync] Skipping event sync for manually-overridden parcel: ${parcelId}`);
+		return;
+	}
+
 	const events = await db
 		.select()
 		.from(parcelEvents)
