@@ -17,8 +17,9 @@ import { ManageOverview } from "./ManageOverview";
 import { ManageSettings } from "./ManageSettings";
 
 interface CredentialService {
-	id: number;
+	id: string;
 	service: string;
+	username?: string;
 	updatedAt: string;
 }
 

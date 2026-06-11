@@ -7,8 +7,9 @@ import { useState } from "react";
 import { DataTable } from "./DataTable";
 
 interface CredentialService {
-	id: number;
+	id: string;
 	service: string;
+	username?: string;
 	updatedAt: string;
 }
 
@@ -25,6 +26,7 @@ export const ManageCredentials: React.FC<Props> = ({
 }) => {
 	const [showCredModal, setShowCredModal] = useState<boolean>(false);
 	const [credForm, setCredForm] = useState({
+		id: "",
 		service: "IMAP",
 		username: "",
 		password: "",
@@ -59,12 +61,17 @@ export const ManageCredentials: React.FC<Props> = ({
 			const res = await fetch(`/api/v1/credentials?token=${token}`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ service: serviceName, data: serviceData }),
+				body: JSON.stringify({
+					id: credForm.id || undefined,
+					service: serviceName,
+					data: serviceData,
+				}),
 			});
 
 			if (res.ok) {
 				setShowCredModal(false);
 				setCredForm({
+					id: "",
 					service: "IMAP",
 					username: "",
 					password: "",
@@ -80,7 +87,7 @@ export const ManageCredentials: React.FC<Props> = ({
 		}
 	};
 
-	const deleteCredentials = async (id: number) => {
+	const deleteCredentials = async (id: string) => {
 		if (
 			!confirm(
 				"Are you sure you want to delete these credentials? modular scrapers for this service will stop working.",
@@ -97,12 +104,13 @@ export const ManageCredentials: React.FC<Props> = ({
 		}
 	};
 
-	const editCredentials = async (service: string) => {
+	const editCredentials = async (id: string) => {
 		try {
-			const res = await fetch(`/api/v1/credentials/${service}?token=${token}`);
+			const res = await fetch(`/api/v1/credentials/${id}?token=${token}`);
 			if (res.ok) {
 				const cred = await res.json();
 				setCredForm({
+					id: cred.id,
 					service: cred.service,
 					username: cred.data.username || "",
 					password: cred.data.password || "",
@@ -131,6 +139,10 @@ export const ManageCredentials: React.FC<Props> = ({
 				</span>
 			),
 		}),
+		ch.accessor("username", {
+			header: "Account / Username",
+			cell: info => info.getValue() || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>None</span>,
+		}),
 		ch.accessor("updatedAt", {
 			header: "Last Modified",
 			cell: info => new Date(info.getValue()).toLocaleString(),
@@ -140,7 +152,7 @@ export const ManageCredentials: React.FC<Props> = ({
 			header: () => <span style={{ float: "right" }}>Actions</span>,
 			cell: ({ row }) => (
 				<div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-					<button className="btn-icon-sm" onClick={() => editCredentials(row.original.service)} title="Edit">
+					<button className="btn-icon-sm" onClick={() => editCredentials(row.original.id)} title="Edit">
 						<Edit size={14} />
 					</button>
 					<button className="btn-icon-sm text-red" onClick={() => deleteCredentials(row.original.id)} title="Delete">
@@ -161,7 +173,19 @@ export const ManageCredentials: React.FC<Props> = ({
 					<h3 className="panel-title" style={{ margin: 0 }}>
 						Scraper Service Credentials
 					</h3>
-					<button className="btn btn-primary btn-sm" onClick={() => setShowCredModal(true)}>
+					<button className="btn btn-primary btn-sm" onClick={() => {
+						setCredForm({
+							id: "",
+							service: "IMAP",
+							username: "",
+							password: "",
+							otpSecret: "",
+							host: "",
+							port: "",
+							tls: "true",
+						});
+						setShowCredModal(true);
+					}}>
 						<Plus size={14} /> Setup Service
 					</button>
 				</div>

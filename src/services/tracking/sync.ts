@@ -23,7 +23,7 @@ export function determineSingleEventVehicle(description: string, location?: stri
 	return "unknown";
 }
 
-export async function syncParcelStateFromEvents(parcelId: number): Promise<void> {
+export async function syncParcelStateFromEvents(parcelId: string): Promise<void> {
 	const events = await db
 		.select()
 		.from(parcelEvents)
@@ -47,7 +47,7 @@ export async function syncParcelStateFromEvents(parcelId: number): Promise<void>
 
 	// Sort events: most recent first (by timestamp descending, then id descending as fallback)
 	const sortedEvents = [...events].sort(
-		(a, b) => b.timestamp.getTime() - a.timestamp.getTime() || b.id - a.id
+		(a, b) => b.timestamp.getTime() - a.timestamp.getTime() || b.id.localeCompare(a.id)
 	);
 
 	const latestEvent = sortedEvents[0];
