@@ -190,7 +190,9 @@ function App() {
 							: data.trackingNumber;
 						const statusDesc = data.calloutMessage
 							? `${data.calloutMessage}: ${data.secondaryStatus}`
-							: `Driver is ${data.stopsRemaining} stops away. Status: ${data.status}`;
+							: data.stopsRemaining !== undefined && data.stopsRemaining !== null
+							? `Driver is ${data.stopsRemaining} stops away. Status: ${data.status}`
+							: `Status: ${data.status}`;
 
 						const toastId = Date.now();
 						setToasts((prev) => [
