@@ -475,10 +475,6 @@ export async function trackAndUpdateParcel(parcelId: string): Promise<boolean> {
 	if (found.length === 0) return false;
 
 	const parcel = found[0];
-	if (parcel.isManualStatus) {
-		console.log(`[Tracking] Skipping background update for manually-overridden parcel: ${parcel.trackingNumber} (${parcel.status})`);
-		return true;
-	}
 	const isAmazon =
 		(parcel.courier && parcel.courier.toLowerCase() === "amazon") ||
 		parcel.trackingNumber?.toLowerCase().startsWith("de");
@@ -551,9 +547,12 @@ export async function trackAndUpdateParcel(parcelId: string): Promise<boolean> {
 		estimatedDeliveryStart?: Date | null;
 	} = {
 		courier: trackingInfo.courier,
-		status: trackingInfo.status,
 		updatedAt: new Date(),
 	};
+
+	if (!parcel.isManualStatus) {
+		updateData.status = trackingInfo.status;
+	}
 
 	if (!parcel.name && trackingInfo.itemName) {
 		updateData.name = trackingInfo.itemName;

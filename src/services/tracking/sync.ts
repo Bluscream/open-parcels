@@ -30,11 +30,6 @@ export async function syncParcelStateFromEvents(parcelId: string): Promise<void>
 		.where(eq(parcels.id, parcelId))
 		.limit(1);
 
-	if (parcelQuery.length > 0 && parcelQuery[0].isManualStatus) {
-		console.log(`[Sync] Skipping event sync for manually-overridden parcel: ${parcelId}`);
-		return;
-	}
-
 	const events = await db
 		.select()
 		.from(parcelEvents)
@@ -103,20 +98,23 @@ export async function syncParcelStateFromEvents(parcelId: string): Promise<void>
 	const determinedVehicle = eventWithVehicle?.vehicle || "unknown";
 
 	const updateData: {
-		status: string;
+		status?: string;
 		lat: number | null;
 		lng: number | null;
 		lastVehicle: string;
 		lastEventDescription: string | null;
 		updatedAt: Date;
 	} = {
-		status: determinedStatus,
 		lat: null,
 		lng: null,
 		lastVehicle: determinedVehicle,
 		lastEventDescription: latestEvent.description || null,
 		updatedAt: new Date(),
 	};
+
+	if (parcelQuery.length > 0 && !parcelQuery[0].isManualStatus) {
+		updateData.status = determinedStatus;
+	}
 
 	// Get coordinates from the latest event if it has them
 	if (latestEvent.lat !== null && latestEvent.lat !== undefined) {
