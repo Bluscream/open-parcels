@@ -2,7 +2,7 @@
 /* biome-ignore-all lint/a11y: disable a11y rules for frontend prototype */
 import { Map, Package, Shield, ShoppingBag, Plus } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { ManageInterface } from "./components/ManageInterface";
 import { MapDashboard } from "./components/MapDashboard";
 import { OrderDetail } from "./components/OrderDetail";
@@ -106,6 +106,25 @@ function parseTrackingAndOrder(input: string) {
 function App() {
 	const [currentPath, setCurrentPath] = useState(window.location.pathname);
 	const [toasts, setToasts] = useState<ToastInfo[]>([]);
+	const parcelStatusesRef = useRef<Record<string, string>>({});
+
+	useEffect(() => {
+		const token = getGuestToken();
+		fetch(`/api/v1/parcels?token=${token}`)
+			.then((res) => res.json())
+			.then((data) => {
+				if (Array.isArray(data)) {
+					const statuses: Record<string, string> = {};
+					for (const p of data) {
+						if (p.trackingNumber && p.status) {
+							statuses[p.trackingNumber] = p.status;
+						}
+					}
+					parcelStatusesRef.current = statuses;
+				}
+			})
+			.catch((err) => console.error("[WS-Client] Failed to fetch initial parcel statuses:", err));
+	}, []);
 
 	// Add Parcel Modal States
 	const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -184,15 +203,26 @@ function App() {
 							new CustomEvent("parcel-update", { detail: data }),
 						);
 
+						// Check for status transitions
+						const oldStatus = parcelStatusesRef.current[data.trackingNumber];
+						const newStatus = data.status;
+						parcelStatusesRef.current[data.trackingNumber] = newStatus;
+
 						// Add a toast notification
 						const parcelNameStr = data.name
 							? `${data.name} (${data.trackingNumber})`
 							: data.trackingNumber;
+
+						let statusText = `Status: ${newStatus}`;
+						if (oldStatus && oldStatus !== newStatus) {
+							statusText = `Status: ${oldStatus} ➔ ${newStatus}`;
+						}
+
 						const statusDesc = data.calloutMessage
 							? `${data.calloutMessage}: ${data.secondaryStatus}`
 							: data.stopsRemaining !== undefined && data.stopsRemaining !== null
-							? `Driver is ${data.stopsRemaining} stops away. Status: ${data.status}`
-							: `Status: ${data.status}`;
+							? `Driver is ${data.stopsRemaining} stops away. ${statusText}`
+							: statusText;
 
 						const toastId = Date.now();
 						setToasts((prev) => [
