@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>open-parcels</Name>
+  <Repository>bluscream1/open-parcels:latest</Repository>
+  <Registry>https://hub.docker.com/r/bluscream1/open-parcels</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <MyMAC/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/bluscream/open-parcels/issues</Support>
+  <Project>https://github.com/bluscream/open-parcels</Project>
+  <ReadMe/>
+  <Overview>Self-hostable service that ingests and tracks parcels, returns and orders from multiple sources.</Overview>
+  <Category>Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:3000]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/bluscream/open-parcels/main/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1781186458</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Port" Target="3000" Default="3000" Mode="tcp" Description="{4}" Type="Port" Display="always" Required="true" Mask="{8}">3000</Config>
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/openparcels" Mode="rw" Description="{4}" Type="Path" Display="always" Required="true" Mask="{8}">/mnt/user/appdata/openparcels</Config>
+  <Config Name="Encryption Key" Target="ENCRYPTION_KEY" Default="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" Mode="{3}" Description="{4}" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Admin Token" Target="OPENPARCELS_TOKEN" Default="admin_secret_token" Mode="{3}" Description="{4}" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Database Path" Target="DB_PATH" Default="/data/data.db" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">/data/data.db</Config>
+  <Config Name="Rules URLs" Target="OPENPARCELS_RULES" Default="https://github.com/Bluscream/email-parser-rules/releases/latest/download/parcel.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/order.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/return.js" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">https://github.com/Bluscream/email-parser-rules/releases/latest/download/parcel.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/order.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/return.js</Config>
+  <Config Name="Lookup URLs" Target="LOOKUP_URLS" Default="http://localhost:24011,http://host.containers.internal:24011,https://lookup.tail230321.ts.net,https://lookup.minopia.de" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">http://localhost:24011,http://host.containers.internal:24011,https://lookup.tail230321.ts.net,https://lookup.minopia.de</Config>
+  <Config Name="Queue Interval" Target="OPENPARCELS_QUEUE_INTERVAL" Default="10" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">5</Config>
+  <Config Name="HA URL" Target="HASS_URL" Default="http://homeassistant.local:8123" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">http://homeassistant.local:8123</Config>
+  <Config Name="HA Token" Target="HASS_TOKEN" Default="" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <TailscaleEnabled>true</TailscaleEnabled>
+  <TailscaleIsExitNode>false</TailscaleIsExitNode>
+  <TailscaleHostname>parcels</TailscaleHostname>
+  <TailscaleExitNodeIP/>
+  <TailscaleSSH>false</TailscaleSSH>
+  <TailscaleUserspaceNetworking>false</TailscaleUserspaceNetworking>
+  <TailscaleLANAccess>false</TailscaleLANAccess>
+  <TailscaleServe>serve</TailscaleServe>
+  <TailscaleWebUI>https://[hostname][magicdns]</TailscaleWebUI>
+  <TailscaleServePort>3000</TailscaleServePort>
+  <TailscaleServeTarget/>
+  <TailscaleServeLocalPath/>
+  <TailscaleServeProtocol/>
+  <TailscaleServeProtocolPort/>
+  <TailscaleServePath/>
+  <TailscaleDParams/>
+  <TailscaleParams/>
+  <TailscaleRoutes/>
+  <TailscaleAcceptRoutes>false</TailscaleAcceptRoutes>
+  <TailscaleStateDir/>
+</Container>

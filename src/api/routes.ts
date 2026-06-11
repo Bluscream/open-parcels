@@ -101,7 +101,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						items: {
 							type: "object",
 							properties: {
-								id: { type: "number" },
+								id: { type: "string" },
 								trackingNumber: { type: "string" },
 								courier: { type: "string", nullable: true },
 								status: { type: "string" },
@@ -111,7 +111,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								estimatedDeliveryEnd: { type: "string", nullable: true },
 								addedAt: { type: "string" },
 								updatedAt: { type: "string" },
-								orderId: { type: "number", nullable: true },
+								orderId: { type: "string", nullable: true },
 								lastVehicle: { type: "string", nullable: true },
 								lastEventDescription: { type: "string", nullable: true },
 								events: {
@@ -119,8 +119,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 									items: {
 										type: "object",
 										properties: {
-											id: { type: "number" },
-											parcelId: { type: "number" },
+											id: { type: "string" },
+											parcelId: { type: "string" },
 											location: { type: "string", nullable: true },
 											description: { type: "string" },
 											timestamp: { type: "string" },
@@ -566,7 +566,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						items: {
 							type: "object",
 							properties: {
-								id: { type: "number" },
+								id: { type: "string" },
 								source: { type: "string" },
 								orderNumber: { type: "string" },
 								status: { type: "string" },
@@ -942,8 +942,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						items: {
 							type: "object",
 							properties: {
-								id: { type: "number" },
-								parcelId: { type: "number" },
+								id: { type: "string" },
+								parcelId: { type: "string" },
 								location: { type: "string", nullable: true },
 								description: { type: "string" },
 								timestamp: { type: "string" },
@@ -970,8 +970,8 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						items: {
 							type: "object",
 							properties: {
-								id: { type: "number" },
-								parcelId: { type: "number" },
+								id: { type: "string" },
+								parcelId: { type: "string" },
 								location: { type: "string", nullable: true },
 								description: { type: "string" },
 								timestamp: { type: "string" },
@@ -1081,7 +1081,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 						items: {
 							type: "object",
 							properties: {
-								id: { type: "number" },
+								id: { type: "string" },
 								service: { type: "string" },
 								updatedAt: { type: "string" },
 							},
