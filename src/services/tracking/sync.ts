@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { parcels, parcelEvents } from "../../db/schema";
+import { wsBroker } from "../websocket";
 
 export function determineSingleEventVehicle(description: string, location?: string | null): string {
 	const text = `${description || ""} ${location || ""}`.toLowerCase();
@@ -133,4 +134,21 @@ export async function syncParcelStateFromEvents(parcelId: string): Promise<void>
 		.update(parcels)
 		.set(updateData)
 		.where(eq(parcels.id, parcelId));
+
+	try {
+		const updated = await db
+			.select()
+			.from(parcels)
+			.where(eq(parcels.id, parcelId))
+			.limit(1);
+		if (updated.length > 0) {
+			const evs = await db
+				.select()
+				.from(parcelEvents)
+				.where(eq(parcelEvents.parcelId, parcelId));
+			wsBroker.broadcast("all", { ...updated[0], events: evs }, "parcel_update");
+		}
+	} catch (e) {
+		console.error("[WebSocketBroadcast] Failed to broadcast update for parcel:", parcelId, e);
+	}
 }

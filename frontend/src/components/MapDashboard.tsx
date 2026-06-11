@@ -114,32 +114,36 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 	const [homeCoords, setHomeCoords] = useState<{ lat: number; lng: number } | null>(null);
 
 	useEffect(() => {
-		fetch(`/api/v1/parcels?token=${getGuestToken()}`)
-			.then((res) => {
-				if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-				return res.json();
-			})
-			.then((data) => {
-				if (Array.isArray(data)) {
-					setParcels(
-						data.map((p: any) => ({
-							...p,
-							lat: p.lat ? parseFloat(p.lat) : undefined,
-							lng: p.lng ? parseFloat(p.lng) : undefined,
-							estimatedDelivery: p.estimatedDeliveryStart
-								? new Date(p.estimatedDeliveryStart).toLocaleDateString()
-								: undefined,
-							events: p.events,
-							transportMethod: p.lastVehicle || determineTransportMethod(p.events || []),
-							lastEventDescription: p.lastEventDescription || undefined,
-						})),
-					);
-				}
-			})
-			.catch((err) => {
-				console.error("Failed to fetch parcels:", err);
-				setParcels([]);
-			});
+		const loadParcels = () => {
+			fetch(`/api/v1/parcels?token=${getGuestToken()}`)
+				.then((res) => {
+					if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+					return res.json();
+				})
+				.then((data) => {
+					if (Array.isArray(data)) {
+						setParcels(
+							data.map((p: any) => ({
+								...p,
+								lat: p.lat ? parseFloat(p.lat) : undefined,
+								lng: p.lng ? parseFloat(p.lng) : undefined,
+								estimatedDelivery: p.estimatedDeliveryStart
+									? new Date(p.estimatedDeliveryStart).toLocaleDateString()
+									: undefined,
+								events: p.events,
+								transportMethod: p.lastVehicle || determineTransportMethod(p.events || []),
+								lastEventDescription: p.lastEventDescription || undefined,
+							})),
+						);
+					}
+				})
+				.catch((err) => {
+					console.error("Failed to fetch parcels:", err);
+					setParcels([]);
+				});
+		};
+
+		loadParcels();
 
 		// Fetch home settings
 		fetch(`/api/v1/settings?token=${getGuestToken()}`)
@@ -153,6 +157,9 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				}
 			})
 			.catch((err) => console.error("Failed to fetch home settings", err));
+
+		window.addEventListener("parcel-update", loadParcels);
+		return () => window.removeEventListener("parcel-update", loadParcels);
 	}, []);
 
 	const getStatusIcon = (status: string) => {

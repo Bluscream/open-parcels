@@ -460,6 +460,17 @@ export async function apiRoutes(fastify: FastifyInstance) {
 
 		const resultParcel = updated[0];
 
+		// Broadcast update to WebSocket clients
+		try {
+			const evs = await db
+				.select()
+				.from(parcelEvents)
+				.where(eq(parcelEvents.parcelId, resultParcel.id));
+			wsBroker.broadcast("all", { ...resultParcel, events: evs }, "parcel_update");
+		} catch (e) {
+			console.error("[WebSocketBroadcast] Failed to broadcast update:", e);
+		}
+
 		return resultParcel;
 	};
 
