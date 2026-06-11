@@ -48,4 +48,4 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npm run db:push && node dist/server.js"]
