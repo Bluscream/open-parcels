@@ -151,7 +151,9 @@ export const ManageLogs: React.FC<Props> = ({ token }) => {
 							<span
 								style={{ color: "rgba(255,255,255,0.3)", minWidth: "120px" }}
 							>
-								{new Date(log.timestamp).toLocaleTimeString()}
+								{log.timestamp && !isNaN(new Date(log.timestamp).getTime())
+									? new Date(log.timestamp).toLocaleTimeString()
+									: new Date().toLocaleTimeString()}
 							</span>
 							<span
 								style={{ color, fontWeight: "bold", minWidth: "60px" }}
