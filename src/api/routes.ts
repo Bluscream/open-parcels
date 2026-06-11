@@ -14,10 +14,15 @@ import {
 } from "../db/schema";
 import { trackAndUpdateParcel, aggregator } from "../services/tracking/aggregator";
 import { syncParcelStateFromEvents, determineSingleEventVehicle } from "../services/tracking/sync";
+import { getActiveParcelRules } from "../services/ingest/rules-loader";
 import { AmazonLiveScraper } from "../services/scrapers/amazon-live-scraper";
 import { wsBroker } from "../services/websocket";
 import { decryptCredential, encryptCredential } from "../utils/crypto";
 import { geocodeLocation, extractLocationName, isLikelyLocation } from "../utils/geocoder";
+import { simpleParser } from "mailparser";
+import AdmZip from "adm-zip";
+import { TrackingParser, EmailParser } from "../services/ingest/parser";
+import { loadRemoteRules } from "../services/ingest/rules-loader";
 
 // Basic Auth hook to check token
 const checkAuth = async (request: any, reply: any) => {
@@ -108,6 +113,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								updatedAt: { type: "string" },
 								orderId: { type: "number", nullable: true },
 								lastVehicle: { type: "string", nullable: true },
+								lastEventDescription: { type: "string", nullable: true },
 								events: {
 									type: "array",
 									items: {
@@ -147,6 +153,16 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			return stripNulls(result);
 		},
 	);
+
+	// GET /couriers - Returns loaded parcel rule metadata (id, name, icon_url) for the frontend
+	fastify.get("/couriers", async (_request, _reply) => {
+		const rules = getActiveParcelRules();
+		return rules.map((r: any) => ({
+			id: r.id,
+			name: r.name,
+			iconUrl: r.icon_url || null,
+		}));
+	});
 
 	// Delegate to the shared vehicle classifier so there's one source of truth.
 	const determineRouteTransportMethod = (events: any[]): string => {
@@ -555,6 +571,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 								placedAt: { type: "string", nullable: true },
 								addedAt: { type: "string" },
 								updatedAt: { type: "string" },
+								parcelCount: { type: "number" },
 							},
 						},
 					},
@@ -563,7 +580,27 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 		async (_request, _reply) => {
 			const allOrders = await db.select().from(orders);
-			return allOrders;
+			const counts = await db
+				.select({
+					orderId: parcels.orderId,
+					cnt: count(parcels.id),
+				})
+				.from(parcels)
+				.groupBy(parcels.orderId);
+
+			const countMap = new Map<number, number>();
+			for (const row of counts) {
+				if (row.orderId !== null) {
+					countMap.set(row.orderId, row.cnt);
+				}
+			}
+
+			const result = allOrders.map((o) => ({
+				...o,
+				parcelCount: countMap.get(o.id) || 0,
+			}));
+
+			return result;
 		},
 	);
 
@@ -1496,6 +1533,168 @@ export async function apiRoutes(fastify: FastifyInstance) {
 			} catch (err) {
 				console.error("[DB-Clear] Failed:", err);
 				return reply.code(500).send({ error: "Failed to clear database" });
+			}
+		},
+	);
+
+	// POST /admin/ingest-emails - Upload a .eml file or .zip archive to ingest parcels/orders
+	fastify.post(
+		"/admin/ingest-emails",
+		{
+			schema: { tags: ["Admin"] },
+		},
+		async (request: any, reply) => {
+			try {
+				const data = await request.file();
+				if (!data) {
+					return reply.code(400).send({ error: "No file uploaded" });
+				}
+
+				const fileBuffer = await data.toBuffer();
+				console.log(`[IngestEmails] Received file: ${data.filename}, size: ${fileBuffer.length} bytes`);
+				const filename = data.filename.toLowerCase();
+
+				// Load rules first to ensure they are up to date
+				await loadRemoteRules().catch((err) => {
+					console.error("[IngestEmails] Failed to load remote rules:", err);
+				});
+
+				interface EmlItem {
+					name: string;
+					content: string;
+				}
+
+				const emlFiles: EmlItem[] = [];
+
+				if (filename.endsWith(".zip")) {
+					try {
+						const zip = new AdmZip(fileBuffer);
+						const zipEntries = zip.getEntries();
+						for (const entry of zipEntries) {
+							if (!entry.isDirectory && entry.entryName.toLowerCase().endsWith(".eml")) {
+								emlFiles.push({
+									name: entry.entryName,
+									content: entry.getData().toString("utf-8"),
+								});
+							}
+						}
+					} catch (zipErr: any) {
+						return reply.code(400).send({ error: `Failed to read zip archive: ${zipErr.message || zipErr}` });
+					}
+				} else if (filename.endsWith(".eml")) {
+					emlFiles.push({
+						name: data.filename,
+						content: fileBuffer.toString("utf-8"),
+					});
+				} else {
+					return reply.code(400).send({ error: "Invalid file type. Please upload a .eml file or a .zip archive containing .eml files." });
+				}
+
+				if (emlFiles.length === 0) {
+					return reply.code(400).send({ error: "No .eml files found in the upload." });
+				}
+
+				let processedCount = 0;
+				let orderCount = 0;
+				let parcelCount = 0;
+
+				for (const item of emlFiles) {
+					try {
+						const mail = await simpleParser(item.content);
+						const from = mail.from?.value[0]?.address || "";
+						const subject = mail.subject || "";
+						const text = mail.text || EmailParser.extractBody(mail.html || "");
+
+						const parser = new TrackingParser(from, subject, text);
+						const trackingData = parser.parse();
+
+						if (!trackingData) continue;
+
+						let dbOrderId: number | null = null;
+						let dbParcelId: number | null = null;
+
+						const platformName = trackingData.platform?.name || "Unknown";
+						const orderNo = trackingData.platform?.order_number;
+
+						if (orderNo) {
+							const existingOrder = await db
+								.select()
+								.from(orders)
+								.where(and(eq(orders.orderNumber, orderNo), eq(orders.source, platformName)))
+								.limit(1);
+
+							if (existingOrder.length > 0) {
+								dbOrderId = existingOrder[0].id;
+							} else {
+								const newOrder = await db
+									.insert(orders)
+									.values({
+										source: platformName,
+										orderNumber: orderNo,
+										status: trackingData.type || "ordered",
+										placedAt: mail.date || null,
+										addedAt: new Date(),
+										updatedAt: new Date(),
+									})
+									.returning();
+								dbOrderId = newOrder[0].id;
+								orderCount++;
+							}
+						}
+
+						const trackingNumber = trackingData.courier?.tracking_number;
+						const courierName = trackingData.courier?.name || platformName;
+
+						if (trackingNumber) {
+							const existingParcel = await db
+								.select()
+								.from(parcels)
+								.where(eq(parcels.trackingNumber, trackingNumber))
+								.limit(1);
+
+							if (existingParcel.length > 0) {
+								dbParcelId = existingParcel[0].id;
+							} else {
+								const newParcel = await db
+									.insert(parcels)
+									.values({
+										trackingNumber,
+										name: trackingData.items?.[0]?.name || null,
+										courier: courierName,
+										status: trackingData.type || "ordered",
+										addedAt: new Date(),
+										updatedAt: new Date(),
+									})
+									.returning();
+								dbParcelId = newParcel[0].id;
+								parcelCount++;
+
+								// Trigger background track update
+								trackAndUpdateParcel(dbParcelId).catch((err) => {
+									console.error(`[UploadAutoTrack] Failed to track parcel ${dbParcelId}:`, err);
+								});
+							}
+						}
+
+						if (dbOrderId && dbParcelId) {
+							await db.update(parcels).set({ orderId: dbOrderId }).where(eq(parcels.id, dbParcelId));
+						}
+
+						processedCount++;
+					} catch (parseErr: any) {
+						console.error(`[IngestEmails] Failed to process ${item.name}:`, parseErr.message || parseErr);
+					}
+				}
+
+				return {
+					message: `Successfully processed ${processedCount} of ${emlFiles.length} email(s).`,
+					processedCount,
+					orderCount,
+					parcelCount,
+				};
+			} catch (err: any) {
+				console.error("[IngestEmails] Failed:", err);
+				return reply.code(500).send({ error: `Ingestion failed: ${err.message || err}` });
 			}
 		},
 	);

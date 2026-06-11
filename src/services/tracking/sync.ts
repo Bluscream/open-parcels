@@ -96,12 +96,14 @@ export async function syncParcelStateFromEvents(parcelId: number): Promise<void>
 		lat: number | null;
 		lng: number | null;
 		lastVehicle: string;
+		lastEventDescription: string | null;
 		updatedAt: Date;
 	} = {
 		status: determinedStatus,
 		lat: null,
 		lng: null,
 		lastVehicle: determinedVehicle,
+		lastEventDescription: latestEvent.description || null,
 		updatedAt: new Date(),
 	};
 

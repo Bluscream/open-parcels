@@ -13,8 +13,10 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { CheckCircle, Package, RotateCcw, Truck } from "lucide-react";
 import { getGuestToken } from "../utils/auth";
+import { formatRelativeEta } from "../utils/dateUtils";
 import { generateCurvedPath, getTransportMarkerIcon, iconHome, determineTransportMethod } from "../utils/mapIcons";
 import { AnimatedRoute } from "./AnimatedRoute";
+import { CourierLogo } from "./CourierLogo";
 import { SharedMap, useMapFilters } from "./SharedMap";
 import { SplitContainer } from "./SplitContainer";
 
@@ -35,12 +37,14 @@ interface Parcel {
 	lng?: number;
 	estimatedDelivery?: string;
 	transportMethod?: string;
+	lastEventDescription?: string;
 	events?: any[];
 }
 
 interface MapDashboardProps {
 	onSelectParcel?: (trackingNumber: string) => void;
 }
+
 
 const DashboardMapContent: React.FC<{
 	homeCoords: { lat: number; lng: number } | null;
@@ -91,7 +95,7 @@ const DashboardMapContent: React.FC<{
 										<div className="courier-info">{parcel.courier}</div>
 										<div className="status-info">
 											{getStatusIcon(parcel.status)}
-											<span>{parcel.status.toUpperCase()}</span>
+											<span>{parcel.lastEventDescription || parcel.status.toUpperCase()}</span>
 										</div>
 									</div>
 								</Popup>
@@ -124,9 +128,10 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							lng: p.lng ? parseFloat(p.lng) : undefined,
 							estimatedDelivery: p.estimatedDeliveryStart
 								? new Date(p.estimatedDeliveryStart).toLocaleDateString()
-								: "Pending",
+								: undefined,
 							events: p.events,
-							transportMethod: p.lastVehicle || determineTransportMethod(p.events || [])
+							transportMethod: p.lastVehicle || determineTransportMethod(p.events || []),
+							lastEventDescription: p.lastEventDescription || undefined,
 						})),
 					);
 				}
@@ -182,32 +187,29 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 				rightDefaultSize={30}
 				rightMinSize={20}
 				leftPanel={
-					<div className="glass-panel map-panel" style={{ height: "100%" }}>
-				<h2 className="panel-title">Live Tracking</h2>
-				<div className="map-wrapper">
-					<SharedMap
-						center={[45.0, 0.0]}
-						zoom={3}
-						bounds={
-							activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
-								? [
-										...activeParcels
-											.filter((p) => p.lat && p.lng)
-											.map((p) => [p.lat!, p.lng!] as [number, number]),
-										...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
-									]
-								: undefined
-						}
-					>
-						<DashboardMapContent
-							homeCoords={homeCoords}
-							activeParcels={activeParcels}
-							onSelectParcel={onSelectParcel}
-							getStatusIcon={getStatusIcon}
-						/>
-					</SharedMap>
-				</div>
-			</div>
+					<div className="glass-panel" style={{ height: "100%", overflow: "hidden", position: "relative" }}>
+						<SharedMap
+							center={[45.0, 0.0]}
+							zoom={3}
+							bounds={
+								activeParcels.filter((p) => p.lat && p.lng).length > 0 || homeCoords
+									? [
+											...activeParcels
+												.filter((p) => p.lat && p.lng)
+												.map((p) => [p.lat!, p.lng!] as [number, number]),
+											...(homeCoords ? [[homeCoords.lat, homeCoords.lng] as [number, number]] : []),
+										]
+									: undefined
+							}
+						>
+							<DashboardMapContent
+								homeCoords={homeCoords}
+								activeParcels={activeParcels}
+								onSelectParcel={onSelectParcel}
+								getStatusIcon={getStatusIcon}
+							/>
+						</SharedMap>
+					</div>
 				}
 				rightPanel={
 			<div className="glass-panel list-panel" style={{ height: "100%" }}>
@@ -218,13 +220,18 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 							No active parcels in transit
 						</div>
 					) : (
-						activeParcels.map((parcel) => (
+						activeParcels.map((parcel) => {
+						const eta = formatRelativeEta(parcel.estimatedDelivery);
+
+						return (
 							<div
 								key={parcel.id}
 								className="parcel-card"
 								onClick={() => onSelectParcel?.(parcel.trackingNumber)}
 							>
-								<div className="parcel-icon">{getStatusIcon(parcel.status)}</div>
+								<div className="parcel-icon">
+									<CourierLogo courier={parcel.courier} size={28} />
+								</div>
 								<div className="parcel-details">
 									<div className="parcel-id">
 										{parcel.name
@@ -232,13 +239,21 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 											: parcel.trackingNumber}
 									</div>
 									<div className="parcel-meta">
-										{parcel.courier} &bull; {parcel.estimatedDelivery}
+										{parcel.lastEventDescription
+											? parcel.lastEventDescription
+											: `${parcel.courier} • ${parcel.status}`}
 									</div>
+									{eta && (
+										<div className="parcel-eta" style={{ fontSize: "0.7rem", opacity: 0.6, marginTop: 1 }}>
+											{eta}
+										</div>
+									)}
 								</div>
 								<div className="parcel-status-badge">{parcel.status}</div>
 							</div>
-						))
-					)}
+						);
+					})
+				)}
 				</div>
 			</div>
 				}
@@ -246,3 +261,4 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({
 		</div>
 	);
 };
+;

@@ -1,6 +1,6 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: dynamic API data */
 import { createColumnHelper } from "@tanstack/react-table";
-import { ShoppingBag, Hash, Calendar, Trash2, RefreshCw } from "lucide-react";
+import { ShoppingBag, Hash, Calendar, Trash2, RefreshCw, Package } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getGuestToken } from "../utils/auth";
 import { DataTable } from "./DataTable";
@@ -13,6 +13,7 @@ interface Order {
 	placedAt?: string;
 	addedAt: string;
 	updatedAt: string;
+	parcelCount: number;
 }
 
 function fmtDate(iso?: string) {
@@ -99,6 +100,11 @@ export function OrdersTable({ onSelectOrder }: { onSelectOrder?: (id: number) =>
 		ch.accessor("status", {
 			header: "Status",
 			cell: info => <OrderStatusTag status={info.getValue()} />,
+		}),
+		ch.accessor("parcelCount", {
+			header: () => <><Package size={12} style={{ display: "inline", marginRight: 4 }} />Parcels</>,
+			cell: info => <span className="bold-cell">{info.getValue()}</span>,
+			meta: { cellStyle: { width: "80px" } },
 		}),
 		ch.accessor("placedAt", {
 			header: () => <><Calendar size={12} style={{ display: "inline", marginRight: 4 }} />Placed</>,

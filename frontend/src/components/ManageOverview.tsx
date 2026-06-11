@@ -18,6 +18,7 @@ import {
 	Truck,
 	Upload,
 	Zap,
+	Mail,
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -82,6 +83,43 @@ export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
 	const [clearing, setClearing] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const emailInputRef = useRef<HTMLInputElement>(null);
+	const [ingestMsg, setIngestMsg] = useState<string | null>(null);
+	const [ingestError, setIngestError] = useState<string | null>(null);
+	const [ingesting, setIngesting] = useState(false);
+
+	const handleIngestClick = () => emailInputRef.current?.click();
+
+	const handleIngestFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		const form = new FormData();
+		form.append("file", file);
+		setIngesting(true);
+		setIngestMsg(null);
+		setIngestError(null);
+
+		try {
+			const res = await fetch(`/api/v1/admin/ingest-emails?token=${token}`, {
+				method: "POST",
+				body: form,
+			});
+			const data = await res.json();
+			if (res.ok) {
+				setIngestMsg(`${data.message} Created ${data.orderCount} new order(s) and ${data.parcelCount} new parcel(s).`);
+				fetchStatus();
+				onRefresh();
+			} else {
+				setIngestError(data.error || "Ingestion failed");
+			}
+		} catch (err) {
+			setIngestError("Network error during email ingestion");
+		} finally {
+			setIngesting(false);
+		}
+		e.target.value = "";
+	};
 
 	const fetchStatus = async () => {
 		try {
@@ -236,6 +274,62 @@ export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
 					<span style={{ flex: 1 }}>{restoreError}</span>
 					<button
 						onClick={() => setRestoreError(null)}
+						style={{
+							background: "none",
+							border: "none",
+							color: "#ef4444",
+							cursor: "pointer",
+						}}
+					>
+						✕
+					</button>
+				</div>
+			)}
+			{ingestMsg && (
+				<div
+					style={{
+						background: "rgba(16,185,129,0.12)",
+						border: "1px solid rgba(16,185,129,0.3)",
+						borderRadius: "10px",
+						padding: "12px 16px",
+						display: "flex",
+						alignItems: "center",
+						gap: "10px",
+						color: "#10b981",
+					}}
+				>
+					<CheckCircle size={16} />
+					<span style={{ flex: 1 }}>{ingestMsg}</span>
+					<button
+						onClick={() => setIngestMsg(null)}
+						style={{
+							background: "none",
+							border: "none",
+							color: "#10b981",
+							cursor: "pointer",
+						}}
+					>
+						✕
+					</button>
+				</div>
+			)}
+			{ingestError && (
+				<div
+					style={{
+						background: "rgba(239,68,68,0.12)",
+						border: "1px solid rgba(239,68,68,0.3)",
+						borderRadius: "10px",
+						padding: "12px 16px",
+						display: "flex",
+						alignItems: "center",
+						gap: "10px",
+						color: "#ef4444",
+					}}
+				>
+					<AlertTriangle size={16} />
+					<span style={{ flex: 1 }}>{ingestError}</span>
+					<button
+						onClick={() => setIngestError(null)}
 						style={{
 							background: "none",
 							border: "none",
@@ -508,6 +602,48 @@ export const ManageOverview: React.FC<Props> = ({ token, onRefresh }) => {
 						{refreshing ? "Refreshing…" : "Refresh Stats"}
 					</button>
 				</div>
+			</div>
+
+			{/* Email Ingestion */}
+			<div className="glass-panel" style={{ padding: "20px" }}>
+				<h4
+					style={{
+						margin: "0 0 16px 0",
+						fontSize: "13px",
+						fontWeight: 600,
+						color: "var(--text-muted)",
+						textTransform: "uppercase",
+						letterSpacing: "0.06em",
+					}}
+				>
+					Email Ingestion
+				</h4>
+				<div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+					<button
+						onClick={handleIngestClick}
+						disabled={ingesting}
+						className="btn btn-primary"
+						style={{ gap: "8px" }}
+					>
+						<Mail size={15} />
+						{ingesting ? "Uploading & Ingesting…" : "Upload Email(s)"}
+					</button>
+					<input
+						ref={emailInputRef}
+						type="file"
+						accept=".eml,.zip"
+						style={{ display: "none" }}
+						onChange={handleIngestFile}
+					/>
+				</div>
+				<p
+					className="text-muted"
+					style={{ marginTop: "12px", fontSize: "12px" }}
+				>
+					<Mail size={11} style={{ marginRight: "4px" }} />
+					Upload a single <code>.eml</code> file or a <code>.zip</code> archive containing multiple <code>.eml</code> files.
+					The system will scan them for order information and tracking numbers to automatically ingest.
+				</p>
 			</div>
 
 			{/* Database Actions */}
