@@ -1083,6 +1083,7 @@ export async function apiRoutes(fastify: FastifyInstance) {
 							properties: {
 								id: { type: "string" },
 								service: { type: "string" },
+								username: { type: "string", nullable: true },
 								updatedAt: { type: "string" },
 							},
 						},
@@ -1115,9 +1116,9 @@ export async function apiRoutes(fastify: FastifyInstance) {
 		},
 	);
 
-	// GET /credentials/:service - Get decrypted credential for a service
+	// GET /credentials/:idOrService - Get decrypted credential for a service or ID
 	fastify.get(
-		"/credentials/:service",
+		"/credentials/:idOrService",
 		{
 			schema: { tags: ["Credentials"] },
 		},
