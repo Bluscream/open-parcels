@@ -29,7 +29,7 @@
                          "adm-zip":  "^0.5.17",
                          "dotenv":  "^16.4.5",
                          "drizzle-orm":  "^0.30.2",
-                         "fastify":  "^4.26.2",
+                         "fastify":  "^5.10.0",
                          "imap-simple":  "^5.1.0",
                          "mail-parser-ts":  "^1.0.1",
                          "mailparser":  "^3.7.1",
