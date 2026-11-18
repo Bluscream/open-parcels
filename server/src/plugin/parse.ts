@@ -122,9 +122,16 @@ export function zonedIso(value: unknown, zone: string): string | null {
   return `${local}${offsetIn(zone, probe.getTime() - 3 * HOUR_MS)}`;
 }
 
-/** Epoch milliseconds or an offset-carrying string as ISO 8601; null when it does not parse. */
+/**
+ * Epoch milliseconds or an ISO string as ISO 8601; null when it does not parse. A string
+ * without an offset is read as UTC, never as the server's own zone.
+ */
 export function instantIso(value: unknown): string | null {
-  if (typeof value !== "number" && typeof value !== "string") {
+  if (typeof value === "string") {
+    const zoned = zonedIso(value, "UTC");
+    return zoned === null ? null : new Date(zoned).toISOString();
+  }
+  if (typeof value !== "number") {
     return null;
   }
   const parsed = new Date(value);
