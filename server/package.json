@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "openapi": "tsc -p tsconfig.build.json && node dist/tools/export-openapi.js ../docs/openapi.json"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",

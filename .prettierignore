@@ -7,4 +7,5 @@ package-lock.json
 .scratch
 .playwright-mcp
 docs/decisions
+docs/openapi.json
 *.md
