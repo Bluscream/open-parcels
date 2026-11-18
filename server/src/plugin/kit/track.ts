@@ -1,36 +1,53 @@
+import type { ParcelStatus } from "../../domain/parcel.js";
 import type { FetchResult, PluginContext } from "../api.js";
 import { TransientError } from "../errors.js";
-import type { HttpResponse } from "../http.js";
+import type { HttpResponse, PluginHttp, RequestOptions } from "../http.js";
 import type { ParcelSnapshot } from "../snapshot.js";
+import { readJson } from "./json.js";
 
-/** A canonical status, as a plug-in's local status table holds it. */
-export type Status = NonNullable<ParcelSnapshot["status"]>;
-export type StatusTable = Readonly<Record<string, Status>>;
+export type { ParcelStatus } from "../../domain/parcel.js";
 
-/** Looks a raw value up in a local table; unknown and empty values give null. */
-export function lookUpStatus(table: StatusTable, key: string | null): Status | null {
-  return key !== null && Object.hasOwn(table, key) ? (table[key] ?? null) : null;
+/** A carrier's own status vocabulary mapped onto the canonical list. */
+export type StatusTable = Readonly<Record<string, ParcelStatus>>;
+
+/**
+ * Looks a raw value up in a local table. Empty values give null; an unmapped value gives null and
+ * is passed to `report`, when one is given.
+ */
+export function lookUpStatus(
+  table: StatusTable,
+  key: string | null,
+  report?: (key: string) => void,
+): ParcelStatus | null {
+  if (key === null) {
+    return null;
+  }
+  const mapped = Object.hasOwn(table, key) ? table[key] : undefined;
+  if (mapped === undefined) {
+    report?.(key);
+    return null;
+  }
+  return mapped;
 }
 
-/** Reports each unmapped key once per run, under one kind. */
+export interface ReporterOptions {
+  /** Report each key once per reporter (default) or every time it is seen. */
+  readonly once?: boolean;
+}
+
+/** A function that reports unmapped keys under one kind. */
 export function unknownReporter(
   context: Pick<PluginContext<unknown, unknown>, "reportUnknown">,
   kind: string,
+  options: ReporterOptions = {},
 ): (key: string) => void {
   const seen = new Set<string>();
   return (key) => {
-    if (!seen.has(key)) {
+    if (options.once === false || !seen.has(key)) {
       seen.add(key);
       context.reportUnknown(kind, key);
     }
   };
-}
-
-/** Throws a transient error for anything but a 2xx answer. */
-export function expectOk(response: HttpResponse, what: string): void {
-  if (response.status < 200 || response.status >= 300) {
-    throw new TransientError(`${what} answered HTTP ${response.status}.`);
-  }
 }
 
 export interface TrackOptions {
@@ -38,26 +55,33 @@ export interface TrackOptions {
   readonly plausible: RegExp;
   /** Spelling of a code as it is checked and sent. Default: trimmed upper case. */
   readonly normalize?: (code: string) => string;
+  /** Look a code up only once when it is listed twice. Default true. */
+  readonly dedupe?: boolean;
 }
 
 const defaultNormalize = (code: string): string => code.trim().toUpperCase();
+const asGiven = (code: string): string => code;
 
 /**
- * Looks codes up one at a time, so the host limiter paces them and the first error stops the
- * run before more requests go out. `lookUp` gets the code as sent and as tracked; snapshots
- * carry the tracked spelling. A null answer means "not found" and leaves the code out.
+ * Looks codes up one at a time, so the host limiter paces them and the first error stops the run
+ * before more requests go out. `lookUp` gets the code as sent and as tracked. A null answer means
+ * "not found" and leaves the code out.
+ *
+ * Passing just a pattern checks and sends codes exactly as given, without de-duplication.
  */
 export async function trackEach(
   barcodes: readonly string[],
-  options: TrackOptions,
+  options: RegExp | TrackOptions,
   lookUp: (code: string, tracked: string) => Promise<ParcelSnapshot | null>,
-): Promise<FetchResult> {
-  const normalize = options.normalize ?? defaultNormalize;
+): Promise<FetchResult & { readonly complete: true }> {
+  const settings: TrackOptions =
+    options instanceof RegExp ? { plausible: options, normalize: asGiven, dedupe: false } : options;
+  const normalize = settings.normalize ?? defaultNormalize;
   const snapshots: ParcelSnapshot[] = [];
   const done = new Set<string>();
   for (const barcode of barcodes) {
     const code = normalize(barcode);
-    if (done.has(code) || !options.plausible.test(code)) {
+    if ((settings.dedupe !== false && done.has(code)) || !settings.plausible.test(code)) {
       continue;
     }
     done.add(code);
@@ -67,4 +91,27 @@ export async function trackEach(
     }
   }
   return { snapshots, complete: true };
+}
+
+/**
+ * Sends one request and returns the parsed JSON of a 200 answer. Statuses in `notFound` give
+ * null; every other status is a transient failure (rate limits are raised by the HTTP layer).
+ */
+export async function requestJson(
+  http: PluginHttp,
+  url: URL,
+  carrier: string,
+  options: RequestOptions & { readonly notFound?: readonly number[] } = {},
+): Promise<unknown> {
+  const response: HttpResponse = await http.request(url, {
+    ...options,
+    headers: { accept: "application/json", ...options.headers },
+  });
+  if (options.notFound?.includes(response.status) === true) {
+    return null;
+  }
+  if (response.status !== 200) {
+    throw new TransientError(`${carrier} answered HTTP ${response.status}.`);
+  }
+  return readJson(response, carrier);
 }

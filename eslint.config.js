@@ -53,8 +53,16 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ["**/db/**", "**/api/**", "**/engine/**", "**/auth/**", "**/events/**"],
-              message: "Carrier plug-ins may only import from the plug-in API (server/src/plugin).",
+              // Anything outside the carriers folder other than the plug-in API itself.
+              regex:
+                "^(\\.\\./)+(api|auth|calendar|crypto|db|domain|engine|events|ha|images|log|mail|migrate|parcels|tools)/|^(\\.\\./)+(clock|config|main|services)\\.js$|^(\\.\\./)+plugin/(?!api\\.js$)",
+              message:
+                "Carrier plug-ins may only import the plug-in API (server/src/plugin/api.ts).",
+            },
+            {
+              group: ["open-parcels-rules", "open-parcels-rules/*"],
+              message:
+                "Carrier plug-ins reach the shared rules through the plug-in API (server/src/plugin/rules.ts).",
             },
           ],
         },

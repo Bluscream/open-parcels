@@ -1,7 +1,10 @@
-import { UnexpectedResponseError } from "../errors.js";
+/**
+ * Narrowing helpers for untrusted carrier payloads, and reading a response body as JSON. Every
+ * plug-in uses these instead of carrying its own copy; they reach plug-ins through the plug-in API.
+ */
+import { TransientError, UnexpectedResponseError } from "../errors.js";
 import type { HttpResponse } from "../http.js";
 
-/** Narrowing helpers for untrusted JSON from carrier APIs. */
 export type Json = Readonly<Record<string, unknown>>;
 
 const BYTE_ORDER_MARK = String.fromCharCode(0xfeff);
@@ -15,14 +18,39 @@ export function asObject(value: unknown): Json {
   return isObject(value) ? value : {};
 }
 
-/** The objects in a list; anything that is not a list gives an empty one. */
-export function objects(value: unknown): Json[] {
-  return Array.isArray(value) ? value.filter(isObject) : [];
+/** The value as a list, or an empty one. */
+export function asArray(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? (value as unknown[]) : [];
 }
 
-/** A trimmed, non-empty string; numbers are accepted as their decimal text. */
-export function text(value: unknown): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
+/** The objects in a list; anything else in it, or a value that is not a list, is dropped. */
+export function objects(value: unknown): Json[] {
+  return asArray(value).filter(isObject);
+}
+
+/** Walks `keys` through nested objects; anything that is not an object on the way gives undefined. */
+export function dig(value: unknown, ...keys: readonly string[]): unknown {
+  let current = value;
+  for (const key of keys) {
+    if (!isObject(current)) {
+      return undefined;
+    }
+    current = current[key];
+  }
+  return current;
+}
+
+export interface TextOptions {
+  /**
+   * Whether a finite number counts as its decimal text. Default true. Pass false for carriers
+   * whose numeric fields must never be read as text.
+   */
+  readonly numbers?: boolean;
+}
+
+/** A trimmed, non-empty string, or null. Numbers are accepted as their decimal text by default. */
+export function text(value: unknown, options: TextOptions = {}): string | null {
+  if (typeof value === "number" && Number.isFinite(value) && options.numbers !== false) {
     return String(value);
   }
   if (typeof value !== "string") {
@@ -32,33 +60,79 @@ export function text(value: unknown): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-/** A finite number, from a number or a numeric string. */
-export function num(value: unknown): number | null {
+export interface NumOptions {
+  /** Read numeric strings too. Default true. */
+  readonly strings?: boolean;
+  /** Read a comma in a numeric string as the decimal separator (`1,5` is 1.5). Default false. */
+  readonly decimalComma?: boolean;
+}
+
+/** A finite number, from a number or (by default) a numeric string; null otherwise. */
+export function num(value: unknown, options: NumOptions = {}): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
   }
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value.trim());
-    return Number.isFinite(parsed) ? parsed : null;
+  if (options.strings === false || typeof value !== "string" || value.trim() === "") {
+    return null;
   }
-  return null;
+  const raw = value.trim();
+  const parsed = Number(options.decimalComma === true ? raw.replace(",", ".") : raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Parses a response body as JSON, tolerating a byte-order mark; a non-JSON body is unexpected. */
-export function readJson(response: HttpResponse, what: string): unknown {
-  const body = response.body.startsWith(BYTE_ORDER_MARK) ? response.body.slice(1) : response.body;
+/** A positive number (a weight, a count), or null. Commas are decimal separators. */
+export function positive(value: unknown): number | null {
+  const parsed = num(value, { decimalComma: true });
+  return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+/** Joins the non-empty parts with `, `; null when nothing is left. */
+export function joinParts(...parts: readonly (string | null | undefined)[]): string | null {
+  const kept = parts.filter(
+    (part): part is string => part !== null && part !== undefined && part !== "",
+  );
+  return kept.length === 0 ? null : kept.join(", ");
+}
+
+/** The body parsed as JSON, tolerating a byte-order mark, or null when it is not JSON. */
+export function parseJsonBody(body: string): unknown {
+  const clean = body.startsWith(BYTE_ORDER_MARK) ? body.slice(1) : body;
   try {
-    return JSON.parse(body) as unknown;
+    return JSON.parse(clean) as unknown;
   } catch {
-    throw new UnexpectedResponseError(`${what} did not answer with JSON.`);
+    return null;
   }
 }
 
-/** Parses a JSON object body; anything else is unexpected. */
-export function readObject(response: HttpResponse, what: string): Json {
-  const payload = readJson(response, what);
+/** The body as JSON. A body that is not JSON is an unexpected response that stops the run. */
+export function readJson(response: HttpResponse, carrier: string): unknown {
+  const clean = response.body.startsWith(BYTE_ORDER_MARK) ? response.body.slice(1) : response.body;
+  try {
+    return JSON.parse(clean) as unknown;
+  } catch {
+    throw new UnexpectedResponseError(`${carrier} did not answer with JSON.`);
+  }
+}
+
+/** Like `readJson`, but the answer must be an object. */
+export function readObject(response: HttpResponse, carrier: string): Json {
+  const payload = readJson(response, carrier);
   if (!isObject(payload)) {
-    throw new UnexpectedResponseError(`${what} did not answer with a JSON object.`);
+    throw new UnexpectedResponseError(`${carrier} did not answer with a JSON object.`);
   }
   return payload;
+}
+
+/**
+ * Any status other than the expected ones is a temporary failure, retried with backoff. With no
+ * statuses given, any 2xx answer is expected.
+ */
+export function expectStatus(response: HttpResponse, carrier: string, ...ok: number[]): void {
+  const fine =
+    ok.length === 0
+      ? response.status >= 200 && response.status < 300
+      : ok.includes(response.status);
+  if (!fine) {
+    throw new TransientError(`${carrier} answered HTTP ${response.status}.`);
+  }
 }

@@ -5,12 +5,18 @@ import type { LiveReading, LiveTarget } from "./live.js";
 import type { ParcelSnapshot } from "./snapshot.js";
 
 export * from "./errors.js";
-export * from "./parse-kit.js";
+export * from "./kit/html.js";
+export * from "./kit/json.js";
+export * from "./kit/time.js";
+export * from "./kit/track.js";
+export * from "./rules.js";
 export * from "./snapshot.js";
+export type { Clock } from "../clock.js";
+export type { Direction } from "../domain/parcel.js";
 export type { LiveReading, LiveTarget } from "./live.js";
 export { CookieJar, restoreJar, serializeJar } from "./cookies.js";
 export { sameSite } from "./http.js";
-export type { HostLimit, HttpPolicy, HttpResponse, RequestOptions } from "./http.js";
+export type { HostLimit, HttpPolicy, HttpResponse, PluginHttp, RequestOptions } from "./http.js";
 
 /** Source kinds a carrier can offer. Mailboxes are handled by the core, not by carrier plug-ins. */
 export const SOURCE_KINDS = ["account", "tracking", "shop"] as const;
