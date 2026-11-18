@@ -5,6 +5,7 @@ import { hermes } from "../carriers/hermes/index.js";
 import { pocztaPolska } from "../carriers/poczta-polska/index.js";
 import { postaSlovenije } from "../carriers/posta-slovenije/index.js";
 import { posteItaliane } from "../carriers/poste-italiane/index.js";
+import { posti } from "../carriers/posti/index.js";
 import { quickpac } from "../carriers/quickpac/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
@@ -20,5 +21,6 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(pocztaPolska),
   register(postaSlovenije),
   register(posteItaliane),
+  register(posti),
   register(quickpac),
 ];
