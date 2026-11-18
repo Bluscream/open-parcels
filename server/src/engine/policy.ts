@@ -22,6 +22,8 @@ export interface ActiveParcel {
 export interface PollContext {
   readonly now: Date;
   readonly timeZone: string;
+  /** Skip polling 00:00–06:00 local time. On by default; one global switch, not per carrier. */
+  readonly quietWindow: boolean;
   readonly kind: "account" | "tracking" | "shop" | "mail";
   /** Minutes 0–6, derived from the install and source ids, so installs don't poll in lockstep. */
   readonly staggerMinutes: number;
@@ -67,8 +69,10 @@ export function nextRunAfterSuccess(context: PollContext): Date | null {
     interval = active.some((parcel) => isHot(parcel, now)) ? POLL_HOT_MS : POLL_MID_MS;
   }
   const target = new Date(now.getTime() + interval + context.staggerMinutes * MINUTE);
-  const adjusted = respectQuietWindow(now, target, context.timeZone);
-  return adjusted.getTime() === target.getTime() ? target : adjusted;
+  if (!context.quietWindow) {
+    return target;
+  }
+  return respectQuietWindow(now, target, context.timeZone);
 }
 
 export type FailureKind =

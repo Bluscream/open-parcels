@@ -193,7 +193,8 @@ The reconciler is the only writer of parcels. It:
 
 It implements the suite's polling rules:
 
-- **Quiet window:** 00:00–06:00, with catch-up anchors.
+- **Quiet window:** 00:00–06:00, with catch-up anchors. On by default; one global opt-out
+  (`OPENPARCELS_QUIET_WINDOW=false`, or the app option `quiet_window`), never per carrier.
 - **Fast tier:** every 15 min for parcels out for delivery within an hour of `planned_from`.
 - **Slow tier:** every 45 min for everything else.
 - **Stagger** per install and per source.

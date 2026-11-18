@@ -16,6 +16,7 @@ function context(now: string, overrides: Partial<PollContext> = {}): PollContext
   return {
     now: new Date(now),
     timeZone: TZ,
+    quietWindow: true,
     kind: "account",
     staggerMinutes: 0,
     active: [],
@@ -112,6 +113,16 @@ describe("poll scheduling", () => {
       context("2026-11-18T23:00:00Z", { active: [{ status: "in_transit", plannedFrom: null }] }),
     );
     expect(night?.toISOString()).toBe("2026-11-19T05:00:00.000Z");
+  });
+
+  it("polls through the night when the quiet window is switched off", () => {
+    const night = nextRunAfterSuccess(
+      context("2026-11-18T23:00:00Z", {
+        quietWindow: false,
+        active: [{ status: "in_transit", plannedFrom: null }],
+      }),
+    );
+    expect(night?.getTime()).toBe(new Date("2026-11-18T23:00:00Z").getTime() + POLL_MID_MS);
   });
 
   it("gives every seed a stable stagger between 0 and 6 minutes", () => {

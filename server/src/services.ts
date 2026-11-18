@@ -200,6 +200,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     clock,
     logger,
     timeZone: deps.config.timeZone,
+    quietWindow: deps.config.quietWindow,
     installId,
     onRunSucceeded: (sourceId, liveTargets) => {
       live.setTargets(sourceId, liveTargets);

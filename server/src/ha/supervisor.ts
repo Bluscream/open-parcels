@@ -19,6 +19,7 @@ const optionsSchema = z
     public_url: z.string().optional(),
     archive_days: z.number().int().optional(),
     delete_days: z.number().int().optional(),
+    quiet_window: z.boolean().optional(),
   })
   .loose();
 
@@ -45,6 +46,7 @@ export function supervisedEnvironment(
     OPENPARCELS_PUBLIC_URL: options.public_url,
     OPENPARCELS_ARCHIVE_DAYS: options.archive_days?.toString(),
     OPENPARCELS_DELETE_DAYS: options.delete_days?.toString(),
+    OPENPARCELS_QUIET_WINDOW: options.quiet_window?.toString(),
     OPENPARCELS_INGRESS_PORT: String(APP_INGRESS_PORT),
     OPENPARCELS_DATA_DIR: "/data",
   };
