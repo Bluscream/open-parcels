@@ -22,6 +22,7 @@ import { registerEventRoutes } from "./routes/events.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerParcelRoutes } from "./routes/parcels.js";
 import { registerSessionRoutes } from "./routes/session.js";
+import { registerSourceRoutes } from "./routes/sources.js";
 import { registerTokenRoutes } from "./routes/tokens.js";
 
 export type App = FastifyInstance;
@@ -112,6 +113,7 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   registerSessionRoutes(typed, services);
   registerTokenRoutes(typed, services);
   registerParcelRoutes(typed, services);
+  registerSourceRoutes(typed, services);
   registerEventRoutes(typed, services);
 
   app.get("/api/v1/openapi.json", { schema: { hide: true } }, () => app.swagger());

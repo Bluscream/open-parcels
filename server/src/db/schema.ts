@@ -99,6 +99,8 @@ export interface ParcelTable {
   order_id: string | null;
   manual_status: string | null;
   manual_until: Timestamp | null;
+  /** Time of the newest scan that set `status`; null when no scan carried a time. */
+  status_at: ColumnType<Timestamp | null, Timestamp | null | undefined>;
   first_seen_at: Timestamp;
   last_seen_at: Timestamp;
   updated_at: Timestamp;
@@ -112,6 +114,8 @@ export interface ParcelSourceTable {
   external_ref: string | null;
   role: "primary" | "handoff" | "mail";
   last_seen_at: Timestamp;
+  /** First time a complete listing of this source lacked the parcel; null while it is listed. */
+  missing_since: ColumnType<Timestamp | null, Timestamp | null | undefined>;
 }
 
 export interface ParcelEventTable {

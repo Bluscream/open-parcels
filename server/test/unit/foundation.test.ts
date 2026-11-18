@@ -151,8 +151,12 @@ describe("login throttle", () => {
 describe("migrations", () => {
   it("apply once and are idempotent", async () => {
     const { db } = openDatabase(path.join(tempDir(), "db.sqlite"));
-    expect(await migrateToLatest(db)).toEqual(["0001-initial"]);
-    expect(await migrateToLatest(db)).toEqual([]);
-    await db.destroy();
+    try {
+      expect(await migrateToLatest(db)).toEqual(["0001-initial", "0002-reconciler"]);
+      expect(await migrateToLatest(db)).toEqual([]);
+    } finally {
+      // Windows cannot delete an open database file; close it even when an assertion fails.
+      await db.destroy();
+    }
   });
 });

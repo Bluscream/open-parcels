@@ -8,6 +8,8 @@ import type { Clock } from "../src/clock.js";
 import { loadConfig } from "../src/config.js";
 import { SecretBox } from "../src/crypto/secrets.js";
 import { migrateToLatest, openDatabase } from "../src/db/database.js";
+import type { RegisteredPlugin } from "../src/engine/registry.js";
+import type { FetchLike } from "../src/plugin/http.js";
 import { createServices, type Services } from "../src/services.js";
 
 /** A clock tests can move forward by hand. */
@@ -35,9 +37,17 @@ export interface TestContext {
   close(): Promise<void>;
 }
 
-export async function createTestContext(): Promise<TestContext> {
+export interface TestOptions {
+  readonly plugins?: readonly RegisteredPlugin[];
+  readonly fetchImpl?: FetchLike;
+}
+
+export async function createTestContext(options: TestOptions = {}): Promise<TestContext> {
   const dataDir = mkdtempSync(path.join(tmpdir(), "open-parcels-test-"));
-  const config = loadConfig({ OPENPARCELS_DATA_DIR: dataDir });
+  const config = loadConfig({
+    OPENPARCELS_DATA_DIR: dataDir,
+    OPENPARCELS_TIMEZONE: "Europe/Berlin",
+  });
   const { db } = openDatabase(config.databasePath);
   await migrateToLatest(db);
   const clock = new FakeClock();
@@ -47,6 +57,13 @@ export async function createTestContext(): Promise<TestContext> {
     logger: pino({ level: "silent" }),
     clock,
     secrets: new SecretBox(randomBytes(32)),
+    plugins: options.plugins ?? [],
+    // Waiting for a rate limit advances the fake clock instead of real time.
+    sleep: (ms) => {
+      clock.advance(ms);
+      return Promise.resolve();
+    },
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   });
   const apps: App[] = [];
   return {

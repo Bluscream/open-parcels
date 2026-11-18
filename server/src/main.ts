@@ -57,6 +57,8 @@ async function main(): Promise<void> {
     servers.push(ingress);
   }
 
+  services.scheduler.start();
+
   const maintenance = setInterval(() => {
     runMaintenance(services).catch((error: unknown) => {
       logger.error({ err: error }, "Maintenance failed.");
@@ -66,6 +68,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     logger.info({ signal }, "Shutting down.");
     clearInterval(maintenance);
+    services.scheduler.stop();
     Promise.all(servers.map((server) => server.close()))
       .then(() => db.destroy())
       .then(() => process.exit(0))

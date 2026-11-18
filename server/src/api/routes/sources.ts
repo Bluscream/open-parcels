@@ -1,0 +1,216 @@
+import { z } from "zod";
+import { InvalidSourceConfigError } from "../../engine/registry.js";
+import type { SourceView } from "../../engine/sources.js";
+import type { Services } from "../../services.js";
+import type { TypedApp } from "../app.js";
+import { requireScope } from "../auth-plugin.js";
+import { ApiError, errorBodySchema, notFound } from "../errors.js";
+
+const idParams = z.object({ id: z.uuid() });
+
+const sourceSchema = z.object({
+  id: z.uuid(),
+  plugin: z.string(),
+  kind: z.enum(["account", "tracking", "shop", "mail"]),
+  label: z.string(),
+  config: z.unknown(),
+  has_secret: z
+    .boolean()
+    .describe("Whether sign-in data is stored. The data itself is never returned."),
+  state: z.enum(["ok", "needs_sign_in", "error", "disabled"]),
+  state_detail: z.string().nullable(),
+  next_run_at: z.string().nullable(),
+  last_run_at: z.string().nullable(),
+  last_ok_at: z.string().nullable(),
+});
+
+const carrierSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  countries: z.array(z.string()),
+  source_kinds: z.array(z.enum(["account", "tracking", "shop"])),
+  sign_in: z.string(),
+  config_schema: z.unknown().describe("JSON Schema of the source configuration form."),
+  browser_user_agent_reason: z.string().nullable(),
+});
+
+function toBody(view: SourceView): z.infer<typeof sourceSchema> {
+  return {
+    id: view.id,
+    plugin: view.plugin,
+    kind: view.kind,
+    label: view.label,
+    config: view.config,
+    has_secret: view.hasSecret,
+    state: view.state,
+    state_detail: view.stateDetail,
+    next_run_at: view.nextRunAt,
+    last_run_at: view.lastRunAt,
+    last_ok_at: view.lastOkAt,
+  };
+}
+
+function asBadRequest(error: unknown): never {
+  if (error instanceof InvalidSourceConfigError) {
+    throw new ApiError(400, "invalid_source", error.message);
+  }
+  throw error;
+}
+
+export function registerSourceRoutes(app: TypedApp, services: Services): void {
+  const read = requireScope("read");
+  const admin = requireScope("admin");
+
+  app.get(
+    "/api/v1/carriers",
+    {
+      preHandler: read,
+      schema: {
+        tags: ["sources"],
+        summary: "Installed carrier plug-ins and how to set them up.",
+        response: { 200: z.array(carrierSchema) },
+      },
+    },
+    () =>
+      services.registry.list().map((plugin) => ({
+        id: plugin.info.id,
+        name: plugin.info.name,
+        countries: [...plugin.info.countries],
+        source_kinds: [...plugin.info.sourceKinds],
+        sign_in: plugin.info.signIn,
+        config_schema: z.toJSONSchema(plugin.info.configSchema, { unrepresentable: "any" }),
+        browser_user_agent_reason: plugin.info.browserUserAgentReason,
+      })),
+  );
+
+  app.get(
+    "/api/v1/sources",
+    {
+      preHandler: read,
+      schema: {
+        tags: ["sources"],
+        summary: "Carrier accounts, shops, tracking sources and mailboxes.",
+        response: { 200: z.array(sourceSchema) },
+      },
+    },
+    async () => (await services.sources.list()).map(toBody),
+  );
+
+  app.post(
+    "/api/v1/sources",
+    {
+      preHandler: admin,
+      schema: {
+        tags: ["sources"],
+        summary: "Add a source. Sign-in data is encrypted at rest and never returned.",
+        body: z.object({
+          plugin: z.string().min(1).max(64),
+          kind: z.enum(["account", "tracking", "shop"]),
+          label: z.string().min(1).max(80),
+          config: z.unknown().default({}),
+          secret: z.unknown().default(null),
+        }),
+        response: { 201: sourceSchema, 400: errorBodySchema },
+      },
+    },
+    async (request, reply) => {
+      const created = await services.sources.create(request.body).catch(asBadRequest);
+      services.scheduler.wake();
+      return reply.code(201).send(toBody(created));
+    },
+  );
+
+  app.patch(
+    "/api/v1/sources/:id",
+    {
+      preHandler: admin,
+      schema: {
+        tags: ["sources"],
+        summary: "Rename, reconfigure, enable or disable a source.",
+        params: idParams,
+        body: z.object({
+          label: z.string().min(1).max(80).optional(),
+          config: z.unknown().optional(),
+          enabled: z.boolean().optional(),
+        }),
+        response: { 200: sourceSchema, 400: errorBodySchema, 404: errorBodySchema },
+      },
+    },
+    async (request) => {
+      const body = request.body;
+      const updated = await services.sources
+        .updateSettings(request.params.id, {
+          ...(body.label === undefined ? {} : { label: body.label }),
+          ...(body.config === undefined ? {} : { config: body.config }),
+          ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+        })
+        .catch(asBadRequest);
+      if (updated === undefined) {
+        throw notFound("The source");
+      }
+      return toBody(updated);
+    },
+  );
+
+  app.put(
+    "/api/v1/sources/:id/secret",
+    {
+      preHandler: admin,
+      schema: {
+        tags: ["sources"],
+        summary: "Replace the sign-in data (credentials or API key) and run the source.",
+        params: idParams,
+        body: z.object({ secret: z.unknown() }),
+        response: { 204: z.null(), 404: errorBodySchema },
+      },
+    },
+    async (request, reply) => {
+      if ((await services.sources.get(request.params.id)) === undefined) {
+        throw notFound("The source");
+      }
+      await services.sources.setSecret(request.params.id, request.body.secret);
+      services.scheduler.wake();
+      return reply.code(204).send(null);
+    },
+  );
+
+  app.post(
+    "/api/v1/sources/:id/sync",
+    {
+      preHandler: requireScope("write"),
+      schema: {
+        tags: ["sources"],
+        summary: "Run a source now.",
+        params: idParams,
+        response: { 202: z.null(), 404: errorBodySchema },
+      },
+    },
+    async (request, reply) => {
+      if ((await services.sources.get(request.params.id)) === undefined) {
+        throw notFound("The source");
+      }
+      await services.sources.requestRun(request.params.id);
+      services.scheduler.wake();
+      return reply.code(202).send(null);
+    },
+  );
+
+  app.delete(
+    "/api/v1/sources/:id",
+    {
+      preHandler: admin,
+      schema: {
+        tags: ["sources"],
+        summary: "Remove a source and its stored sign-in.",
+        params: idParams,
+        response: { 204: z.null(), 404: errorBodySchema },
+      },
+    },
+    async (request, reply) => {
+      if (!(await services.sources.delete(request.params.id))) {
+        throw notFound("The source");
+      }
+      return reply.code(204).send(null);
+    },
+  );
+}

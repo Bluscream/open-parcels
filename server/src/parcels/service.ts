@@ -7,9 +7,9 @@ import {
   type Parcel,
   type ParcelStatus,
 } from "../domain/parcel.js";
+import { deriveEvents, type EventView } from "../engine/rules.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
-import type { EventType } from "../events/types.js";
 import { ParcelRepository } from "./repository.js";
 
 export class DuplicateParcelError extends Error {
@@ -33,19 +33,21 @@ export interface ParcelPatch {
   readonly archived?: boolean;
 }
 
-/** Event for a change of the effective status, following the suite's delivered rule. */
-function statusEventType(
-  before: ParcelStatus,
-  after: ParcelStatus,
-  direction: Direction,
-): EventType | undefined {
-  if (before === after) {
-    return undefined;
-  }
-  if (after === "delivered") {
-    return direction === "outgoing" ? "parcel.outgoing_delivered" : "parcel.delivered";
-  }
-  return "parcel.status_changed";
+/**
+ * Called after a code was added by hand, so the carrier's tracking source picks it up. Returns the
+ * source id it was linked to, or undefined when no installed plug-in can track this carrier.
+ */
+export type TrackingLinker = (carrier: string) => Promise<string | undefined>;
+
+function view(parcel: Parcel): EventView {
+  const status = effectiveStatus(parcel);
+  return {
+    direction: parcel.direction,
+    status,
+    delivered: parcel.manual_status === null ? parcel.delivered : status === "delivered",
+    plannedFrom: parcel.planned_from,
+    plannedTo: parcel.planned_to,
+  };
 }
 
 /** User-initiated parcel changes. Carrier updates go through the reconciler instead. */
@@ -56,6 +58,7 @@ export class ParcelService {
     private readonly db: Kysely<Database>,
     private readonly bus: EventBus,
     private readonly clock: Clock,
+    private readonly linkTracking: TrackingLinker,
   ) {
     this.repository = new ParcelRepository(db);
   }
@@ -65,6 +68,7 @@ export class ParcelService {
     if (existing !== undefined) {
       throw new DuplicateParcelError(existing);
     }
+    const sourceId = await this.linkTracking(input.carrier);
     const id = crypto.randomUUID();
     const now = isoNow(this.clock);
     await this.db.transaction().execute(async (trx) => {
@@ -85,15 +89,29 @@ export class ParcelService {
           updated_at: now,
         })
         .execute();
+      if (sourceId !== undefined) {
+        await trx
+          .insertInto("parcel_sources")
+          .values({
+            parcel_id: id,
+            source_id: sourceId,
+            external_ref: null,
+            role: "primary",
+            last_seen_at: now,
+          })
+          .execute();
+      }
       const parcel = await new ParcelRepository(trx).get(id);
       if (parcel === undefined) {
         throw new Error("Inserted parcel could not be read back.");
       }
-      await appendEvent(trx, this.clock, {
-        type: input.direction === "outgoing" ? "parcel.outgoing_registered" : "parcel.registered",
-        parcelId: id,
-        payload: parcelEventPayload(parcel),
-      });
+      for (const event of deriveEvents(null, view(parcel))) {
+        await appendEvent(trx, this.clock, {
+          type: event.type,
+          parcelId: id,
+          payload: parcelEventPayload(parcel, event.changes),
+        });
+      }
     });
     await this.bus.notify();
     return this.#mustGet(id);
@@ -122,14 +140,11 @@ export class ParcelService {
       if (after === undefined) {
         return;
       }
-      const oldStatus = effectiveStatus(before);
-      const newStatus = effectiveStatus(after);
-      const type = statusEventType(oldStatus, newStatus, after.direction);
-      if (type !== undefined) {
+      for (const event of deriveEvents(view(before), view(after))) {
         await appendEvent(trx, this.clock, {
-          type,
+          type: event.type,
           parcelId: id,
-          payload: parcelEventPayload(after, { old_status: oldStatus, new_status: newStatus }),
+          payload: parcelEventPayload(after, event.changes),
         });
       }
     });

@@ -2,6 +2,7 @@ import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect } from "kysely";
 import { Migrator, type Migration, type MigrationProvider } from "kysely/migration";
 import * as m0001 from "./migrations/0001-initial.js";
+import * as m0002 from "./migrations/0002-reconciler.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -10,6 +11,7 @@ import type { Database } from "./schema.js";
  */
 const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0001-initial": m0001,
+  "0002-reconciler": m0002,
 };
 
 const staticProvider: MigrationProvider = {

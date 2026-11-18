@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { isValidTimeZone } from "./engine/tz.js";
 
 const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace"] as const;
 
@@ -24,6 +25,12 @@ const envSchema = z.object({
   OPENPARCELS_INGRESS_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   /** Mark session cookies Secure. Turn on when served over HTTPS. */
   OPENPARCELS_SECURE_COOKIES: booleanFlag.default(false),
+  /** IANA time zone for the night-time quiet window and calendar days. Defaults to TZ / the system zone. */
+  OPENPARCELS_TIMEZONE: z
+    .string()
+    .min(1)
+    .refine(isValidTimeZone, "Unknown time zone; use an IANA name like Europe/Berlin.")
+    .optional(),
 });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -38,6 +45,7 @@ export interface AppConfig {
   readonly publicUrl: URL | undefined;
   readonly ingressPort: number | undefined;
   readonly secureCookies: boolean;
+  readonly timeZone: string;
 }
 
 export class ConfigError extends Error {
@@ -68,5 +76,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         : new URL(values.OPENPARCELS_PUBLIC_URL),
     ingressPort: values.OPENPARCELS_INGRESS_PORT,
     secureCookies: values.OPENPARCELS_SECURE_COOKIES,
+    timeZone: values.OPENPARCELS_TIMEZONE ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
 }
