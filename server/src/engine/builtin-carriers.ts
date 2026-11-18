@@ -1,4 +1,5 @@
 import { fourPx } from "../carriers/4px/index.js";
+import { acsCourier } from "../carriers/acs-courier/index.js";
 import { amazonCarrier } from "../carriers/amazon/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
@@ -11,6 +12,7 @@ import { register, type RegisteredPlugin } from "./registry.js";
  */
 export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(fourPx),
+  register(acsCourier),
   register(amazonCarrier()),
   register(dhl),
   register(dpd),
