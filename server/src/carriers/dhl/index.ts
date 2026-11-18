@@ -4,12 +4,15 @@ import { fetchDeAccount } from "./de/account.js";
 import { finishSignIn, startSignIn } from "./de/session.js";
 import { IBERIA_HOST } from "./iberia.js";
 import { fetchNlAccount, NL_HOST, nlSignIn } from "./nl/account.js";
+import { fetchPlAccount, plSignIn } from "./pl/account.js";
+import { PL_HOST } from "./pl/public.js";
 import { SWEDEN_HOST } from "./sweden.js";
 import { trackCodes } from "./tracking.js";
 
 /**
  * Sign-in data. A German account source stores the refresh token from the pasted-link sign-in, a
- * Dutch one the account's email and password; a tracking source may store the user's own key for
+ * Dutch one the account's email and password, a Polish one its device id and session cookies;
+ * a tracking source may store the user's own key for
  * DHL's official tracking API.
  */
 const secretSchema = z
@@ -17,6 +20,7 @@ const secretSchema = z
     refreshToken: z.string().min(1).optional(),
     apiKey: z.string().min(1).optional(),
     nl: z.object({ email: z.string().min(1), password: z.string().min(1) }).optional(),
+    pl: z.object({ deviceId: z.string().min(1), jar: z.unknown() }).optional(),
   })
   .nullable();
 type Secret = z.infer<typeof secretSchema>;
@@ -24,12 +28,13 @@ type Secret = z.infer<typeof secretSchema>;
 const configSchema = z.looseObject({
   /**
    * Regional DHL networks to ask as well, for parcels the gateway does not know: `ES`/`PT`
-   * (DHL eCommerce Iberia) and `SE` (DHL Freight Sweden). Off by default, so codes are not
+   * (DHL eCommerce Iberia), `SE` (DHL Freight Sweden) and `PL` (Mój DHL's public lookup, behind a
+   * proof-of-work challenge). Off by default, so codes are not
    * sent to back ends that cannot know them.
    */
-  regions: z.array(z.enum(["ES", "PT", "SE"])).optional(),
-  /** Which DHL account an account source reads: dhl.de (default) or my.dhlecommerce.nl. */
-  account: z.enum(["de", "nl"]).optional(),
+  regions: z.array(z.enum(["ES", "PT", "SE", "PL"])).optional(),
+  /** Which DHL account an account source reads: dhl.de (default), my.dhlecommerce.nl or mojdhl.pl. */
+  account: z.enum(["de", "nl", "pl"]).optional(),
 });
 type Config = z.infer<typeof configSchema>;
 
@@ -50,11 +55,12 @@ export const dhl = defineCarrier<Config, Secret>({
       id: "de_account",
       label: "DHL Germany account (sign in in your browser)",
       kinds: ["account"],
-      when: (config) => config.account !== "nl",
+      when: (config) => config.account !== "nl" && config.account !== "pl",
       start: () => Promise.resolve(startSignIn()),
       finish: (context, state, pasted) => finishSignIn(context.http, state, pasted),
     }),
     nlSignIn<Config>({ when: (config) => config.account === "nl" }),
+    plSignIn<Config>({ when: (config) => config.account === "pl" }),
     {
       type: "api_key",
       id: "tracking_api_key",
@@ -73,6 +79,7 @@ export const dhl = defineCarrier<Config, Secret>({
       [NL_HOST]: { intervalMs: 6_000, burst: 2 },
       [IBERIA_HOST]: { intervalMs: 6_000, burst: 2 },
       [SWEDEN_HOST]: { intervalMs: 6_000, burst: 2 },
+      [PL_HOST]: { intervalMs: 8_000, burst: 2 },
       "*": { intervalMs: 10_000, burst: 1 },
     },
   },
@@ -83,6 +90,13 @@ export const dhl = defineCarrier<Config, Secret>({
         throw new SignInRejectedError("Sign in to your DHL Netherlands account first.");
       }
       return fetchNlAccount(context, credentials);
+    }
+    if (context.config.account === "pl") {
+      const signedIn = context.secret?.pl;
+      if (signedIn === undefined) {
+        throw new SignInRejectedError("Sign in to your Mój DHL account first.");
+      }
+      return fetchPlAccount(context, signedIn);
     }
     const refreshToken = context.secret?.refreshToken;
     if (refreshToken === undefined) {
@@ -95,6 +109,7 @@ export const dhl = defineCarrier<Config, Secret>({
     return trackCodes(context, context.secret?.apiKey ?? null, barcodes, {
       iberia: regions.has("ES") || regions.has("PT"),
       sweden: regions.has("SE"),
+      poland: regions.has("PL"),
     });
   },
 });
