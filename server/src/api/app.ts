@@ -19,6 +19,7 @@ import type { Services } from "../services.js";
 import { registerAuth } from "./auth-plugin.js";
 import { ApiError } from "./errors.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
+import { registerDiagnosticsRoutes } from "./routes/diagnostics.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerImageRoutes } from "./routes/images.js";
@@ -118,6 +119,7 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   registerSourceRoutes(typed, services);
   registerCalendarRoutes(typed, services);
   registerImageRoutes(typed, services);
+  registerDiagnosticsRoutes(typed, services);
   registerEventRoutes(typed, services);
 
   app.get("/api/v1/openapi.json", { schema: { hide: true } }, () => app.swagger());

@@ -25,6 +25,9 @@ const envSchema = z.object({
   OPENPARCELS_INGRESS_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   /** Mark session cookies Secure. Turn on when served over HTTPS. */
   OPENPARCELS_SECURE_COOKIES: booleanFlag.default(false),
+  /** Days after delivery before a parcel is archived, and days after archiving before it is deleted. */
+  OPENPARCELS_ARCHIVE_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+  OPENPARCELS_DELETE_DAYS: z.coerce.number().int().min(1).max(36500).default(365),
   /** IANA time zone for the night-time quiet window and calendar days. Defaults to TZ / the system zone. */
   OPENPARCELS_TIMEZONE: z
     .string()
@@ -46,6 +49,11 @@ export interface AppConfig {
   readonly ingressPort: number | undefined;
   readonly secureCookies: boolean;
   readonly timeZone: string;
+  readonly retention: {
+    readonly archiveAfterDays: number;
+    readonly deleteAfterDays: number;
+    readonly rawAfterDays: number;
+  };
 }
 
 export class ConfigError extends Error {
@@ -77,5 +85,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ingressPort: values.OPENPARCELS_INGRESS_PORT,
     secureCookies: values.OPENPARCELS_SECURE_COOKIES,
     timeZone: values.OPENPARCELS_TIMEZONE ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    retention: {
+      archiveAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
+      deleteAfterDays: values.OPENPARCELS_DELETE_DAYS,
+      rawAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
+    },
   };
 }

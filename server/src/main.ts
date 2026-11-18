@@ -5,6 +5,7 @@ import { systemClock } from "./clock.js";
 import { loadConfig } from "./config.js";
 import { loadSecretKey, SecretBox } from "./crypto/secrets.js";
 import { migrateToLatest, openDatabase } from "./db/database.js";
+import { applyRetention } from "./engine/retention.js";
 import { createLogger } from "./log/logger.js";
 import { createServices, type Services } from "./services.js";
 
@@ -13,9 +14,9 @@ const MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
 async function runMaintenance(services: Services): Promise<void> {
   const sessions = await services.auth.pruneExpiredSessions();
   const events = await services.bus.pruneExpired();
-  if (sessions + events > 0) {
-    services.logger.debug({ sessions, events }, "Removed expired sessions and events.");
-  }
+  const images = await services.images.prune();
+  const retention = await applyRetention(services.db, services.clock, services.config.retention);
+  services.logger.debug({ sessions, events, images, ...retention }, "Maintenance finished.");
 }
 
 async function main(): Promise<void> {
