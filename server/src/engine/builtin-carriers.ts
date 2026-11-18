@@ -76,6 +76,7 @@ import { tipsa } from "../carriers/tipsa/index.js";
 import { trunkrs } from "../carriers/trunkrs/index.js";
 import { ukrposhta } from "../carriers/ukrposhta/index.js";
 import { uniuni } from "../carriers/uniuni/index.js";
+import { ups } from "../carriers/ups/index.js";
 import { usps } from "../carriers/usps/index.js";
 import { vintedGo } from "../carriers/vinted_go/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
@@ -163,6 +164,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(trunkrs),
   register(ukrposhta),
   register(uniuni),
+  register(ups),
   register(usps),
   register(vintedGo),
 ];
