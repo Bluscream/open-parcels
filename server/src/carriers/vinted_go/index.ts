@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
   defineCarrier,
+  SignInRejectedError,
   snapshot,
   UnexpectedResponseError,
   type ParcelSnapshot,
@@ -17,6 +18,8 @@ import {
   text,
   type Json,
 } from "../../plugin/api.js";
+
+import { emailSignIn, fetchVintedAccount } from "./account.js";
 
 /** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
 const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
@@ -70,11 +73,12 @@ const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;
-const secretSchema = z.null();
+/** An account source keeps the refresh token from the emailed sign-in link; tracking needs nothing. */
+const secretSchema = z.object({ refreshToken: z.string().min(1) }).nullable();
 type Secret = z.infer<typeof secretSchema>;
 
 /** The timeline, oldest first; null when Vinted Go does not know the code yet. */
-async function lookUp(http: PluginHttp, barcode: string): Promise<Json[] | null> {
+export async function lookUp(http: PluginHttp, barcode: string): Promise<Json[] | null> {
   const url = new URL(
     `https://${API_HOST}/members/public/v1/tracking_events/${encodeURIComponent(barcode)}`,
   );
@@ -166,12 +170,21 @@ export const vintedGo = defineCarrier<Config, Secret>({
   id: CARRIER_ID,
   name: "Vinted Go",
   countries: ["NL", "BE", "FR"],
-  sourceKinds: ["tracking"],
+  sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "none" },
+  signIn: [emailSignIn<Config>(), { type: "none", kinds: ["tracking"] }],
   http: {
     limits: { [API_HOST]: { intervalMs: 5_000, burst: 2 }, "*": { intervalMs: 10_000, burst: 1 } },
   },
   track,
+  async fetchAccount(context) {
+    if (context.secret === null) {
+      throw new SignInRejectedError("Sign in to your Vinted Go account first.");
+    }
+    return fetchVintedAccount(context, context.secret.refreshToken, {
+      lookUp,
+      toSnapshot: vintedSnapshot,
+    });
+  },
 });
