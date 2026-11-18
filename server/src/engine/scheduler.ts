@@ -95,6 +95,7 @@ export class Scheduler {
       .selectFrom("sources")
       .select((eb) => eb.fn.min("next_run_at").as("next"))
       .where("state", "in", ["ok", "error"])
+      .where("kind", "!=", "mail")
       .where("next_run_at", "is not", null)
       .executeTakeFirst();
     if (next?.next === undefined || next.next === null) {
@@ -112,6 +113,7 @@ export class Scheduler {
       .selectFrom("sources")
       .selectAll()
       .where("state", "in", ["ok", "error"])
+      .where("kind", "!=", "mail")
       .where("next_run_at", "<=", isoNow(this.deps.clock))
       .orderBy("next_run_at")
       .execute();

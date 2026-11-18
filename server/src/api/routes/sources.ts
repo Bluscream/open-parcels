@@ -105,7 +105,11 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
         summary: "Add a source. Sign-in data is encrypted at rest and never returned.",
         body: z.object({
           plugin: z.string().min(1).max(64),
-          kind: z.enum(["account", "tracking", "shop"]),
+          kind: z
+            .enum(["account", "tracking", "shop", "mail"])
+            .describe(
+              'Mailboxes use the plug-in "imap" with config {host, port, secure, folders}.',
+            ),
           label: z.string().min(1).max(80),
           config: z.unknown().default({}),
           secret: z.unknown().default(null),
@@ -115,6 +119,9 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
     },
     async (request, reply) => {
       const created = await services.sources.create(request.body).catch(asBadRequest);
+      if (created.kind === "mail") {
+        await services.mail.connect(created.id);
+      }
       services.scheduler.wake();
       return reply.code(201).send(toBody(created));
     },
@@ -145,6 +152,11 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
           ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
         })
         .catch(asBadRequest);
+      if (updated?.kind === "mail") {
+        await (updated.state === "disabled"
+          ? services.mail.disconnect(updated.id)
+          : services.mail.connect(updated.id));
+      }
       if (updated === undefined) {
         throw notFound("The source");
       }
@@ -169,6 +181,9 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
         throw notFound("The source");
       }
       await services.sources.setSecret(request.params.id, request.body.secret);
+      if ((await services.sources.get(request.params.id))?.kind === "mail") {
+        await services.mail.connect(request.params.id);
+      }
       services.scheduler.wake();
       return reply.code(204).send(null);
     },
@@ -207,6 +222,7 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
       },
     },
     async (request, reply) => {
+      await services.mail.disconnect(request.params.id);
       if (!(await services.sources.delete(request.params.id))) {
         throw notFound("The source");
       }

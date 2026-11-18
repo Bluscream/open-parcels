@@ -3,6 +3,7 @@ import { isoNow, type Clock } from "../clock.js";
 import type { SecretBox } from "../crypto/secrets.js";
 import type { Database, SourceRow } from "../db/schema.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
+import { MAIL_PLUGIN, mailConfigSchema, mailSecretSchema } from "../mail/types.js";
 import { InvalidSourceConfigError, type PluginRegistry } from "./registry.js";
 
 export type SourceKind = SourceRow["kind"];
@@ -75,14 +76,7 @@ export class SourceService {
   }
 
   async create(input: NewSource): Promise<SourceView> {
-    const plugin = this.registry.get(input.plugin);
-    if (plugin === undefined) {
-      throw new InvalidSourceConfigError(`There is no carrier plug-in called ${input.plugin}.`);
-    }
-    if (input.kind !== "mail" && !plugin.info.sourceKinds.includes(input.kind)) {
-      throw new InvalidSourceConfigError(`${plugin.info.name} has no ${input.kind} source.`);
-    }
-    plugin.validateConfig(input.config);
+    const config = this.#validate(input);
     const id = crypto.randomUUID();
     const now = isoNow(this.clock);
     await this.db
@@ -92,13 +86,14 @@ export class SourceService {
         plugin: input.plugin,
         kind: input.kind,
         label: input.label,
-        config: JSON.stringify(input.config),
+        config: JSON.stringify(config),
         secret_blob:
           input.secret === null ? null : this.secrets.encryptJson(input.secret, secretAad(id)),
         session_blob: null,
         state: "ok",
         state_detail: null,
-        next_run_at: now,
+        // Mailboxes are driven by the mail watcher (IMAP IDLE), never by the poll scheduler.
+        next_run_at: input.kind === "mail" ? null : now,
         created_at: now,
         updated_at: now,
       })
@@ -108,6 +103,32 @@ export class SourceService {
       throw new Error("Created source could not be read back.");
     }
     return created;
+  }
+
+  /** Validates a new source and returns its configuration with defaults applied. */
+  #validate(input: NewSource): unknown {
+    if (input.kind === "mail" || input.plugin === MAIL_PLUGIN) {
+      if (input.kind !== "mail" || input.plugin !== MAIL_PLUGIN) {
+        throw new InvalidSourceConfigError(
+          `Mailboxes use the plug-in "${MAIL_PLUGIN}" and the kind "mail".`,
+        );
+      }
+      const config = mailConfigSchema.safeParse(input.config);
+      const secret = mailSecretSchema.safeParse(input.secret);
+      if (!config.success || !secret.success) {
+        throw new InvalidSourceConfigError("The mailbox needs a host, a username and a password.");
+      }
+      return config.data;
+    }
+    const plugin = this.registry.get(input.plugin);
+    if (plugin === undefined) {
+      throw new InvalidSourceConfigError(`There is no carrier plug-in called ${input.plugin}.`);
+    }
+    if (!plugin.info.sourceKinds.includes(input.kind)) {
+      throw new InvalidSourceConfigError(`${plugin.info.name} has no ${input.kind} source.`);
+    }
+    plugin.validateConfig(input.config);
+    return input.config;
   }
 
   /**

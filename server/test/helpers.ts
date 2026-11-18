@@ -9,6 +9,7 @@ import { loadConfig } from "../src/config.js";
 import { SecretBox } from "../src/crypto/secrets.js";
 import { migrateToLatest, openDatabase } from "../src/db/database.js";
 import type { RegisteredPlugin } from "../src/engine/registry.js";
+import type { MailboxClientFactory, MailInterpreter } from "../src/mail/types.js";
 import type { FetchLike } from "../src/plugin/http.js";
 import { createServices, type Services } from "../src/services.js";
 
@@ -40,6 +41,8 @@ export interface TestContext {
 export interface TestOptions {
   readonly plugins?: readonly RegisteredPlugin[];
   readonly fetchImpl?: FetchLike;
+  readonly mailClientFactory?: MailboxClientFactory;
+  readonly mailInterpreter?: MailInterpreter;
 }
 
 export async function createTestContext(options: TestOptions = {}): Promise<TestContext> {
@@ -64,6 +67,10 @@ export async function createTestContext(options: TestOptions = {}): Promise<Test
       return Promise.resolve();
     },
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    ...(options.mailClientFactory === undefined
+      ? {}
+      : { mailClientFactory: options.mailClientFactory }),
+    ...(options.mailInterpreter === undefined ? {} : { mailInterpreter: options.mailInterpreter }),
   });
   const apps: App[] = [];
   return {

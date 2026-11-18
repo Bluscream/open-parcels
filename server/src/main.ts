@@ -59,6 +59,7 @@ async function main(): Promise<void> {
 
   services.scheduler.start();
   services.live.start();
+  await services.mail.start();
 
   const maintenance = setInterval(() => {
     runMaintenance(services).catch((error: unknown) => {
@@ -71,7 +72,9 @@ async function main(): Promise<void> {
     clearInterval(maintenance);
     services.scheduler.stop();
     services.live.stop();
-    Promise.all(servers.map((server) => server.close()))
+    services.mail
+      .stop()
+      .then(() => Promise.all(servers.map((server) => server.close())))
       .then(() => db.destroy())
       .then(() => process.exit(0))
       .catch((error: unknown) => {

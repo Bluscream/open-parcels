@@ -17,6 +17,9 @@ import { Scheduler } from "./engine/scheduler.js";
 import { SourceService } from "./engine/sources.js";
 import { EventBus } from "./events/bus.js";
 import { ImageProxy } from "./images/proxy.js";
+import { imapClientFactory } from "./mail/imap-client.js";
+import type { MailboxClientFactory, MailInterpreter } from "./mail/types.js";
+import { MailWatcher } from "./mail/watcher.js";
 import type { Presentation } from "./parcels/repository.js";
 import { ParcelService } from "./parcels/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
@@ -62,6 +65,7 @@ export interface Services {
   readonly registry: PluginRegistry;
   readonly sources: SourceService;
   readonly images: ImageProxy;
+  readonly mail: MailWatcher;
   readonly reconciler: Reconciler;
   readonly runner: SourceRunner;
   readonly scheduler: Scheduler;
@@ -81,6 +85,59 @@ export interface ServiceDeps {
   readonly plugins?: readonly RegisteredPlugin[];
   readonly fetchImpl?: FetchLike;
   readonly sleep?: Sleep;
+  readonly mailClientFactory?: MailboxClientFactory;
+  readonly mailInterpreter?: MailInterpreter;
+}
+
+/**
+ * Parcels found in mail are linked to their carrier's tracking source, so the carrier is polled
+ * for them. Returns true when anything was linked.
+ */
+async function followMailParcels(
+  db: Kysely<Database>,
+  registry: PluginRegistry,
+  sources: SourceService,
+  mailSourceId: string,
+): Promise<boolean> {
+  const unfollowed = await db
+    .selectFrom("parcel_sources as mail")
+    .innerJoin("parcels", "parcels.id", "mail.parcel_id")
+    .select(["parcels.id", "parcels.carrier"])
+    .where("mail.source_id", "=", mailSourceId)
+    .where("parcels.delivered", "=", 0)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("parcel_sources as other")
+            .select("other.parcel_id")
+            .whereRef("other.parcel_id", "=", "parcels.id")
+            .where("other.role", "in", ["primary", "handoff"]),
+        ),
+      ),
+    )
+    .execute();
+  let linked = false;
+  for (const parcel of unfollowed) {
+    if (registry.get(parcel.carrier)?.canTrack !== true) {
+      continue;
+    }
+    const trackingId = await sources.ensureTrackingSource(parcel.carrier);
+    await db
+      .insertInto("parcel_sources")
+      .values({
+        parcel_id: parcel.id,
+        source_id: trackingId,
+        external_ref: null,
+        role: "primary",
+        last_seen_at: new Date().toISOString(),
+      })
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+    await sources.requestRun(trackingId);
+    linked = true;
+  }
+  return linked;
 }
 
 /** A random id per installation, stored once; it spreads polling of different installs apart. */
@@ -173,6 +230,21 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     },
     presentation,
   );
+  const mail = new MailWatcher({
+    db,
+    secrets: deps.secrets,
+    sources,
+    reconciler,
+    clock,
+    logger,
+    clientFactory: deps.mailClientFactory ?? imapClientFactory,
+    interpret: deps.mailInterpreter ?? (() => []),
+    followUp: async (sourceId) => {
+      if (await followMailParcels(db, registry, sources, sourceId)) {
+        scheduler.wake();
+      }
+    },
+  });
   const setup = new SetupGate((await auth.hasOwner()) ? undefined : humanCode());
   return {
     ...deps,
@@ -182,6 +254,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     registry,
     sources,
     images,
+    mail,
     reconciler,
     runner,
     scheduler,
