@@ -1,0 +1,152 @@
+import type { Kysely } from "kysely";
+import { isoNow, type Clock } from "../clock.js";
+import type { Database, ParcelUpdate } from "../db/schema.js";
+import {
+  effectiveStatus,
+  type Direction,
+  type Parcel,
+  type ParcelStatus,
+} from "../domain/parcel.js";
+import { appendEvent, type EventBus } from "../events/bus.js";
+import { parcelEventPayload } from "../events/payload.js";
+import type { EventType } from "../events/types.js";
+import { ParcelRepository } from "./repository.js";
+
+export class DuplicateParcelError extends Error {
+  override readonly name = "DuplicateParcelError";
+
+  constructor(readonly existingId: string) {
+    super("This parcel is already tracked.");
+  }
+}
+
+export interface NewParcelInput {
+  readonly carrier: string;
+  readonly barcode: string;
+  readonly direction: Direction;
+  readonly label: string | null;
+}
+
+export interface ParcelPatch {
+  readonly label?: string | null;
+  readonly manualStatus?: ParcelStatus | null;
+  readonly archived?: boolean;
+}
+
+/** Event for a change of the effective status, following the suite's delivered rule. */
+function statusEventType(
+  before: ParcelStatus,
+  after: ParcelStatus,
+  direction: Direction,
+): EventType | undefined {
+  if (before === after) {
+    return undefined;
+  }
+  if (after === "delivered") {
+    return direction === "outgoing" ? "parcel.outgoing_delivered" : "parcel.delivered";
+  }
+  return "parcel.status_changed";
+}
+
+/** User-initiated parcel changes. Carrier updates go through the reconciler instead. */
+export class ParcelService {
+  readonly repository: ParcelRepository;
+
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly bus: EventBus,
+    private readonly clock: Clock,
+  ) {
+    this.repository = new ParcelRepository(db);
+  }
+
+  async create(input: NewParcelInput): Promise<Parcel> {
+    const existing = await this.repository.findIdByBarcode(input.carrier, input.barcode);
+    if (existing !== undefined) {
+      throw new DuplicateParcelError(existing);
+    }
+    const id = crypto.randomUUID();
+    const now = isoNow(this.clock);
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto("parcels")
+        .values({
+          id,
+          carrier: input.carrier,
+          barcode: input.barcode,
+          direction: input.direction,
+          status: "registered",
+          raw_status: null,
+          delivered: 0,
+          pickup: 0,
+          label: input.label,
+          first_seen_at: now,
+          last_seen_at: now,
+          updated_at: now,
+        })
+        .execute();
+      const parcel = await new ParcelRepository(trx).get(id);
+      if (parcel === undefined) {
+        throw new Error("Inserted parcel could not be read back.");
+      }
+      await appendEvent(trx, this.clock, {
+        type: input.direction === "outgoing" ? "parcel.outgoing_registered" : "parcel.registered",
+        parcelId: id,
+        payload: parcelEventPayload(parcel),
+      });
+    });
+    await this.bus.notify();
+    return this.#mustGet(id);
+  }
+
+  /** Applies a user edit. Returns undefined when the parcel does not exist. */
+  async update(id: string, patch: ParcelPatch): Promise<Parcel | undefined> {
+    const before = await this.repository.get(id);
+    if (before === undefined) {
+      return undefined;
+    }
+    const now = isoNow(this.clock);
+    const changes: ParcelUpdate = { updated_at: now };
+    if (patch.label !== undefined) {
+      changes.label = patch.label;
+    }
+    if (patch.manualStatus !== undefined) {
+      changes.manual_status = patch.manualStatus;
+    }
+    if (patch.archived !== undefined) {
+      changes.archived_at = patch.archived ? now : null;
+    }
+    await this.db.transaction().execute(async (trx) => {
+      await trx.updateTable("parcels").set(changes).where("id", "=", id).execute();
+      const after = await new ParcelRepository(trx).get(id);
+      if (after === undefined) {
+        return;
+      }
+      const oldStatus = effectiveStatus(before);
+      const newStatus = effectiveStatus(after);
+      const type = statusEventType(oldStatus, newStatus, after.direction);
+      if (type !== undefined) {
+        await appendEvent(trx, this.clock, {
+          type,
+          parcelId: id,
+          payload: parcelEventPayload(after, { old_status: oldStatus, new_status: newStatus }),
+        });
+      }
+    });
+    await this.bus.notify();
+    return this.#mustGet(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.db.deleteFrom("parcels").where("id", "=", id).executeTakeFirst();
+    return result.numDeletedRows > 0n;
+  }
+
+  async #mustGet(id: string): Promise<Parcel> {
+    const parcel = await this.repository.get(id);
+    if (parcel === undefined) {
+      throw new Error("Parcel disappeared while being written.");
+    }
+    return parcel;
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+web
+package-lock.json
+.references
+.scratch
+.playwright-mcp
+docs/decisions
+*.md
