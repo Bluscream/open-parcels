@@ -1,3 +1,5 @@
+import { cleanText, walkHtml } from "../../plugin/api.js";
+
 /** A table cell with its tag, so header (`th`) and data (`td`) cells can be told apart. */
 export interface Cell {
   readonly header: boolean;
@@ -7,32 +9,6 @@ export interface Cell {
 export interface Page {
   readonly tables: Cell[][][];
   readonly paragraphs: string[];
-}
-
-const ENTITIES: Readonly<Record<string, string>> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-};
-
-function decode(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
-    if (/^#x/i.test(name)) {
-      return String.fromCodePoint(Number.parseInt(name.slice(2), 16));
-    }
-    if (name.startsWith("#")) {
-      return String.fromCodePoint(Number.parseInt(name.slice(1), 10));
-    }
-    return ENTITIES[name.toLowerCase()] ?? whole;
-  });
-}
-
-/** Collapses whitespace; `\s` covers the non-breaking space too. */
-export function clean(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
 }
 
 interface Scan {
@@ -45,7 +21,7 @@ interface Scan {
 
 function closeCell(scan: Scan): void {
   if (scan.cell !== null && scan.row !== null) {
-    scan.row.push({ header: scan.cell.header, text: clean(scan.cell.parts.join("")) });
+    scan.row.push({ header: scan.cell.header, text: cleanText(scan.cell.parts.join("")) });
   }
   scan.cell = null;
 }
@@ -90,18 +66,16 @@ function closeTag(scan: Scan, tag: string): void {
     closeRow(scan);
     scan.depth -= 1;
   } else if (tag === "p" && scan.paragraph !== null) {
-    scan.page.paragraphs.push(clean(scan.paragraph.join("")));
+    scan.page.paragraphs.push(cleanText(scan.paragraph.join("")));
     scan.paragraph = null;
   }
 }
 
-const TOKEN = /<(\/?)([a-z0-9]+)\b[^>]*>|([^<]+)/gi;
-
-/** Reads every table row by row, and every paragraph's text. Scripts and styles are dropped. */
+/**
+ * Reads every table row by row, header cells marked, nested tables allowed, and every paragraph's
+ * text. Scripts, styles and comments are dropped.
+ */
 export function readPage(html: string): Page {
-  const stripped = html
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ");
   const scan: Scan = {
     page: { tables: [], paragraphs: [] },
     depth: 0,
@@ -109,17 +83,17 @@ export function readPage(html: string): Page {
     cell: null,
     paragraph: null,
   };
-  for (const [, slash, name, data] of stripped.matchAll(TOKEN)) {
-    if (data !== undefined) {
-      addText(scan, decode(data));
-    } else if (name !== undefined) {
-      if (slash === "/") {
-        closeTag(scan, name.toLowerCase());
-      } else {
-        openTag(scan, name.toLowerCase());
-      }
-    }
-  }
+  walkHtml(html, {
+    start: (tag) => {
+      openTag(scan, tag);
+    },
+    end: (tag) => {
+      closeTag(scan, tag);
+    },
+    data: (data) => {
+      addText(scan, data);
+    },
+  });
   closeRow(scan);
   return scan.page;
 }

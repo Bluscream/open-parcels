@@ -5,16 +5,18 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import { asObject, objects, text, type Json } from "../../plugin/kit/json.js";
-import { isoTime, newestFirst } from "../../plugin/kit/time.js";
-import {
+  asObject,
+  objects,
+  text,
+  type Json,
+  isoTime,
+  newestFirst,
   lookUpStatus,
   trackEach,
   unknownReporter,
-  type Status,
+  type ParcelStatus,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+} from "../../plugin/api.js";
 import { EvriTracking, HOST } from "./api.js";
 
 const CARRIER_ID = "evri";
@@ -49,7 +51,7 @@ const STAGES: StatusTable = {
 const PLAUSIBLE = /^[A-Z0-9]{8,30}$/;
 
 /** On a return parcel the in-network stages are the way back. */
-function stageStatus(code: string | null, returning: boolean): Status | null {
+function stageStatus(code: string | null, returning: boolean): ParcelStatus | null {
   return returning && (code === "3" || code === "4") ? "returning" : lookUpStatus(STAGES, code);
 }
 
@@ -59,7 +61,7 @@ const stageOf = (event: Json): string | null =>
 function history(events: readonly Json[], returning: boolean): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = isoTime(event["dateTime"], null);
+    const at = isoTime(event["dateTime"], { naive: "reject", epoch: "auto", epochStrings: true });
     const stage = stageOf(event);
     const rawStatus = text(asObject(event["trackingStage"])["description"]) ?? stage;
     if (at !== null && rawStatus !== null) {
@@ -94,7 +96,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
   const entries = history(events, returning);
   const byTime = newestFirst(
     events.flatMap((event) => {
-      const at = isoTime(event["dateTime"], null);
+      const at = isoTime(event["dateTime"], { naive: "reject", epoch: "auto", epochStrings: true });
       return at === null ? [] : [{ at, stage: stageOf(event) }];
     }),
   );

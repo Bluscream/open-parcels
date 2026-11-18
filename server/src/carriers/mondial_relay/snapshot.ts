@@ -1,21 +1,27 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
 import {
   asObject,
+  localDay,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+import {
   CARRIER_ID,
   CARRIER_TZ,
   HISTORY_LIMIT,
   isoAt,
-  localDay,
   parseTime,
   PICKUP_POINT_MODE,
   STEP_AVAILABLE,
   STEP_DELIVERED,
   STEP_MAP,
-  text,
-  zonedToUtc,
-  type Json,
 } from "./shared.js";
+
+/** Mondial Relay's fields are strings; a number in one is not taken as text. */
+const str = (value: unknown): string | null => text(value, { numbers: false });
 
 export interface Reporter {
   step(key: string): void;
@@ -66,7 +72,7 @@ function pickupPoint(expedition: Json, reached: readonly Step[]): string | null 
       continue;
     }
     const match = events.map(asObject).find((event) => event["Date"] === date);
-    const name = text(asObject(asObject(match?.["DetailPointRelais"])["Adresse"])["Libelle"]);
+    const name = str(asObject(asObject(match?.["DetailPointRelais"])["Adresse"])["Libelle"]);
     if (name !== null) {
       return name;
     }
@@ -83,10 +89,8 @@ function plannedWindow(expedition: Json): { from: string | null; to: string | nu
   if (estimate === null || new Date(estimate).getUTCFullYear() <= 1) {
     return { from: null, to: null };
   }
-  const day = localDay(estimate, CARRIER_TZ);
-  const start = zonedToUtc(day, CARRIER_TZ);
-  const end = zonedToUtc(day + 86_399_000, CARRIER_TZ);
-  return { from: isoAt(start), to: isoAt(end) };
+  const day = localDay(new Date(estimate).toISOString(), CARRIER_TZ);
+  return { from: day?.from ?? null, to: day?.to ?? null };
 }
 
 /** Events carry no code; each takes the status of the latest step reached by its moment. */
@@ -99,7 +103,7 @@ function history(expedition: Json, reached: readonly Step[], pickup: boolean): S
   const result: { ms: number; event: SnapshotEvent }[] = [];
   for (const entry of events.map(asObject)) {
     const ms = parseTime(entry["Date"], CARRIER_TZ);
-    const rawStatus = text(entry["Libelle"]);
+    const rawStatus = str(entry["Libelle"]);
     if (ms === null || rawStatus === null) {
       continue;
     }
@@ -118,9 +122,9 @@ function history(expedition: Json, reached: readonly Step[], pickup: boolean): S
 /** A link that opens the parcel for anyone; built from number and brand, never the postcode. */
 function publicUrl(expedition: Json): string | null {
   const number =
-    text(expedition["Numero"]) ??
+    str(expedition["Numero"]) ??
     (typeof expedition["Numero"] === "number" ? String(expedition["Numero"]) : null);
-  const brand = text(expedition["Enseigne"]);
+  const brand = str(expedition["Enseigne"]);
   if (number === null || brand === null || brand.length < 2) {
     return null;
   }
@@ -140,7 +144,7 @@ export function trackingSnapshot(
       report.step(step.key);
     }
   }
-  const mode = text(expedition["DeliveryMode"]);
+  const mode = str(expedition["DeliveryMode"]);
   const pickup = mode === PICKUP_POINT_MODE;
   if (!pickup) {
     report.deliveryMode(mode ?? "none");
@@ -162,7 +166,7 @@ export function trackingSnapshot(
     pickupPoint: pickup ? pickupPoint(expedition, reached) : null,
     url: publicUrl(expedition),
     // The merchant's code is the only sender the response carries.
-    sender: text(expedition["Enseigne"]),
+    sender: str(expedition["Enseigne"]),
     history: history(expedition, reached, pickup),
     raw: expedition,
   });

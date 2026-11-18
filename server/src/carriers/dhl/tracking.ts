@@ -1,5 +1,4 @@
-import type { FetchResult, ParcelSnapshot, PluginContext } from "../../plugin/api.js";
-import type { Json } from "../_kit/json.js";
+import type { FetchResult, Json, ParcelSnapshot, PluginContext } from "../../plugin/api.js";
 import { fetchGateway, normalizeGateway } from "./gateway.js";
 import { fetchIberia, iberiaShaped, normalizeIberia } from "./iberia.js";
 import { mergeAnswers, type Answer } from "./merge.js";

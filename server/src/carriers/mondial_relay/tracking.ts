@@ -1,11 +1,13 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   CookieJar,
+  isObject,
   TransientError,
   UnexpectedResponseError,
   type HttpResponse,
+  type Json,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import { API_URL, isObject, PAGE_URL, type Json } from "./shared.js";
+import { API_URL, PAGE_URL } from "./shared.js";
 
 /** Shipment numbers are digits; anything else is never sent. */
 const BARCODE_PATTERN = /^[0-9]{6,20}$/;

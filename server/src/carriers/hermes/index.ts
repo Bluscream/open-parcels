@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   defineCarrier,
+  type PluginHttp,
   RateLimitedError,
   SignInRejectedError,
   type ParcelSnapshot,

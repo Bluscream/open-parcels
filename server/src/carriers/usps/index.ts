@@ -1,4 +1,3 @@
-import { loadRules, trackingUrl } from "open-parcels-rules";
 import { z } from "zod";
 import {
   defineCarrier,
@@ -7,8 +6,11 @@ import {
   type PluginContext,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { isoTime, objects, text, type Json } from "../../plugin/payload.js";
+import { isoTime, objects, rulesTrackingUrl, text, type Json } from "../../plugin/api.js";
 import { API_HOST, UspsClient } from "./client.js";
+
+/** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
+const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
 
 const CARRIER_ID = "usps";
 
@@ -64,7 +66,7 @@ type Secret = z.infer<typeof secretSchema>;
 function history(raw: Json): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const event of objects(raw["trackingEvents"])) {
-    const at = isoTime(event["eventTimestamp"]);
+    const at = isoTime(event["eventTimestamp"], RUNTIME_TIME);
     const kind = text(event["eventType"]) ?? text(event["statusCategory"]);
     const rawStatus = text(event["eventCode"]) ?? kind;
     if (at !== null && rawStatus !== null) {
@@ -98,7 +100,7 @@ export function uspsSnapshot(
       : null,
     pickup: status === "at_pickup_point",
     url:
-      trackingUrl(loadRules(), CARRIER_ID, code) ??
+      rulesTrackingUrl(CARRIER_ID, code) ??
       `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(code)}`,
     history: events,
     raw,

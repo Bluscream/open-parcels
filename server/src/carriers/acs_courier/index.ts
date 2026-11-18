@@ -3,7 +3,7 @@ import {
   asArray,
   asObject,
   defineCarrier,
-  endOfLocalDay,
+  localDay,
   isoTime,
   newestFirst,
   snapshot,
@@ -64,7 +64,7 @@ function datedEvents(raw: Json): Dated[] {
   const dated: Dated[] = [];
   for (const entry of asArray(raw["statusHistory"])) {
     const event = asObject(entry);
-    const at = isoTime(event["controlPointDate"], ZONE);
+    const at = isoTime(event["controlPointDate"], { naive: { zone: ZONE } });
     if (at !== null) {
       dated.push({ at, event });
     }
@@ -93,7 +93,7 @@ export function acsSnapshot(
     [...mapped].reverse().find((entry) => entry.status === status && status !== null) ??
     mapped.at(-1);
   const delivered = status === "delivered";
-  const eta = delivered ? null : isoTime(raw["expectedDeliveryDate"], ZONE);
+  const eta = delivered ? null : isoTime(raw["expectedDeliveryDate"], { naive: { zone: ZONE } });
   const history: SnapshotEvent[] = mapped.flatMap(({ at, event, status: eventMapped }) => {
     const rawStatus = label(event);
     return rawStatus === null ? [] : [{ at, rawStatus, status: eventMapped, location: null }];
@@ -106,12 +106,14 @@ export function acsSnapshot(
       (stamping === undefined ? null : label(stamping.event)) ??
       (typeof statusId === "number" ? String(statusId) : null),
     delivered,
-    deliveredAt: delivered ? (isoTime(raw["deliveryDate"], ZONE) ?? stamping?.at ?? null) : null,
+    deliveredAt: delivered
+      ? (isoTime(raw["deliveryDate"], { naive: { zone: ZONE } }) ?? stamping?.at ?? null)
+      : null,
     // A bare date (midnight) means the whole local day; a real time stays a point estimate.
     plannedFrom: eta,
     plannedTo:
       eta !== null && MIDNIGHT.test(text(raw["expectedDeliveryDate"]) ?? "")
-        ? endOfLocalDay(eta, ZONE)
+        ? (localDay(eta, ZONE)?.to ?? null)
         : null,
     url: TRACKING_PAGE,
     sender: text(raw["sender"]),

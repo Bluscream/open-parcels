@@ -1,11 +1,12 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
+import type { ParcelStatus } from "../../plugin/api.js";
 import {
+  cleanText,
   snapshot,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { clean, readPage, type Cell } from "./html.js";
+import { readPage, type Cell } from "./html.js";
 
 export const CARRIER_ID = "straightship";
 
@@ -24,7 +25,7 @@ const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
 
 /** Drops the "(City, ST)" suffix and the contact address, which may be personal. */
 export function normalise(sentence: string): string {
-  return clean(sentence)
+  return cleanText(sentence)
     .replace(/\s*\([^()]*,\s*[A-Za-z]{2}\)\s*$/, "")
     .replace(/(please e-mail ).+?( to make arrangement)/, "$1<address>$2");
 }
@@ -35,7 +36,7 @@ function mapSentence(sentence: string | null): ParcelStatus | null {
 
 /** The carrier states its times are UTC: `YYYY-MM-DD HH:MM:SS`. */
 function utcTime(value: string): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(clean(value));
+  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(cleanText(value));
   return match === null
     ? null
     : `${match.slice(1, 4).join("-")}T${match.slice(4, 7).join(":")}.000Z`;

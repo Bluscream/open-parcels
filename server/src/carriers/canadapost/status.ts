@@ -1,4 +1,4 @@
-import { mapLocal, text, type Json, type ParcelStatus } from "../_kit/json.js";
+import { lookUpStatus, text, type Json, type ParcelStatus } from "../../plugin/api.js";
 
 /** The parcel-level `status` string. Variants like `InTransit-xyz` fall back to their family. */
 const STATUS: Readonly<Record<string, ParcelStatus>> = {
@@ -67,13 +67,14 @@ export function mapParcelStatus(value: string | null): ParcelStatus | null {
   if (value === null) {
     return null;
   }
-  return mapLocal(STATUS, value) ?? mapLocal(STATUS, value.split("-")[0] ?? value);
+  return lookUpStatus(STATUS, value) ?? lookUpStatus(STATUS, value.split("-")[0] ?? value);
 }
 
 export function mapEvent(event: Json): ParcelStatus | null {
   const code = text(event["cd"]);
   return (
-    mapLocal(EVENT_CODE, code) ?? mapLocal(EVENT_TYPE, text(event["type"])?.toUpperCase() ?? null)
+    lookUpStatus(EVENT_CODE, code) ??
+    lookUpStatus(EVENT_TYPE, text(event["type"])?.toUpperCase() ?? null)
   );
 }
 

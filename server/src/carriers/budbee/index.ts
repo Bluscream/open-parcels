@@ -1,26 +1,24 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type PluginContext,
-} from "../../plugin/api.js";
-import {
   asObject,
   dig,
   isObject,
   isoTime,
   joinParts,
-  mapLocal,
+  lookUpStatus,
   requestJson,
-  statusReporter,
+  unknownReporter,
   text,
-  trackOneByOne,
+  trackEach,
   type Json,
   type ParcelStatus,
-} from "../_kit/json.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "budbee";
 const HOST = "tracking.budbee.com";
@@ -167,17 +165,29 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
   const type = orderType(raw);
   const statusBlock = asObject(raw["status"]);
   const rawStatus = type === "DELIVERY" ? text(statusBlock["state"]) : text(raw["status"]);
-  const status = mapLocal(type === "BOX" ? BOX_STATUS : DELIVERY_STATUS, rawStatus, (c) => {
+  const status = lookUpStatus(type === "BOX" ? BOX_STATUS : DELIVERY_STATUS, rawStatus, (c) => {
     report(`${type}:${c}`);
   });
   const delivered = status === "delivered";
   let plannedFrom: string | null = null;
   let plannedTo: string | null;
   if (type === "BOX") {
-    plannedTo = isoTime(raw["eta"] ?? dig(raw, "etaInformation", "eta"));
+    plannedTo = isoTime(raw["eta"] ?? dig(raw, "etaInformation", "eta"), {
+      naive: "utc",
+      epoch: "ms",
+      keepFraction: true,
+    });
   } else {
-    plannedFrom = isoTime(dig(raw, "consignment", "start"));
-    plannedTo = isoTime(dig(raw, "consignment", "stop"));
+    plannedFrom = isoTime(dig(raw, "consignment", "start"), {
+      naive: "utc",
+      epoch: "ms",
+      keepFraction: true,
+    });
+    plannedTo = isoTime(dig(raw, "consignment", "stop"), {
+      naive: "utc",
+      epoch: "ms",
+      keepFraction: true,
+    });
     if (plannedTo === plannedFrom) {
       plannedTo = null;
     }
@@ -194,7 +204,11 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
     rawStatus,
     delivered,
     deliveredAt: delivered
-      ? isoTime(type === "BOX" ? raw["deliveredAt"] : statusBlock["date"])
+      ? isoTime(type === "BOX" ? raw["deliveredAt"] : statusBlock["date"], {
+          naive: "utc",
+          epoch: "ms",
+          keepFraction: true,
+        })
       : null,
     plannedFrom: delivered ? null : plannedFrom,
     plannedTo: delivered ? null : plannedTo,
@@ -213,8 +227,8 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
-  return trackOneByOne(barcodes, PLAUSIBLE, async (code) => {
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, PLAUSIBLE, async (code) => {
     const raw = await lookUp(context.http, code);
     return raw === null ? null : toSnapshot(raw, code, report);
   });

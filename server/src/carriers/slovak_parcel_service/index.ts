@@ -1,13 +1,17 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
+  isObject,
+  readJson,
+  trackEach,
   TransientError,
   UnexpectedResponseError,
-  type ParcelSnapshot,
+  type Json,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, CARRIER_ID, shipmentSnapshot, type Json } from "./parse.js";
+import { CARRIER_ID, shipmentSnapshot } from "./parse.js";
 
 const HOST = "rest.mysps.sk";
 const CODE_PATTERN = /^[A-Z0-9]{6,30}$/i;
@@ -43,20 +47,10 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   if (response.status !== 200) {
     throw new TransientError(`SPS answered HTTP ${response.status}.`);
   }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("SPS did not answer with JSON.");
-  }
-  const body = asObject(payload);
+  const body = asObject(readJson(response, "SPS"));
   const data = body["data"];
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    typeof asObject(data)["shipmentNr"] === "string"
-  ) {
-    return data as Json;
+  if (isObject(data) && typeof data["shipmentNr"] === "string") {
+    return data;
   }
   if (body["code"] === 401) {
     throw new UnexpectedResponseError(
@@ -70,20 +64,13 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
 }
 
 async function track(context: PluginContext<Config, null>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
   const report = (code: string): void => {
     context.reportUnknown("status_code", code);
   };
-  for (const barcode of barcodes) {
-    if (!CODE_PATTERN.test(barcode)) {
-      continue;
-    }
+  return trackEach(barcodes, CODE_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      snapshots.push(shipmentSnapshot(raw, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : shipmentSnapshot(raw, report);
+  });
 }
 
 export const slovakParcelService = defineCarrier<Config, null>({

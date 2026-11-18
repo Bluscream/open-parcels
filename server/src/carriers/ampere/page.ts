@@ -2,11 +2,12 @@ import {
   isoTime,
   newestFirst,
   snapshot,
-  wallClockToIso,
+  zonedIso,
   type Json,
   type ParcelSnapshot,
   type SnapshotEvent,
   type StatusTable,
+  unescapeHtml,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "ampere";
@@ -28,15 +29,7 @@ const MONTHS = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "
 /** "Wo 12 aug 21:16": weekday, day, month, time. No year. */
 const HISTORY_TIME = /^[A-Za-z]{2}\s+(\d{1,2})\s+([A-Za-z]{3})\s+(\d{1,2}):(\d{2})$/;
 
-function decode(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;|&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
-}
+const decode = (value: string): string => unescapeHtml(value).trim();
 
 /** Text of every element with this `data-test-id`, in page order. */
 export function allById(html: string, id: string): string[] {
@@ -59,7 +52,7 @@ export function historyTime(value: string, now: Date): string | null {
     return null;
   }
   const wall = (year: number) =>
-    wallClockToIso(
+    zonedIso(
       { year, month, day: Number(match[1]), hour: Number(match[3]), minute: Number(match[4]) },
       ZONE,
     );
@@ -111,8 +104,8 @@ export function ampereSnapshot(input: PageInput, report: (text: string) => void)
     rawStatus: current,
     delivered,
     deliveredAt: delivered ? historyTime(times[0] ?? "", input.now) : null,
-    plannedFrom: delivered ? null : isoTime(input.window["from"], ZONE),
-    plannedTo: delivered ? null : isoTime(input.window["to"], ZONE),
+    plannedFrom: delivered ? null : isoTime(input.window["from"], { naive: { zone: ZONE } }),
+    plannedTo: delivered ? null : isoTime(input.window["to"], { naive: { zone: ZONE } }),
     sender: firstById(input.html, "company-name-value") ?? "bol.com",
     receiver: firstById(input.html, "receiver-name"),
     history: newestFirst(history),

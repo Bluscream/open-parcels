@@ -1,26 +1,24 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  defineCarrier,
-  RateLimitedError,
-  snapshot,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type PluginContext,
-  type PluginLogger,
-} from "../../plugin/api.js";
 import {
   asArray,
   asObject,
+  dayWindow,
+  defineCarrier,
   isObject,
   joinParts,
   num,
+  RateLimitedError,
   requestJson,
-  statusReporter,
+  snapshot,
   text,
+  UnexpectedResponseError,
+  unknownReporter,
   type Json,
-} from "../_kit/json.js";
-import { dayWindow } from "../_kit/zoned.js";
+  type ParcelSnapshot,
+  type PluginContext,
+  type PluginHttp,
+  type PluginLogger,
+} from "../../plugin/api.js";
 import {
   buildHistory,
   deriveStatus,
@@ -107,7 +105,7 @@ function toSnapshot(
     status === "out_for_delivery" ? (events.findLast((e) => e.id === "53")?.date ?? null) : null;
   const window = dayWindow(outDay, ZONE);
   const sender = text(extra["sender"]);
-  const weight = num(attributes["weight"]);
+  const weight = num(attributes["weight"], { decimalComma: true });
   return snapshot({
     carrier: CARRIER_ID,
     barcode: code,
@@ -133,7 +131,7 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
+  const report = unknownReporter(context, "status_code", { once: false });
   const codes = barcodes.filter((code) => PLAUSIBLE.test(code));
   const snapshots: ParcelSnapshot[] = [];
   for (let start = 0; start < codes.length; start += BATCH_SIZE) {

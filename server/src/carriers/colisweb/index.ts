@@ -1,25 +1,26 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   defineCarrier,
-  snapshot,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type PluginContext,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
-import {
   isObject,
-  isoTime,
-  mapLocal,
+  isoTime as kitIsoTime,
+  lookUpStatus,
   newestFirst,
   requestJson,
-  statusReporter,
+  snapshot,
   text,
-  trackOneByOne,
+  trackEach,
+  UnexpectedResponseError,
+  unknownReporter,
   type Json,
+  type ParcelSnapshot,
   type ParcelStatus,
-} from "../_kit/json.js";
+  type PluginContext,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+/** Offset-less times are UTC; numbers are epoch milliseconds. */
+const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "utc", epoch: "ms", keepFraction: true });
 
 const CARRIER_ID = "colisweb";
 const HOST = "www.colisweb.com";
@@ -79,7 +80,7 @@ function toSnapshot(raw: Json, code: string, report: (c: string) => void): Parce
   const key = step?.toLowerCase().replace(/[-_]/g, "") ?? null;
   // A step that does not map falls back to the newest milestone that is set.
   const status =
-    mapLocal(STEP_STATUS, key, () => {
+    lookUpStatus(STEP_STATUS, key, () => {
       report(step ?? "");
     }) ??
     [...MILESTONES].reverse().find(([field]) => isoTime(raw[field]) !== null)?.[1] ??
@@ -117,8 +118,8 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
-  return trackOneByOne(barcodes, PLAUSIBLE, async (code) => {
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, PLAUSIBLE, async (code) => {
     const raw = await lookUp(context.http, code);
     return raw === null ? null : toSnapshot(raw, code, report);
   });

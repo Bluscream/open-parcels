@@ -6,11 +6,15 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  objects,
+  num,
+  parseJsonBody,
+  isoTime,
+  epoch,
+  rulesStatus,
 } from "../../plugin/api.js";
 import { publicTrackingUrl, UNIFIED_URL } from "./constants.js";
-import { mapDhl } from "./status.js";
-import { epoch, toIso } from "./time.js";
-import { asNumber, asObject, asObjects, asString, parseJson, type Json } from "./util.js";
+import { asObject, asString, type Json } from "./util.js";
 
 type Deps = Pick<PluginContext<unknown, unknown>, "http" | "reportUnknown">;
 
@@ -43,11 +47,11 @@ export async function fetchUnified(deps: Deps, apiKey: string, code: string): Pr
   if (response.status !== 200) {
     throw new TransientError(`The DHL tracking API answered HTTP ${response.status}.`);
   }
-  const body = asObject(parseJson(response.body));
+  const body = asObject(parseJsonBody(response.body));
   if (body === null) {
     throw new UnexpectedResponseError("The DHL tracking API did not answer with an object.");
   }
-  const shipments = asObjects(body["shipments"]);
+  const shipments = objects(body["shipments"]);
   return (
     shipments.find((s) => asString(s["id"])?.toUpperCase() === code.toUpperCase()) ??
     shipments[0] ??
@@ -60,7 +64,7 @@ function mapCode(deps: Deps, status: Json): SnapshotEvent["status"] {
   if (code === null) {
     return null;
   }
-  const mapped = mapDhl({ code });
+  const mapped = rulesStatus("dhl", { code });
   if (mapped === null) {
     deps.reportUnknown("unified_status_code", code);
   }
@@ -69,7 +73,7 @@ function mapCode(deps: Deps, status: Json): SnapshotEvent["status"] {
 
 function weightKg(details: Json | null): number | null {
   const weight = asObject(details?.["weight"]);
-  const value = asNumber(weight?.["value"]);
+  const value = num(weight?.["value"], { strings: false });
   const unit = (asString(weight?.["unitText"]) ?? "").trim().toLowerCase();
   const factor = KG_PER_UNIT[unit];
   return value === null || factor === undefined ? null : Math.round(value * factor * 1000) / 1000;
@@ -84,10 +88,10 @@ function location(event: Json): string | null {
 export function normalizeUnified(deps: Deps, code: string, shipment: Json): ParcelSnapshot {
   const status = asObject(shipment["status"]) ?? {};
   const history: SnapshotEvent[] = [];
-  for (const event of asObjects(shipment["events"])) {
+  for (const event of objects(shipment["events"])) {
     // An event time without an offset is local to a place we cannot resolve; it is dropped
     // rather than relabelled as UTC.
-    const at = toIso(event["timestamp"], null);
+    const at = isoTime(event["timestamp"], { naive: "reject" });
     if (at !== null) {
       history.push({
         at,
@@ -101,11 +105,12 @@ export function normalizeUnified(deps: Deps, code: string, shipment: Json): Parc
   const mapped = mapCode(deps, status);
   const delivered = asString(status["statusCode"]) === "delivered";
   const frame = asObject(shipment["estimatedDeliveryTimeFrame"]);
-  const eta = toIso(shipment["estimatedTimeOfDelivery"], null);
-  const from = toIso(frame?.["estimatedFrom"], null) ?? eta;
-  const to = toIso(frame?.["estimatedThrough"], null) ?? eta;
+  const eta = isoTime(shipment["estimatedTimeOfDelivery"], { naive: "reject" });
+  const from = isoTime(frame?.["estimatedFrom"], { naive: "reject" }) ?? eta;
+  const to = isoTime(frame?.["estimatedThrough"], { naive: "reject" }) ?? eta;
   const deliveredAt = delivered
-    ? (history.findLast((e) => e.status === "delivered")?.at ?? toIso(status["timestamp"], null))
+    ? (history.findLast((e) => e.status === "delivered")?.at ??
+      isoTime(status["timestamp"], { naive: "reject" }))
     : null;
   return snapshot({
     carrier: "dhl",

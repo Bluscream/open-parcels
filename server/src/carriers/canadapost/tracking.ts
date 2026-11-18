@@ -1,21 +1,19 @@
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  snapshot,
-  TransientError,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
 import {
   asArray,
   asObject,
   isObject,
   joinParts,
-  parseJson,
+  parseLocal,
+  readJson,
+  snapshot,
   text,
+  TransientError,
+  UnexpectedResponseError,
   type Json,
-} from "../_kit/json.js";
-import { parseLocal } from "../_kit/zoned.js";
+  type ParcelSnapshot,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 import { DELIVERED_EVENT_CODE, mapEvent, resolveStatus } from "./status.js";
 
 export const CARRIER_ID = "canadapost";
@@ -39,7 +37,7 @@ export async function lookUp(http: PluginHttp, pin: string): Promise<Json | null
   if (response.status !== 200 && response.status !== 206) {
     throw new TransientError(`Canada Post tracking answered HTTP ${response.status}.`);
   }
-  const body = parseJson(response, "Canada Post tracking");
+  const body = readJson(response, "Canada Post tracking");
   if (!isObject(body)) {
     throw new UnexpectedResponseError("Canada Post tracking did not answer with an object.");
   }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
 import {
   CaptchaError,
   defineCarrier,
@@ -9,7 +9,8 @@ import {
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import { expectStatus, foldWording } from "../../plugin/payload.js";
+import { expectStatus } from "../../plugin/api.js";
+import { foldWording } from "./page.js";
 import { refreshTarget } from "./html.js";
 import { madridTime, readPage, type TipsaPage } from "./page.js";
 

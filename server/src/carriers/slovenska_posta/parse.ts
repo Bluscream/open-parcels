@@ -1,67 +1,34 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  asArray,
+  asObject,
+  isoTime,
+  newestFirst,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "slovenska_posta";
 
-export type Json = Readonly<Record<string, unknown>>;
-
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
+/** The API's fields are strings; a number is never read as text. */
+export const STRINGS = { numbers: false } as const;
 
 const LOCAL_TIME = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;
 
-function offsetMinutes(utcMs: number): number {
-  const name = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Bratislava",
-    timeZoneName: "longOffset",
-  })
-    .formatToParts(new Date(utcMs))
-    .find((part) => part.type === "timeZoneName")?.value;
-  const match = /GMT([+-])(\d{2}):(\d{2})/.exec(name ?? "");
-  if (match === null) {
-    return 0;
-  }
-  const minutes = Number(match[2]) * 60 + Number(match[3]);
-  return match[1] === "-" ? -minutes : minutes;
-}
-
 /** `localDate` is Slovak local time without an offset; a value with one is trusted. */
 export function localDate(value: unknown): string | null {
-  const raw = text(value);
+  const raw = text(value, STRINGS);
   if (raw === null) {
     return null;
   }
-  const match = LOCAL_TIME.exec(raw);
-  if (match === null) {
-    const parsed = new Date(raw);
-    return /[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) && !Number.isNaN(parsed.getTime())
-      ? parsed.toISOString()
-      : null;
+  if (LOCAL_TIME.test(raw)) {
+    return isoTime(raw, { naive: { zone: "Europe/Bratislava" } });
   }
-  const [, y, mo, d, h, mi, s] = match;
-  const asUtc = Date.UTC(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(h),
-    Number(mi),
-    Number(s ?? 0),
-  );
-  const guess = asUtc - offsetMinutes(asUtc) * 60_000;
-  return new Date(asUtc - offsetMinutes(guess) * 60_000).toISOString();
+  return /[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? isoTime(raw, { naive: "runtime" }) : null;
 }
-
 /** The event `stateCode`. Both return codes are `returning`; the raw text keeps them apart. */
 const STATE_MAP: Readonly<Record<string, ParcelStatus>> = {
   received: "registered",
@@ -77,8 +44,8 @@ function mapState(code: string | null): ParcelStatus | null {
 }
 
 function rawStatus(event: Json): string | null {
-  const code = text(event["stateCode"]);
-  const detail = text(event["detailDescription"]) ?? text(event["detailCode"]);
+  const code = text(event["stateCode"], STRINGS);
+  const detail = text(event["detailDescription"], STRINGS) ?? text(event["detailCode"], STRINGS);
   return code !== null && detail !== null && detail !== code
     ? `${code}: ${detail}`
     : (code ?? detail);
@@ -90,23 +57,23 @@ export function resultSnapshot(
   barcode: string,
   report: (code: string) => void,
 ): ParcelSnapshot {
-  const events = Array.isArray(raw["events"]) ? raw["events"].map(asObject) : [];
-  const dated: { at: string; event: Json }[] = [];
+  const events = asArray(raw["events"]).map((event) => asObject(event));
+  const found: { at: string; event: Json }[] = [];
   for (const event of events) {
     const at = localDate(event["localDate"]);
     if (at !== null) {
-      dated.push({ at, event });
+      found.push({ at, event });
     }
   }
-  dated.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const dated = newestFirst(found);
   const history: SnapshotEvent[] = dated.map(({ at, event }) => ({
     at,
-    status: mapState(text(event["stateCode"])),
+    status: mapState(text(event["stateCode"], STRINGS)),
     rawStatus: rawStatus(event) ?? "?",
-    location: text(asObject(event["postOffice"])["name"]),
+    location: text(asObject(event["postOffice"])["name"], STRINGS),
   }));
   const latest = dated[0];
-  const code = latest === undefined ? null : text(latest.event["stateCode"]);
+  const code = latest === undefined ? null : text(latest.event["stateCode"], STRINGS);
   const status = mapState(code);
   if (code !== null && status === null) {
     report(code);
@@ -120,7 +87,9 @@ export function resultSnapshot(
     deliveredAt: status === "delivered" ? (latest?.at ?? null) : null,
     pickup: atPoint,
     pickupPoint:
-      atPoint && latest !== undefined ? text(asObject(latest.event["postOffice"])["name"]) : null,
+      atPoint && latest !== undefined
+        ? text(asObject(latest.event["postOffice"])["name"], STRINGS)
+        : null,
     url: `https://www.posta.sk/en/tracking-of-items#parcel=${encodeURIComponent(barcode)}`,
     history,
     raw,

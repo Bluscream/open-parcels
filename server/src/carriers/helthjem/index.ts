@@ -1,14 +1,25 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
+  expectStatus,
+  isObject,
+  isoTime as kitIsoTime,
+  newestFirst,
+  objects,
+  readObject,
   snapshot,
-  TransientError,
+  text as anyText,
+  trackEach,
+  unknownReporter,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type ParcelStatus,
   type PluginContext,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
 
 const CARRIER_ID = "helthjem";
 const API_HOST = "services.helthjem.no";
@@ -26,9 +37,6 @@ const QUERY = `query ParcelTracking($ref: String!) {
     events { createdAt status location message { description } }
   }
 }`;
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
-type Json = Readonly<Record<string, unknown>>;
 
 /**
  * One enum serves the parcel and its events. Provisional: the vocabulary could not be listed, so
@@ -49,25 +57,9 @@ const STATUS: Readonly<Record<string, ParcelStatus>> = {
   DEVIATION: "problem",
 };
 
-function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
-
-function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
-function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
+const text = (value: unknown): string | null => anyText(value, { numbers: false });
+const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
 function mapCode(code: string | null): ParcelStatus | null {
   return code === null ? null : (STATUS[code] ?? null);
@@ -85,18 +77,8 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
       referer: `${SITE}/sporing/`,
     },
   });
-  if (response.status !== 200) {
-    throw new TransientError(`Helthjem answered HTTP ${response.status}.`);
-  }
-  let body: unknown;
-  try {
-    body = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Helthjem did not answer with JSON.");
-  }
-  if (!isObject(body)) {
-    throw new UnexpectedResponseError("Helthjem did not answer with an object.");
-  }
+  expectStatus(response, "Helthjem", 200);
+  const body = readObject(response, "Helthjem");
   if (Array.isArray(body["errors"]) && body["errors"].length > 0) {
     throw new UnexpectedResponseError("Helthjem answered with GraphQL errors.");
   }
@@ -120,7 +102,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     unmapped.add(code);
   }
   const history: SnapshotEvent[] = [];
-  const list = Array.isArray(raw["events"]) ? raw["events"].filter(isObject) : [];
+  const list = objects(raw["events"]);
   for (const event of list) {
     const at = isoTime(event["createdAt"]);
     const eventCode = text(event["status"]);
@@ -138,7 +120,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     }
   }
   unmapped.forEach(report);
-  history.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const sorted = newestFirst(history);
   const status = mapCode(code);
   const delivered = status === "delivered";
   const servicePoint = asObject(raw["servicePoint"]);
@@ -149,13 +131,13 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     rawStatus: code,
     delivered,
     // No top-level delivery time: the newest delivered event carries it.
-    deliveredAt: delivered ? (history.find((e) => e.status === "delivered")?.at ?? null) : null,
+    deliveredAt: delivered ? (sorted.find((e) => e.status === "delivered")?.at ?? null) : null,
     // A single estimated date: a point, never a window.
     plannedFrom: delivered ? null : isoTime(asObject(raw["estimatedDelivery"])["date"]),
     pickup: status === "at_pickup_point",
     pickupPoint: text(servicePoint["name"]),
     url: `${SITE}/sporing/?trackingReference=${encodeURIComponent(barcode)}`,
-    history,
+    history: sorted,
     raw,
   });
 }
@@ -166,20 +148,11 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
-  const report = (code: string): void => {
-    context.reportUnknown("status_code", code);
-  };
-  for (const barcode of barcodes) {
-    if (!BARCODE_PATTERN.test(barcode)) {
-      continue;
-    }
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      snapshots.push(toSnapshot(raw, barcode, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : toSnapshot(raw, barcode, report);
+  });
 }
 
 export const helthjem = defineCarrier<Config, Secret>({

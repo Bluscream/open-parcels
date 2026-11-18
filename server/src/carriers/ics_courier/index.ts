@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { defineCarrier, type ParcelSnapshot, type PluginContext } from "../../plugin/api.js";
+import { defineCarrier, trackEach, type PluginContext } from "../../plugin/api.js";
 import {
   CARRIER_ID,
-  isPlausibleBarcode,
+  BARCODE_PATTERN,
   lookUp,
   TRACKING_HOST,
   trackingSnapshot,
@@ -15,21 +15,14 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
   const report = (kind: string, key: string): void => {
     context.reportUnknown(kind, key);
   };
   // One at a time: the host limiter paces them, and an error stops the run before more go out.
-  for (const barcode of barcodes) {
-    if (!isPlausibleBarcode(barcode)) {
-      continue;
-    }
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
     const records = await lookUp(context.http, barcode);
-    if (records !== null) {
-      snapshots.push(trackingSnapshot(barcode, records, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return records === null ? null : trackingSnapshot(barcode, records, report);
+  });
 }
 
 export const icsCourier = defineCarrier<Config, Secret>({

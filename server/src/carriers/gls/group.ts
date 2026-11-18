@@ -1,24 +1,26 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  asArray as asList,
+  asObject,
+  isObject,
+  parseJsonBody,
   snapshot,
   TransientError,
+  unescapeHtml,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import {
-  asList,
-  asObject,
   CARRIER_ID,
   compactPostcode,
-  isObject,
+  latestHistory,
   localTime,
   mapGls,
-  newestFirst,
   publicUrl,
   text,
   type GroupCountry,
-  type Json,
 } from "./shared.js";
 
 /** The web tracker's fixed client id; not a credential, nothing issues it per user. */
@@ -35,16 +37,11 @@ interface Reply {
  */
 async function getJson(http: PluginHttp, url: URL): Promise<Reply> {
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError(
-      `GLS group tracking answered HTTP ${response.status} without JSON.`,
-    );
-  }
+  const payload = parseJsonBody(response.body);
   if (!isObject(payload)) {
-    throw new UnexpectedResponseError("GLS group tracking answered with something not an object.");
+    throw new UnexpectedResponseError(
+      `GLS group tracking answered HTTP ${response.status} without a JSON object.`,
+    );
   }
   return { status: response.status, body: payload };
 }
@@ -123,28 +120,9 @@ export async function lookUpGroup(
   return body;
 }
 
-const ENTITIES: Readonly<Record<string, string>> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-};
-
 /** The service HTML-escapes its texts. */
 function unescape(value: string | null): string | null {
-  return (
-    value?.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (whole, name: string) => {
-      if (name.startsWith("#x") || name.startsWith("#X")) {
-        return String.fromCodePoint(Number.parseInt(name.slice(2), 16));
-      }
-      if (name.startsWith("#")) {
-        return String.fromCodePoint(Number(name.slice(1)));
-      }
-      return ENTITIES[name.toLowerCase()] ?? whole;
-    }) ?? null
-  );
+  return value === null ? null : unescapeHtml(value);
 }
 
 function history(raw: Json, timeZone: string): SnapshotEvent[] {
@@ -160,7 +138,7 @@ function history(raw: Json, timeZone: string): SnapshotEvent[] {
     const location = text(asObject(event["address"])["city"]);
     events.push({ at, rawStatus, status: mapGls(code)?.status ?? null, location });
   }
-  return newestFirst(events);
+  return latestHistory(events);
 }
 
 function weightKg(raw: Json): number | null {

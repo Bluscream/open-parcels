@@ -1,6 +1,4 @@
-import type { ParcelSnapshot } from "../../plugin/api.js";
-
-export type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+import type { ParcelStatus } from "../../plugin/api.js";
 
 /*
  * Poczta Polska scan codes. The shared rules have no table for this carrier yet; this one

@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   defineCarrier,
-  epochToIso,
+  epochIso,
   isObject,
   newestFirst,
-  readJsonObject,
+  readObject,
   SignInRejectedError,
   snapshot,
   text,
@@ -80,7 +80,7 @@ async function lookUp(http: PluginHttp, hash: string, token: string): Promise<Js
   if (response.status !== 200) {
     throw new TransientError(`Airmee tracking answered HTTP ${response.status}.`);
   }
-  const orders: unknown = readJsonObject(response, "Airmee tracking")["order_details"];
+  const orders: unknown = readObject(response, "Airmee tracking")["order_details"];
   if (!Array.isArray(orders)) {
     throw new UnexpectedResponseError("Airmee tracking answered without an order list.");
   }
@@ -102,7 +102,7 @@ function timeline(raw: Json): Json[] {
 function history(events: readonly Json[]): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = epochToIso(event["time_of_event"], "s");
+    const at = epochIso(event["time_of_event"], "s", { plausible: true });
     const code = text(event["courier_status"]);
     if (at === null || code === null) {
       continue;
@@ -142,7 +142,7 @@ export function airmeeSnapshot(
     rawStatus,
     delivered,
     deliveredAt: delivered
-      ? epochToIso(
+      ? epochIso(
           [...events]
             .reverse()
             .find((event) => stageOf(text(event["courier_status"]) ?? "") === "delivered")?.[

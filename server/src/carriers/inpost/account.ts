@@ -1,19 +1,15 @@
 import {
+  asObject,
+  isObject,
+  readObject,
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type PluginContext,
 } from "../../plugin/api.js";
 import type { InPostSession } from "./session.js";
-import {
-  asObject,
-  INBOX_HOST,
-  isObject,
-  parseBody,
-  text,
-  type Json,
-  type Market,
-} from "./shared.js";
+import { INBOX_HOST, text, type Market } from "./shared.js";
 
 type Http = PluginContext<unknown, unknown>["http"];
 
@@ -41,7 +37,7 @@ async function authedGet(http: Http, session: InPostSession, url: URL): Promise<
   if (response.status !== 200) {
     throw new TransientError(`InPost's parcel inbox answered HTTP ${response.status}.`);
   }
-  return parseBody(response.body, "InPost's parcel inbox");
+  return readObject(response, "InPost's parcel inbox");
 }
 
 function parcelsOf(payload: Json): Json[] {

@@ -1,28 +1,27 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  defineCarrier,
-  snapshot,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type PluginContext,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
 import {
   asArray,
   asObject,
+  dayWindow,
+  defineCarrier,
   isObject,
   joinParts,
-  mapLocal,
+  lookUpStatus,
   newestFirst,
+  parseLocal,
   requestJson,
-  statusReporter,
+  snapshot,
   text,
-  trackOneByOne,
+  trackEach,
+  UnexpectedResponseError,
+  unknownReporter,
   type Json,
+  type ParcelSnapshot,
   type ParcelStatus,
-} from "../_kit/json.js";
-import { dayWindow, parseLocal } from "../_kit/zoned.js";
+  type PluginContext,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "canpar";
 const HOST = "canship.canpar.com";
@@ -118,7 +117,7 @@ function history(raw: Json): SnapshotEvent[] {
     const code = text(event["code"]);
     const rawStatus = text(event["code_description_en"]) ?? code;
     if (at !== null && rawStatus !== null) {
-      events.push({ at, rawStatus, status: mapLocal(EVENT_STATUS, code), location: null });
+      events.push({ at, rawStatus, status: lookUpStatus(EVENT_STATUS, code), location: null });
     }
   }
   return newestFirst(events);
@@ -130,8 +129,8 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
   const eventCode = text(newest["code"]);
   const status =
     eventCode !== null
-      ? mapLocal(EVENT_STATUS, eventCode, report)
-      : mapLocal(SUMMARY_STATUS, text(raw["status"]), (c) => {
+      ? lookUpStatus(EVENT_STATUS, eventCode, report)
+      : lookUpStatus(SUMMARY_STATUS, text(raw["status"]), (c) => {
           report(`summary:${c}`);
         });
   // Delivered only when the flag and the newest event agree.
@@ -169,8 +168,8 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
-  return trackOneByOne(barcodes, PLAUSIBLE, async (code) => {
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, PLAUSIBLE, async (code) => {
     const raw = await lookUp(context.http, code);
     return raw === null ? null : toSnapshot(raw, code, report);
   });

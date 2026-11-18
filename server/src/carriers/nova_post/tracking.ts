@@ -1,26 +1,29 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  asObject,
+  isObject,
+  isoTime,
   snapshot,
+  text,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import {
-  asObject,
   CARRIER_ID,
   HISTORY_LIMIT,
-  isObject,
-  isoTime,
   publicUrl,
   RECEIVED_CODES,
   STATUS_MAP,
-  text,
   TRACKING_HOST,
   UNDETERMINED_CODE,
-  type Json,
 } from "./shared.js";
 
+/** Nova Post stamps without an offset in UTC. */
+const novaTime = (value: unknown): string | null =>
+  isoTime(value, { naive: "utc", keepFraction: true });
 /** Waybill numbers are digits; anything else is never sent. */
 const BARCODE_PATTERN = /^[0-9]{8,20}$/;
 
@@ -86,7 +89,7 @@ function weightKg(value: unknown): number | null {
 function history(list: readonly Json[]): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const hop of list) {
-    const at = isoTime(hop["date"]);
+    const at = novaTime(hop["date"]);
     const code = text(hop["code"]);
     const rawStatus = text(hop["event_name"]) ?? code;
     if (at === null || rawStatus === null) {
@@ -115,14 +118,14 @@ export function trackingSnapshot(
     .reverse()
     .find((hop) => RECEIVED_CODES.has(text(hop["code"]) ?? ""));
   // A single point estimate, not a window: both ends carry it.
-  const planned = delivered ? null : isoTime(raw["scheduled_delivery_date"]);
+  const planned = delivered ? null : novaTime(raw["scheduled_delivery_date"]);
   return snapshot({
     carrier: CARRIER_ID,
     barcode,
     status,
     rawStatus: text(latest["event_name"]) ?? code,
     delivered,
-    deliveredAt: delivered ? isoTime(receivedHop?.["date"]) : null,
+    deliveredAt: delivered ? novaTime(receivedHop?.["date"]) : null,
     plannedFrom: planned,
     plannedTo: planned,
     pickup: status === "at_pickup_point",

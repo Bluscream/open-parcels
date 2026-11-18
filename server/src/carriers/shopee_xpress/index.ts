@@ -1,22 +1,18 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
+  isObject,
+  readJson,
   TransientError,
   UnexpectedResponseError,
   type HostLimit,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  asObject,
-  CARRIER_ID,
-  MARKET_IDS,
-  MARKETS,
-  orderSnapshot,
-  type Json,
-  type Market,
-} from "./parse.js";
+import { CARRIER_ID, MARKET_IDS, MARKETS, orderSnapshot, type Market } from "./parse.js";
 
 const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
 
@@ -41,13 +37,7 @@ async function lookUp(http: PluginHttp, code: string, market: Market): Promise<J
   if (response.status !== 200) {
     throw new TransientError(`Shopee Xpress answered HTTP ${response.status}.`);
   }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Shopee Xpress did not answer with JSON.");
-  }
-  const body = asObject(payload);
+  const body = asObject(readJson(response, "Shopee Xpress"));
   if (typeof body["retcode"] !== "number") {
     throw new UnexpectedResponseError("Shopee Xpress answered without a result code.");
   }
@@ -55,10 +45,10 @@ async function lookUp(http: PluginHttp, code: string, market: Market): Promise<J
     return null;
   }
   const data = body["data"];
-  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+  if (!isObject(data)) {
     throw new UnexpectedResponseError("Shopee Xpress answered success without data.");
   }
-  return data as Json;
+  return data;
 }
 
 async function track(context: PluginContext<Config, null>, barcodes: readonly string[]) {

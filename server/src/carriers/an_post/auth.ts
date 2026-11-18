@@ -1,7 +1,7 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asObject,
-  readJsonObject,
+  readObject,
   SignInRejectedError,
   text,
   TransientError,
@@ -37,7 +37,7 @@ async function call(http: PluginHttp, method: string, form: Record<string, strin
   if (response.status >= 500) {
     throw new TransientError(`An Post's sign-in service answered HTTP ${response.status}.`);
   }
-  return readJsonObject(response, "An Post's sign-in service");
+  return readObject(response, "An Post's sign-in service");
 }
 
 /** A browser id the service hands out first; sign-in works without one, so it is best effort. */

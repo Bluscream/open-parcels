@@ -1,23 +1,18 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  asArray,
+  asObject,
+  expectStatus,
+  isObject,
+  newestFirst,
+  readJson,
   snapshot,
-  TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import {
-  asObject,
-  CARRIER_ID,
-  isObject,
-  isoTime,
-  mapCode,
-  newestFirst,
-  publicUrl,
-  text,
-  TRACKING_HOST,
-  type Json,
-} from "./shared.js";
+import { CARRIER_ID, isoTime, mapCode, publicUrl, text, TRACKING_HOST } from "./shared.js";
 
 /** Hermes parcel numbers are digits (sometimes letters for international ones); anything else is never sent. */
 const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
@@ -40,15 +35,8 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Json | 
   if (response.status === 400 || response.status === 404) {
     return null;
   }
-  if (response.status !== 200) {
-    throw new TransientError(`Hermes tracking answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Hermes tracking did not answer with JSON.");
-  }
+  expectStatus(response, "Hermes tracking", 200);
+  const payload = readJson(response, "Hermes tracking");
   if (!Array.isArray(payload)) {
     throw new UnexpectedResponseError("Hermes tracking did not answer with a list.");
   }
@@ -82,7 +70,7 @@ export function readForecast(raw: Json): Forecast {
 }
 
 function progressEvents(raw: Json): SnapshotEvent[] {
-  const progress = Array.isArray(raw["parcelProgress"]) ? (raw["parcelProgress"] as unknown[]) : [];
+  const progress = asArray(raw["parcelProgress"]);
   const events: SnapshotEvent[] = [];
   for (const entry of progress) {
     const event = asObject(entry);
@@ -105,7 +93,7 @@ export function trackingSnapshot(
   barcode: string,
   report: (code: string) => void,
 ): ParcelSnapshot {
-  const progress = Array.isArray(raw["parcelProgress"]) ? (raw["parcelProgress"] as unknown[]) : [];
+  const progress = asArray(raw["parcelProgress"]);
   // The list is newest first; the first entry is the current state.
   const latest = asObject(progress[0]);
   const code = text(latest["parcelStatus"]);

@@ -1,5 +1,6 @@
-import { mapStatus, type Rules } from "open-parcels-rules";
 import {
+  mapStatus,
+  type Rules,
   CaptchaError,
   SignInRejectedError,
   TransientError,

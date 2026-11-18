@@ -1,13 +1,17 @@
 import { z } from "zod";
 import {
   defineCarrier,
-  TransientError,
+  expectStatus,
+  isObject,
+  readJson,
+  trackEach,
+  unknownReporter,
   UnexpectedResponseError,
-  type ParcelSnapshot,
+  type Json,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { CARRIER_ID, isObject, toSnapshot, type Json } from "./parse.js";
+import { CARRIER_ID, toSnapshot } from "./parse.js";
 
 const API_HOST = "www.laposte.fr";
 const BARCODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
@@ -22,15 +26,8 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   );
   url.searchParams.set("lang", "fr");
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  if (response.status !== 200) {
-    throw new TransientError(`La Poste answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("La Poste did not answer with JSON.");
-  }
+  expectStatus(response, "La Poste", 200);
+  const payload = readJson(response, "La Poste");
   if (!Array.isArray(payload)) {
     throw new UnexpectedResponseError("La Poste did not answer with a list.");
   }
@@ -57,21 +54,12 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
-  const report = (code: string): void => {
-    context.reportUnknown("status_code", code);
-  };
-  for (const barcode of barcodes) {
-    if (!BARCODE_PATTERN.test(barcode)) {
-      continue;
-    }
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      // The registered code stays the barcode, even when Chronopost names a canonical id.
-      snapshots.push(toSnapshot(raw, barcode, report));
-    }
-  }
-  return { snapshots, complete: true };
+    // The registered code stays the barcode, even when Chronopost names a canonical id.
+    return raw === null ? null : toSnapshot(raw, barcode, report);
+  });
 }
 
 export const laposte = defineCarrier<Config, Secret>({

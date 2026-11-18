@@ -1,12 +1,15 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  expectStatus,
   snapshot,
-  TransientError,
+  text,
+  unescapeHtml,
   UnexpectedResponseError,
+  zonedIso,
   type ParcelSnapshot,
+  type ParcelStatus,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { nonEmpty, zonedIso, type ParcelStatus } from "./shared.js";
 
 export const CARRIER_ID = "ics_courier";
 export const TRACKING_HOST = "www1.icscourier.ca";
@@ -20,11 +23,7 @@ const CODE_STATUS: Readonly<Record<string, ParcelStatus>> = {
   DELIV: "delivered",
 };
 
-const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
-
-export function isPlausibleBarcode(barcode: string): boolean {
-  return BARCODE_PATTERN.test(barcode);
-}
+export const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
 
 export type Report = (kind: string, key: string) => void;
 export type IcsRecord = Readonly<Record<string, string>>;
@@ -35,20 +34,6 @@ function escapeXml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-}
-
-function decodeXml(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, entity: string) => {
-    const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
-    const lower = entity.toLowerCase();
-    if (lower.startsWith("#x")) {
-      return String.fromCodePoint(Number.parseInt(lower.slice(2), 16));
-    }
-    if (lower.startsWith("#")) {
-      return String.fromCodePoint(Number(lower.slice(1)));
-    }
-    return named[lower] ?? "";
-  });
 }
 
 export function envelope(barcode: string): string {
@@ -84,7 +69,7 @@ export function parseRecords(body: string): IcsRecord[] {
   for (const match of body.matchAll(RECORD)) {
     const fields: Record<string, string> = {};
     for (const leaf of (match[1] ?? "").matchAll(LEAF)) {
-      fields[leaf[1] ?? ""] = decodeXml(leaf[2] ?? "").trim();
+      fields[leaf[1] ?? ""] = unescapeHtml(leaf[2] ?? "").trim();
     }
     if (Object.keys(fields).length > 0) {
       records.push(fields);
@@ -108,9 +93,7 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<IcsReco
       maxBytes: 512 * 1024,
     },
   );
-  if (response.status !== 200) {
-    throw new TransientError(`ICS Courier tracking answered HTTP ${response.status}.`);
-  }
+  expectStatus(response, "ICS Courier tracking", 200);
   const records = parseRecords(response.body);
   if (records.length === 0) {
     throw new UnexpectedResponseError("ICS Courier answered without a tracking record.");
@@ -149,10 +132,10 @@ function recordTime(value: string | undefined): string | null {
  */
 function describe(record: IcsRecord): string | null {
   const status = record["Status"] ?? "";
-  const code = nonEmpty(record["Code"]);
+  const code = text(record["Code"]);
   if (status.includes(":")) {
     const head = (status.split(":")[0] ?? "").trim().replace(/\s+at$/i, "");
-    return nonEmpty(head) ?? code;
+    return text(head) ?? code;
   }
   return code;
 }

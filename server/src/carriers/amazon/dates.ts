@@ -1,4 +1,4 @@
-import { parseArrival, type Rules } from "open-parcels-rules";
+import { isTimeZone, parseArrival, wallTimeAt, zonedIso, type Rules } from "../../plugin/api.js";
 import { foldText } from "./text.js";
 
 /** A calendar day in the page's zone. */
@@ -20,55 +20,11 @@ const RELATIVE_PAST: Readonly<Record<string, number>> = {
   gestern: -1,
 };
 
-const formatters = new Map<string, Intl.DateTimeFormat>();
-
-function formatter(timeZone: string): Intl.DateTimeFormat {
-  let cached = formatters.get(timeZone);
-  if (cached === undefined) {
-    cached = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      second: "numeric",
-    });
-    formatters.set(timeZone, cached);
-  }
-  return cached;
-}
-
-export function isTimeZone(name: string): boolean {
-  try {
-    formatter(name);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function wallClock(at: Date, timeZone: string): number {
-  const parts: Record<string, number> = {};
-  for (const part of formatter(timeZone).formatToParts(at)) {
-    if (part.type !== "literal") {
-      parts[part.type] = Number(part.value);
-    }
-  }
-  return Date.UTC(
-    parts["year"] ?? 1970,
-    (parts["month"] ?? 1) - 1,
-    parts["day"] ?? 1,
-    parts["hour"] ?? 0,
-    parts["minute"] ?? 0,
-    parts["second"] ?? 0,
-  );
-}
+export { isTimeZone };
 
 export function today(now: Date, timeZone: string): Day {
-  const local = new Date(wallClock(now, timeZone));
-  return { year: local.getUTCFullYear(), month: local.getUTCMonth() + 1, day: local.getUTCDate() };
+  const { year, month, day } = wallTimeAt(now.getTime(), timeZone);
+  return { year, month, day };
 }
 
 function shift(day: Day, days: number): Day {
@@ -78,26 +34,13 @@ function shift(day: Day, days: number): Day {
 
 const ordinal = (day: Day): number => Date.UTC(day.year, day.month - 1, day.day);
 
-const pad = (value: number): string => String(value).padStart(2, "0");
-
 /** ISO 8601 with the zone's offset for a wall-clock time on `day`. */
-export function zonedIso(day: Day, hour: number, minute: number, timeZone: string): string {
-  const wanted = Date.UTC(day.year, day.month - 1, day.day, hour, minute);
-  let instant = wanted;
-  for (let round = 0; round < 2; round += 1) {
-    instant = wanted - (wallClock(new Date(instant), timeZone) - instant);
-  }
-  const offsetMinutes = Math.round((wallClock(new Date(instant), timeZone) - instant) / 60_000);
-  const sign = offsetMinutes < 0 ? "-" : "+";
-  const abs = Math.abs(offsetMinutes);
-  const local = new Date(wallClock(new Date(instant), timeZone));
+export function localIso(day: Day, hour: number, minute: number, timeZone: string): string {
   return (
-    `${String(local.getUTCFullYear())}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}` +
-    `T${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:00` +
-    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+    zonedIso({ ...day, hour, minute }, timeZone, { keepOffset: true }) ??
+    new Date(Date.UTC(day.year, day.month - 1, day.day, hour, minute)).toISOString()
   );
 }
-
 function dayOfIso(iso: string): Day | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (match === null) {

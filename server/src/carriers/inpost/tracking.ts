@@ -1,32 +1,29 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  asArray as asList,
+  asObject,
+  expectStatus,
+  newestFirst,
+  readObject,
   snapshot,
   TransientError,
+  type Json,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import {
-  asList,
-  asObject,
   CARRIER_ID,
   isoTime,
   lookUpCode,
-  newestFirst,
-  parseBody,
   publicUrl,
   text,
   TRACKING_HOST,
-  type Json,
   type TrackingCountry,
 } from "./shared.js";
 import { TRACKING_STATUSES } from "./status.js";
 
 /** InPost numbers are digits, sometimes with letters on cross-border parcels. */
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
-
-export function isPlausibleBarcode(barcode: string): boolean {
-  return BARCODE_PATTERN.test(barcode);
-}
+export const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
 
 /**
  * Looks one code up on the keyless public tracking. Null when InPost does not know it: HTTP 404,
@@ -40,10 +37,8 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Json | 
   if (response.status === 404) {
     return null;
   }
-  if (response.status !== 200) {
-    throw new TransientError(`InPost tracking answered HTTP ${response.status}.`);
-  }
-  const payload = parseBody(response.body, "InPost tracking");
+  expectStatus(response, "InPost tracking", 200);
+  const payload = readObject(response, "InPost tracking");
   if (text(payload["trackingNumber"]) !== null) {
     return payload;
   }

@@ -1,12 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  isObject,
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
   type PluginContext,
 } from "../../plugin/api.js";
-import { isObject, SIGN_IN_HOST, text, type Market } from "./shared.js";
+import { SIGN_IN_HOST, text, type Market } from "./shared.js";
 
 type Http = PluginContext<unknown, unknown>["http"];
 

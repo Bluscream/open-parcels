@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   defineCarrier,
   isObject,
   isoTime,
   newestFirst,
-  readJsonObject,
+  readObject,
   snapshot,
   text,
   trackEach,
@@ -57,7 +57,7 @@ async function lookUp(http: PluginHttp, country: Country, barcode: string): Prom
   if (response.status < 200 || response.status >= 300) {
     throw new TransientError(`BOX NOW tracking answered HTTP ${response.status}.`);
   }
-  const first = asArray(readJsonObject(response, "BOX NOW tracking")["data"])[0];
+  const first = asArray(readObject(response, "BOX NOW tracking")["data"])[0];
   if (first === undefined) {
     return null;
   }
@@ -82,7 +82,7 @@ export function boxNowSnapshot(
   const dated: Dated[] = asArray(raw["events"])
     .filter(isObject)
     .flatMap((event) => {
-      const at = isoTime(event["createTime"], zone);
+      const at = isoTime(event["createTime"], { naive: { zone } });
       return at === null ? [] : [{ at, event }];
     })
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

@@ -6,18 +6,23 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, num, objects, readObject, text, type Json } from "../../plugin/kit/json.js";
-import { epochIso, isoTime, newestFirst } from "../../plugin/kit/time.js";
-import {
-  expectOk,
+  type PluginHttp,
+  asObject,
+  num,
+  objects,
+  readObject,
+  text,
+  type Json,
+  epochIso,
+  isoTime,
+  newestFirst,
+  expectStatus,
   lookUpStatus,
   trackEach,
   unknownReporter,
-  type Status,
+  type ParcelStatus,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "ecoscooting";
 /** Ecoscooting's own tracking page reads from its parent network's public link gateway. */
@@ -64,7 +69,7 @@ const STATUSES: StatusTable = {
 const PLAUSIBLE = /^[A-Z0-9]{8,40}$/;
 
 /** Every code of the return leg starts with `RT_`. */
-function statusOf(code: string | null): Status | null {
+function statusOf(code: string | null): ParcelStatus | null {
   const key = code?.toUpperCase() ?? null;
   return key?.startsWith("RT_") === true ? "returning" : lookUpStatus(STATUSES, key);
 }
@@ -82,7 +87,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
     headers: { accept: "application/json" },
     body,
   });
-  expectOk(response, "Ecoscooting tracking");
+  expectStatus(response, "Ecoscooting tracking");
   const payload = readObject(response, "Ecoscooting tracking");
   if (payload["success"] === "true" || payload["success"] === true) {
     const reported = text(asObject(payload["packageParam"])["trackingNumber"]);
@@ -97,7 +102,8 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   throw new UnexpectedResponseError("Ecoscooting answered with an unknown error envelope.");
 }
 
-const eventTime = (event: Json): string | null => isoTime(event["opTimestamp"], null);
+const eventTime = (event: Json): string | null =>
+  isoTime(event["opTimestamp"], { naive: "reject", epoch: "auto", epochStrings: true });
 
 function history(events: readonly Json[]): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
@@ -121,7 +127,7 @@ function endOfDeliveryDay(event: Json): string | null {
   }
   const local = new Date(Date.parse(at) + offset * HOUR_MS);
   local.setUTCHours(23, 59, 59, 0);
-  return epochIso(local.getTime() - offset * HOUR_MS);
+  return epochIso(local.getTime() - offset * HOUR_MS, "auto");
 }
 
 function pickupPoint(raw: Json): string | null {
@@ -152,7 +158,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
   }
   status ??=
     events.map((event) => statusOf(text(event["actionCode"]))).find((s) => s !== null) ?? null;
-  const first = (wanted: Status): Json | undefined =>
+  const first = (wanted: ParcelStatus): Json | undefined =>
     events.find((event) => statusOf(text(event["actionCode"])) === wanted);
   const departed = status === "out_for_delivery" ? first("out_for_delivery") : undefined;
   const signed = status === "delivered" ? first("delivered") : undefined;

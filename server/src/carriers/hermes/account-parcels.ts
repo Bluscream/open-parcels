@@ -1,14 +1,12 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
 import {
   asObject,
-  CARRIER_ID,
-  isoTime,
-  mapCode,
   newestFirst,
-  publicUrl,
-  text,
+  snapshot,
   type Json,
-} from "./shared.js";
+  type ParcelSnapshot,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+import { CARRIER_ID, isoTime, mapCode, publicUrl, text } from "./shared.js";
 
 /**
  * One address block serves every destination; `addressType` tells them apart. Only a PaketShop

@@ -5,17 +5,21 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, isObject, objects, readJson, text, type Json } from "../../plugin/kit/json.js";
-import { newestFirst, zonedIso } from "../../plugin/kit/time.js";
-import {
-  expectOk,
+  type PluginHttp,
+  asObject,
+  isObject,
+  objects,
+  readJson,
+  text,
+  type Json,
+  newestFirst,
+  zonedIso,
+  expectStatus,
   lookUpStatus,
   trackEach,
   unknownReporter,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "elta_courier";
 const HOST = "www.elta-courier.gr";
@@ -42,7 +46,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json[] | null> {
     headers: { accept: "application/json" },
     body: new URLSearchParams({ number: code }),
   });
-  expectOk(response, "ELTA Courier tracking");
+  expectStatus(response, "ELTA Courier tracking");
   const results = asObject(readJson(response, "ELTA Courier tracking"))["result"];
   if (!isObject(results)) {
     return null;
@@ -61,7 +65,14 @@ function eventTime(event: Json): string | null {
     return null;
   }
   return zonedIso(
-    [Number(date[3]), Number(date[2]), Number(date[1]), Number(time[1]), Number(time[2]), 0],
+    {
+      year: Number(date[3]),
+      month: Number(date[2]),
+      day: Number(date[1]),
+      hour: Number(time[1]),
+      minute: Number(time[2]),
+      second: 0,
+    },
     ZONE,
   );
 }

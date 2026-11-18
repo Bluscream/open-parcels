@@ -1,13 +1,15 @@
 import {
   SignInRejectedError,
   UnexpectedResponseError,
+  asArray,
+  isObject,
+  type Json,
   type ParcelSnapshot,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asList, isObject, text, type Json } from "../../plugin/parse.js";
 import type { TokenKeeper } from "./auth.js";
 import { scanSnapshot } from "./scans.js";
-import { API_BASE, getJson, parcelOf, resultOf, type Answer } from "./shared.js";
+import { API_BASE, getJson, parcelOf, resultOf, text, type Answer } from "./shared.js";
 
 const PAGE_SIZE = 10;
 const MAX_PAGES = 20;
@@ -52,7 +54,7 @@ async function inbox(http: PluginHttp, keeper: TokenKeeper, direction: Direction
     if (!Array.isArray(result["items"]) || typeof total !== "number") {
       throw new UnexpectedResponseError("MojaPošta's parcel list has an unexpected shape.");
     }
-    const items = asList(result["items"]);
+    const items = asArray(result["items"]);
     for (const item of items) {
       const id = isObject(item) ? item["parcelId"] : undefined;
       if (

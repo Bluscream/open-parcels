@@ -1,13 +1,15 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  expectStatus,
   snapshot,
-  TransientError,
+  text,
   UnexpectedResponseError,
+  zonedIso,
   type ParcelSnapshot,
+  type ParcelStatus,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import { BOT_WALL_MARKERS, parsePage, type Page, type ScanRow } from "./page.js";
-import { nonEmpty, zonedIso, type ParcelStatus } from "./shared.js";
 
 export const CARRIER_ID = "hrvatska_posta";
 export const TRACKING_HOST = "posiljka.posta.hr";
@@ -74,11 +76,7 @@ const COUNTRY_ZONES: Readonly<Record<string, string>> = {
   TW: "Asia/Taipei",
 };
 
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
-
-export function isPlausibleBarcode(barcode: string): boolean {
-  return BARCODE_PATTERN.test(barcode);
-}
+export const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
 
 export type Report = (kind: string, key: string) => void;
 
@@ -94,9 +92,7 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Page | 
     redirect: "manual",
     maxBytes: 512 * 1024,
   });
-  if (response.status !== 200) {
-    throw new TransientError(`Hrvatska pošta tracking answered HTTP ${response.status}.`);
-  }
+  expectStatus(response, "Hrvatska pošta tracking", 200);
   if (response.body.trim() === "") {
     throw new UnexpectedResponseError("Hrvatska pošta answered with an empty page.");
   }
@@ -219,7 +215,7 @@ export function trackingSnapshot(page: Page, report: Report): ParcelSnapshot {
     deliveredAt: delivered ? (newest?.at ?? null) : null,
     pickup: headedForPoint,
     // Office or locker name without its leading postcode.
-    pickupPoint: showPoint ? nonEmpty(atPoint?.location?.replace(/^\d{5}\s+/, "")) : null,
+    pickupPoint: showPoint ? text(atPoint?.location?.replace(/^\d{5}\s+/, "")) : null,
     url: publicUrl(page.number),
     weightKg: weightKg(page.weight),
     history,

@@ -1,33 +1,16 @@
-import type { ParcelSnapshot } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+import { isoTime as kitIsoTime, text as kitText, type ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "nz_post";
 export const TRACKING_HOST = "tools.nzpost.co.nz";
 
-/** Narrowing helpers for untrusted JSON. */
-export type Json = Readonly<Record<string, unknown>>;
+export { isObject, type Json } from "../../plugin/api.js";
 
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/** NZ Post's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-/** ISO 8601 for a string or epoch-millisecond timestamp; null when it does not parse. */
-export function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
+/** Strings as `new Date()` reads them, numbers as epoch milliseconds. */
+export const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
 /**
  * Local map until the shared rules carry an NZ Post table. Keyed by the display text every event

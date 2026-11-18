@@ -1,7 +1,4 @@
-import { loadRules, mapStatus } from "open-parcels-rules";
-import type { ParcelSnapshot } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+import { rulesStatus, type ParcelStatus } from "../../plugin/api.js";
 
 /*
  * PostNL track & trace observation codes. The shared rules have no PostNL status table yet;
@@ -110,7 +107,7 @@ const PHASES: readonly (readonly [string, ParcelStatus])[] = [
 ];
 
 export function observationStatus(code: string): ParcelStatus | null {
-  return mapStatus(loadRules(), "postnl", { code })?.status ?? OBSERVATIONS[code] ?? null;
+  return rulesStatus("postnl", { code })?.status ?? OBSERVATIONS[code] ?? null;
 }
 
 export function phaseStatus(message: string): ParcelStatus | null {

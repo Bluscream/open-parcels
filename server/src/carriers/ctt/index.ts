@@ -1,24 +1,22 @@
 import { z } from "zod";
 import {
+  asArray,
+  asObject,
   defineCarrier,
+  isObject,
+  isoTime,
+  lookUpStatus,
+  newestFirst,
   snapshot,
+  text,
+  trackEach,
+  unknownReporter,
+  type Json,
   type ParcelSnapshot,
+  type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import {
-  asArray,
-  asObject,
-  isObject,
-  isoTime,
-  mapLocal,
-  newestFirst,
-  statusReporter,
-  text,
-  trackOneByOne,
-  type Json,
-  type ParcelStatus,
-} from "../_kit/json.js";
 import { EXPRESS_HOST, expressSnapshot, isExpressCode, lookUpExpress } from "./express.js";
 import { lookUpPortal, PORTAL_HOST } from "./portal.js";
 
@@ -45,7 +43,9 @@ const STATE_STATUS: Readonly<Record<string, ParcelStatus>> = {
 /** The platform writes "no date" as 1 January 1900. */
 function cttTime(value: unknown): string | null {
   const raw = text(value);
-  return raw === null || raw.startsWith("1900-01-01") ? null : isoTime(raw);
+  return raw === null || raw.startsWith("1900-01-01")
+    ? null
+    : isoTime(raw, { naive: "utc", keepFraction: true });
 }
 
 /**
@@ -55,7 +55,7 @@ function cttTime(value: unknown): string | null {
 function portalSnapshot(raw: Json, code: string, report: (c: string) => void): ParcelSnapshot {
   const events = asArray(asObject(raw["Events"])["List"]).filter(isObject);
   const newest = events[0];
-  const status = mapLocal(
+  const status = lookUpStatus(
     STATE_STATUS,
     newest === undefined ? null : text(newest["StateId"]),
     report,
@@ -70,7 +70,7 @@ function portalSnapshot(raw: Json, code: string, report: (c: string) => void): P
           {
             at,
             rawStatus,
-            status: mapLocal(STATE_STATUS, text(event["StateId"])),
+            status: lookUpStatus(STATE_STATUS, text(event["StateId"])),
             location: text(event["Local"]),
           },
         ];
@@ -99,8 +99,8 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
-  return trackOneByOne(barcodes, PLAUSIBLE, async (barcode) => {
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, PLAUSIBLE, async (barcode) => {
     const code = barcode.toUpperCase();
     if (isExpressCode(code)) {
       const raw = await lookUpExpress(context.http, code);

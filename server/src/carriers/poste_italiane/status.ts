@@ -1,5 +1,7 @@
-import type { ParcelSnapshot } from "../../plugin/api.js";
-import { fold } from "../../plugin/parse.js";
+import { cleanText, type ParcelSnapshot } from "../../plugin/api.js";
+
+/** Lower-cased, whitespace-collapsed text for matching the carrier's wording. */
+const fold = (value: string): string => cleanText(value).toLowerCase();
 
 export type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
 

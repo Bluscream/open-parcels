@@ -1,5 +1,13 @@
-import { loadRules, mapStatus, trackingUrl, type MappedStatus } from "open-parcels-rules";
-import type { SnapshotEvent } from "../../plugin/api.js";
+import {
+  isoTime as kitIsoTime,
+  newestFirst,
+  rulesStatus,
+  rulesTrackingUrl,
+  text as anyText,
+  zonedIso,
+  type MappedStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "gls";
 export const NL_HOST = "apm.gls.nl";
@@ -47,61 +55,11 @@ export const GROUP_COUNTRIES: Readonly<Record<string, GroupCountry>> = {
 
 export const COUNTRIES = ["NL", ...Object.keys(GROUP_COUNTRIES)] as const;
 
-/** Narrowing helpers for untrusted JSON. */
-export type Json = Readonly<Record<string, unknown>>;
-
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
-
-export function asList(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? (value as unknown[]) : [];
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
+/** GLS sends text fields as strings only; numbers are never read as text. */
+export const text = (value: unknown): string | null => anyText(value, { numbers: false });
 
 /** ISO 8601 for a timestamp string that carries its own offset; null when it does not parse. */
-export function isoTime(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-/** Offset of `timeZone` from UTC, in minutes, at the given instant. */
-function offsetMinutes(at: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(new Date(at));
-  const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
-  const local = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    get("hour"),
-    get("minute"),
-    get("second"),
-  );
-  return Math.round((local - at) / 60_000);
-}
+export const isoTime = (value: unknown): string | null => kitIsoTime(value, { naive: "runtime" });
 
 /** A wall-clock date (`YYYY-MM-DD` or `YY-MM-DD`) and time in `timeZone`, as ISO 8601 UTC. */
 export function localTime(date: unknown, time: unknown, timeZone: string): string | null {
@@ -111,21 +69,17 @@ export function localTime(date: unknown, time: unknown, timeZone: string): strin
   if (day === null || clock === null) {
     return null;
   }
-  const year = Number(day[1]) + (day[1]?.length === 2 ? 2000 : 0);
-  const naive = Date.UTC(
-    year,
-    Number(day[2]) - 1,
-    Number(day[3]),
-    Number(clock[1]),
-    Number(clock[2]),
-    Number(clock[3] ?? "0"),
+  return zonedIso(
+    {
+      year: Number(day[1]) + (day[1]?.length === 2 ? 2000 : 0),
+      month: Number(day[2]),
+      day: Number(day[3]),
+      hour: Number(clock[1]),
+      minute: Number(clock[2]),
+      second: Number(clock[3] ?? "0"),
+    },
+    timeZone,
   );
-  if (Number.isNaN(naive)) {
-    return null;
-  }
-  // Two passes settle the offset around a daylight saving change.
-  const first = naive - offsetMinutes(naive, timeZone) * 60_000;
-  return new Date(naive - offsetMinutes(first, timeZone) * 60_000).toISOString();
 }
 
 /** Maps a GLS status code or text through the shared status table. */
@@ -136,7 +90,7 @@ export function mapGls(
   if (code === null && description === null) {
     return null;
   }
-  return mapStatus(loadRules(), CARRIER_ID, {
+  return rulesStatus(CARRIER_ID, {
     ...(code === null ? {} : { code }),
     ...(description === null ? {} : { text: description }),
   });
@@ -144,14 +98,14 @@ export function mapGls(
 
 export function publicUrl(barcode: string): string {
   return (
-    trackingUrl(loadRules(), CARRIER_ID, barcode) ??
+    rulesTrackingUrl(CARRIER_ID, barcode) ??
     `https://gls-group.com/EU/en/parcel-tracking?match=${encodeURIComponent(barcode)}`
   );
 }
 
 /** History newest first, capped. */
-export function newestFirst(events: SnapshotEvent[]): SnapshotEvent[] {
-  return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, HISTORY_LIMIT);
+export function latestHistory(events: readonly SnapshotEvent[]): SnapshotEvent[] {
+  return newestFirst(events).slice(0, HISTORY_LIMIT);
 }
 
 /** Postcodes are sent without spaces. */

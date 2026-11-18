@@ -1,6 +1,15 @@
-import type { PluginHttp } from "../../plugin/http.js";
-import { TransientError, UnexpectedResponseError, type HttpResponse } from "../../plugin/api.js";
-import { asObject, isObject, parseJson, text, type Json } from "../_kit/json.js";
+import {
+  asObject,
+  expectStatus,
+  isObject,
+  readJson,
+  text,
+  TransientError,
+  UnexpectedResponseError,
+  type HttpResponse,
+  type Json,
+  type PluginHttp,
+} from "../../plugin/api.js";
 
 /**
  * The CTT Portugal tracker is a low-code web app. There is no credential, but there is an
@@ -45,16 +54,14 @@ export function resetPortal(): void {
 }
 
 function ok(response: HttpResponse, what: string): void {
-  if (response.status !== 200) {
-    throw new TransientError(`CTT ${what} answered HTTP ${response.status}.`);
-  }
+  expectStatus(response, `CTT ${what}`, 200);
 }
 
 async function moduleVersion(http: PluginHttp): Promise<string> {
   if (state.moduleVersion === null) {
     const response = await http.request(new URL(`${BASE}/moduleservices/moduleversioninfo`));
     ok(response, "version info");
-    const token = text(asObject(parseJson(response, "CTT version info"))["versionToken"]);
+    const token = text(asObject(readJson(response, "CTT version info"))["versionToken"]);
     if (token === null) {
       throw new UnexpectedResponseError("CTT version info has no token.");
     }
@@ -68,7 +75,7 @@ async function screenScript(http: PluginHttp, version: string): Promise<string> 
     const manifest = await http.request(new URL(`${BASE}/moduleservices/moduleinfo?${version}`));
     ok(manifest, "manifest");
     const urlVersions = asObject(
-      asObject(asObject(parseJson(manifest, "CTT manifest"))["manifest"])["urlVersions"],
+      asObject(asObject(readJson(manifest, "CTT manifest"))["manifest"])["urlVersions"],
     );
     const token = text(urlVersions[SCRIPT_PATH]);
     if (token === null) {
@@ -155,7 +162,7 @@ async function callAction(
     throw new TransientError("CTT refused the anonymous session.");
   }
   ok(response, "tracking");
-  const payload = parseJson(response, "CTT tracking");
+  const payload = readJson(response, "CTT tracking");
   if (!isObject(payload)) {
     throw new UnexpectedResponseError("CTT tracking did not answer with an object.");
   }

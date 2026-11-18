@@ -1,4 +1,4 @@
-import type { ParcelStatus } from "../_kit/json.js";
+import type { ParcelStatus } from "../../plugin/api.js";
 
 /** Cainiao action codes. Belongs in the shared rules once a status table exists there. */
 export const ACTION_STATUS: Readonly<Record<string, ParcelStatus>> = {

@@ -1,13 +1,16 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
   RateLimitedError,
+  readJson,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
   type PluginLogger,
 } from "../../plugin/api.js";
 import { CARRIER_ID, shipmentSnapshot } from "./parse.js";
-import { asObject, HOST, readJson, TrackerSession, type Json } from "./session.js";
+import { HOST, LABEL, TrackerSession } from "./session.js";
 
 const CODE_PATTERN = /^[A-Z0-9.]{8,40}$/i;
 /** The wording table is the same for every parcel, about 130 KB; refreshed once a day. */
@@ -35,7 +38,9 @@ async function wordingTable(
   try {
     const response = await session.get("/core/rest/translations/en/shipment-text-messages");
     const section =
-      response.status === 200 ? asObject(readJson(response, "wording"))["shipment-text--"] : null;
+      response.status === 200
+        ? asObject(readJson(response, `${LABEL} wording`))["shipment-text--"]
+        : null;
     for (const [key, value] of Object.entries(asObject(section))) {
       if (typeof value === "string") {
         texts.set(key, value);
@@ -62,7 +67,7 @@ async function events(
 ): Promise<Json[]> {
   try {
     const response = await session.get(`/api/shipment/id/${encodeURIComponent(identity)}/events`);
-    const payload = response.status === 200 ? readJson(response, "events") : null;
+    const payload = response.status === 200 ? readJson(response, `${LABEL} events`) : null;
     return Array.isArray(payload) ? payload.map(asObject) : [];
   } catch (error) {
     if (error instanceof RateLimitedError) {

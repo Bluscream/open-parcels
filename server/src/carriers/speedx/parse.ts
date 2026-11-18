@@ -1,20 +1,18 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  isTimeZone,
+  snapshot,
+  text,
+  zonedIso,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "speedx";
 
-export type Json = Readonly<Record<string, unknown>>;
+import type { Json } from "../../plugin/api.js";
 
-function text(value: unknown): string | null {
-  if (typeof value === "number") {
-    return String(value);
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
+export type { Json };
 
 /**
  * Categories first, then numeric event codes. `unknown` marks codes we have seen but that say
@@ -67,25 +65,6 @@ function mapEvent(event: Json): ParcelStatus | null {
   return STATUS_MAP[key] ?? null;
 }
 
-function zoneOffsetMinutes(zone: string, utcMs: number): number | null {
-  try {
-    const name = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" })
-      .formatToParts(new Date(utcMs))
-      .find((part) => part.type === "timeZoneName")?.value;
-    if (name === "GMT") {
-      return 0;
-    }
-    const match = /GMT([+-])(\d{2}):(\d{2})/.exec(name ?? "");
-    if (match === null) {
-      return null;
-    }
-    const minutes = Number(match[2]) * 60 + Number(match[3]);
-    return match[1] === "-" ? -minutes : minutes;
-  } catch {
-    return null;
-  }
-}
-
 const WALL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;
 
 /** `localTs` usually carries its offset; a bare wall time is placed in the event's `timeZone`. */
@@ -100,21 +79,21 @@ export function eventTime(event: Json): string | null {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
   }
   const zone = text(event["timeZone"]);
-  if (zone === null) {
+  if (zone === null || !isTimeZone(zone)) {
     return null;
   }
   const [, y, mo, d, h, mi, s] = wall;
-  const asUtc = Date.UTC(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(h),
-    Number(mi),
-    Number(s ?? 0),
+  return zonedIso(
+    {
+      year: Number(y),
+      month: Number(mo),
+      day: Number(d),
+      hour: Number(h),
+      minute: Number(mi),
+      second: Number(s ?? 0),
+    },
+    zone,
   );
-  const first = zoneOffsetMinutes(zone, asUtc);
-  const second = first === null ? null : zoneOffsetMinutes(zone, asUtc - first * 60_000);
-  return second === null ? null : new Date(asUtc - second * 60_000).toISOString();
 }
 
 /** Turns the event list (newest first) into a snapshot; `report` receives unmapped codes. */

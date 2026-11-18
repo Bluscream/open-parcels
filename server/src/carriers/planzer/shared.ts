@@ -1,29 +1,19 @@
-import type { SnapshotEvent } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<SnapshotEvent["status"]>;
+import {
+  asObject,
+  isoTime,
+  lookUpStatus,
+  text as kitText,
+  type ParcelStatus,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "planzer";
 export const TRACKING_HOST = "api.tracking.app.planzer.ch";
 const CARRIER_TIME_ZONE = "Europe/Zurich";
 
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, isObject, type Json } from "../../plugin/api.js";
 
-export function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
-
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
+/** Planzer's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 /** Picks one language from a four-language text object, falling back to German. */
 export function localized(value: unknown, language: "english" | "german"): string | null {
   const object = asObject(value);
@@ -52,54 +42,13 @@ export function mapText(german: string | null, report: (key: string) => void): P
   if (german === null) {
     return null;
   }
-  const key = textKey(german);
-  const mapped = STATUS_MAP[key];
-  if (mapped === undefined) {
-    report(key);
-    return null;
-  }
-  return mapped;
+  return lookUpStatus(STATUS_MAP, textKey(german), report);
 }
 
-const zoneFormat = new Intl.DateTimeFormat("en-US", {
-  timeZone: CARRIER_TIME_ZONE,
-  hourCycle: "h23",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
-/** Offset of Zurich from UTC, in milliseconds, at the given instant. */
-function zoneOffsetMs(at: number): number {
-  const parts = Object.fromEntries(
-    zoneFormat.formatToParts(new Date(at)).map((part) => [part.type, part.value]),
-  );
-  const asUtc = Date.UTC(
-    Number(parts["year"]),
-    Number(parts["month"]) - 1,
-    Number(parts["day"]),
-    Number(parts["hour"]),
-    Number(parts["minute"]),
-    Number(parts["second"]),
-  );
-  return asUtc - Math.floor(at / 1000) * 1000;
-}
-
-/** Reads a wall-clock time without offset as Zurich time; null when it does not parse. */
+/** Reads a wall-clock time without offset as Zurich time, keeping milliseconds; null otherwise. */
 export function zurichTime(local: string): string | null {
-  const naive = Date.parse(`${local}Z`);
-  if (Number.isNaN(naive)) {
-    return null;
-  }
-  // Two passes settle the offset around a daylight-saving switch.
-  let at = naive - zoneOffsetMs(naive);
-  at = naive - zoneOffsetMs(at);
-  return new Date(at).toISOString();
+  return isoTime(local, { naive: { zone: CARRIER_TIME_ZONE }, keepFraction: true });
 }
-
 const OFFSET_SUFFIX = /(Z|[+-]\d{2}:?\d{2})$/i;
 
 /**

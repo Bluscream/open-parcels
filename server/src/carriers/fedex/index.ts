@@ -1,4 +1,3 @@
-import { trackingUrl as rulesTrackingUrl, loadRules } from "open-parcels-rules";
 import { z } from "zod";
 import {
   defineCarrier,
@@ -6,15 +5,20 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import { asObject, num, objects, text, type Json } from "../../plugin/kit/json.js";
-import { epoch, isoTime, newestFirst } from "../../plugin/kit/time.js";
-import {
+  asObject,
+  num,
+  objects,
+  text,
+  type Json,
+  epoch,
+  isoTime,
+  newestFirst,
   lookUpStatus,
   trackEach,
   unknownReporter,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+  rulesTrackingUrl,
+} from "../../plugin/api.js";
 import { FedExSession, HOST } from "./api.js";
 
 const CARRIER_ID = "fedex";
@@ -50,7 +54,7 @@ const PLAUSIBLE = /^\d{10,22}$/;
 function place(location: unknown): string | null {
   const block = asObject(location);
   const parts = [block["city"], block["stateOrProvinceCode"], block["countryCode"]]
-    .map(text)
+    .map((part) => text(part))
     .filter((part) => part !== null);
   return parts.length === 0 ? null : parts.join(", ");
 }
@@ -58,7 +62,7 @@ function place(location: unknown): string | null {
 function history(raw: Json): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const event of objects(raw["scanEvents"])) {
-    const at = isoTime(event["date"], null);
+    const at = isoTime(event["date"], { naive: "reject", epoch: "auto", epochStrings: true });
     const code = text(event["eventType"]) ?? text(event["derivedStatusCode"]);
     const rawStatus = text(event["eventDescription"]) ?? code;
     if (at !== null && rawStatus !== null) {
@@ -85,7 +89,10 @@ function weightKg(raw: Json): number | null {
 function deliveredAt(raw: Json): string | null {
   const actual = asObject(raw["deliveryDetails"])["actualDeliveryTimestamp"];
   const dated = objects(raw["dateAndTimes"]).find((entry) => entry["type"] === "ACTUAL_DELIVERY");
-  return isoTime(actual, null) ?? isoTime(dated?.["dateTime"], null);
+  return (
+    isoTime(actual, { naive: "reject", epoch: "auto", epochStrings: true }) ??
+    isoTime(dated?.["dateTime"], { naive: "reject", epoch: "auto", epochStrings: true })
+  );
 }
 
 function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
@@ -97,8 +104,8 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
   }
   const delivered = status === "delivered";
   const window = asObject(asObject(raw["estimatedDeliveryTimeWindow"])["window"]);
-  const from = isoTime(window["begins"], null);
-  const to = isoTime(window["ends"], null);
+  const from = isoTime(window["begins"], { naive: "reject", epoch: "auto", epochStrings: true });
+  const to = isoTime(window["ends"], { naive: "reject", epoch: "auto", epochStrings: true });
   return snapshot({
     carrier: CARRIER_ID,
     barcode,
@@ -110,7 +117,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? place(latest["scanLocation"]) : null,
     url:
-      rulesTrackingUrl(loadRules(), CARRIER_ID, barcode) ??
+      rulesTrackingUrl(CARRIER_ID, barcode) ??
       `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(barcode)}`,
     weightKg: weightKg(raw),
     history: history(raw),

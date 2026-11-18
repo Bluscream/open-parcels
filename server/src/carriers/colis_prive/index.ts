@@ -1,15 +1,17 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   defineCarrier,
   snapshot,
+  trackEach,
   TransientError,
+  unknownReporter,
+  zonedIso,
   type ParcelSnapshot,
+  type ParcelStatus,
   type PluginContext,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { statusReporter, trackOneByOne, type ParcelStatus } from "../_kit/json.js";
-import { zonedIso } from "../_kit/zoned.js";
 import { parseResultPage, type ResultPage, type Row } from "./page.js";
 
 const CARRIER_ID = "colis_prive";
@@ -161,8 +163,8 @@ type Secret = z.infer<typeof secretSchema>;
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
   const postal = context.config.postalCode.replace(/[\s-]/g, "");
   const lang = context.config.language ?? "fr";
-  const report = statusReporter(context);
-  return trackOneByOne(barcodes, PLAUSIBLE, async (code) => {
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, PLAUSIBLE, async (code) => {
     const page = await lookUp(context.http, code, postal, lang);
     return page === null ? null : toSnapshot(page, code, postal, lang, report);
   });

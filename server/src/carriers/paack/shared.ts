@@ -1,36 +1,16 @@
-import type { ParcelSnapshot, SnapshotEvent } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+import { isoTime as kitIsoTime, text as kitText, type ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "paack";
 export const TRACKING_HOST = "paack.co";
 
-/** Narrowing helpers for untrusted JSON. */
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, newestFirst, type Json } from "../../plugin/api.js";
 
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
+/** Paack's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-/** ISO 8601 for a string or epoch-millisecond timestamp; null when it does not parse. */
-export function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
+/** Strings as `new Date()` reads them, numbers as epoch milliseconds. */
+export const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 /**
  * Paack's event labels. Local until open-parcels-rules has a table for this carrier; prefer
  * mapping too little over mapping wrongly.
@@ -66,8 +46,4 @@ export function mapLabel(label: string | null): ParcelStatus | null {
 export function publicUrl(barcode: string, postalCode: string | null): string {
   const base = `https://${TRACKING_HOST}/shipments/tracking/order?tracking_number=${encodeURIComponent(barcode)}`;
   return postalCode === null ? base : `${base}&postal_code=${encodeURIComponent(postalCode)}`;
-}
-
-export function newestFirst(events: SnapshotEvent[]): SnapshotEvent[] {
-  return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }

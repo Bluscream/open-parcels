@@ -1,14 +1,20 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  expectStatus,
+  isObject,
+  readJson,
   snapshot,
-  TransientError,
+  text as anyText,
+  trackEach,
+  unknownReporter,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
 import { localIso, mapCode, type Checkpoint, CONTROL_CODES, decidingCode } from "./status.js";
 
 const CARRIER_ID = "geniki_taxydromiki";
@@ -20,15 +26,7 @@ const RESULT_FOUND = 0;
 const RESULT_NOT_FOUND = 9;
 const BARCODE_PATTERN = /^[A-Z0-9]{6,30}$/i;
 
-type Json = Readonly<Record<string, unknown>>;
-
-function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
+const text = (value: unknown): string | null => anyText(value, { numbers: false });
 
 /** Posts one code. Null when the carrier does not know it or has no scans for it yet. */
 async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
@@ -42,15 +40,8 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
     },
     timeoutMs: TIMEOUT_MS,
   });
-  if (response.status !== 200) {
-    throw new TransientError(`Geniki Taxydromiki answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Geniki Taxydromiki did not answer with JSON.");
-  }
+  expectStatus(response, "Geniki Taxydromiki", 200);
+  const payload = readJson(response, "Geniki Taxydromiki");
   if (!isObject(payload) || payload["success"] !== true) {
     throw new UnexpectedResponseError("Geniki Taxydromiki answered with an unexpected envelope.");
   }
@@ -136,20 +127,11 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
-  const report = (code: string): void => {
-    context.reportUnknown("status_code", code);
-  };
-  for (const barcode of barcodes) {
-    if (!BARCODE_PATTERN.test(barcode)) {
-      continue;
-    }
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      snapshots.push(toSnapshot(raw, barcode, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : toSnapshot(raw, barcode, report);
+  });
 }
 
 export const genikiTaxydromiki = defineCarrier<Config, Secret>({

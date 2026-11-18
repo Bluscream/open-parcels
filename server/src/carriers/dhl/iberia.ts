@@ -5,19 +5,17 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import {
   asArray,
   asObject,
   isObject,
-  mapLocal,
+  lookUpStatus,
   num,
-  parseJson,
+  readJson,
   text,
+  parseLocal,
   type Json,
   type ParcelStatus,
-} from "../_kit/json.js";
-import { parseLocal } from "../_kit/zoned.js";
+} from "../../plugin/api.js";
 import { publicTrackingUrl } from "./constants.js";
 
 /** DHL eCommerce Iberia's public tracking (Spain and Portugal). */
@@ -90,19 +88,19 @@ export async function fetchIberia(deps: Deps, code: string): Promise<Json | null
   if (!(response.headers.get("content-type") ?? "").includes("application/json")) {
     throw new UnexpectedResponseError("DHL Iberia answered with something other than JSON.");
   }
-  const body = parseJson(response, "DHL Iberia");
+  const body = readJson(response, "DHL Iberia");
   return isObject(body) && text(body["ExpeditionNumber"])?.toUpperCase() === code ? body : null;
 }
 
 function mapEvent(event: Json, report?: (key: string) => void): ParcelStatus | null {
   const code = text(event["Code"]);
   if (code !== null) {
-    return mapLocal(CODE_STATUS, code, (c) => report?.(`iberia:${c}`));
+    return lookUpStatus(CODE_STATUS, code, (c) => report?.(`iberia:${c}`));
   }
   if (event["SolutionCode"] === "DOC") {
     return "registered";
   }
-  return mapLocal(WORDING_STATUS, text(event["Description"]), (c) => report?.(`iberia:${c}`));
+  return lookUpStatus(WORDING_STATUS, text(event["Description"]), (c) => report?.(`iberia:${c}`));
 }
 
 function wording(event: Json): string | null {
@@ -149,7 +147,7 @@ export function normalizeIberia(deps: Deps, code: string, raw: Json): ParcelSnap
       ? []
       : [{ at, rawStatus, status: eventStatus, location: text(event["Town"]) }];
   });
-  const weight = num(raw["Weight"]);
+  const weight = num(raw["Weight"], { decimalComma: true });
   return snapshot({
     carrier: "dhl",
     barcode: code,

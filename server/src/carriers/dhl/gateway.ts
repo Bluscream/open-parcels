@@ -5,11 +5,13 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  objects,
+  parseJsonBody,
+  isoTime,
+  rulesStatus,
 } from "../../plugin/api.js";
 import { GATEWAY_BATCH, GATEWAY_URL, publicTrackingUrl } from "./constants.js";
-import { mapDhl } from "./status.js";
-import { toIso } from "./time.js";
-import { asObjects, asString, parseJson, type Json } from "./util.js";
+import { asString, type Json } from "./util.js";
 
 type Deps = Pick<PluginContext<unknown, unknown>, "http" | "reportUnknown">;
 
@@ -34,11 +36,11 @@ export async function fetchGateway(
     if (response.status !== 200) {
       throw new TransientError(`The DHL gateway answered HTTP ${response.status}.`);
     }
-    const body = parseJson(response.body);
+    const body = parseJsonBody(response.body);
     if (!Array.isArray(body)) {
       throw new UnexpectedResponseError("The DHL gateway did not answer with a list.");
     }
-    for (const item of asObjects(body)) {
+    for (const item of objects(body)) {
       const barcode = asString(item["barcode"]);
       if (barcode !== null) {
         found.set(barcode.toUpperCase(), item);
@@ -52,12 +54,12 @@ export async function fetchGateway(
 function mapEvent(deps: Deps, event: Json): SnapshotEvent["status"] {
   const status = asString(event["status"]);
   const category = asString(event["category"]);
-  const fine = status === null ? null : mapDhl({ code: status });
+  const fine = status === null ? null : rulesStatus("dhl", { code: status });
   if (status !== null && fine === null) {
     // Reported even when the category still maps: the fine value belongs in the shared table.
     deps.reportUnknown("gateway_status", status);
   }
-  const mapped = fine ?? (category === null ? null : mapDhl({ code: category }));
+  const mapped = fine ?? (category === null ? null : rulesStatus("dhl", { code: category }));
   if (mapped === null && category !== null) {
     deps.reportUnknown("gateway_category", category);
   }
@@ -66,10 +68,10 @@ function mapEvent(deps: Deps, event: Json): SnapshotEvent["status"] {
 
 export function normalizeGateway(deps: Deps, code: string, raw: Json): ParcelSnapshot {
   // Oldest first on this backend.
-  const events = asObjects(raw["events"]);
+  const events = objects(raw["events"]);
   const history: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = toIso(event["timestamp"], null);
+    const at = isoTime(event["timestamp"], { naive: "reject" });
     if (at !== null) {
       history.push({
         at,
@@ -80,7 +82,7 @@ export function normalizeGateway(deps: Deps, code: string, raw: Json): ParcelSna
     }
   }
   const last = events.at(-1);
-  const deliveredAt = toIso(raw["deliveredAt"], null);
+  const deliveredAt = isoTime(raw["deliveredAt"], { naive: "reject" });
   const latest = last === undefined ? null : mapEvent(deps, last);
   // A return that reached the sender also carries `deliveredAt`; the event says which it was.
   const status = deliveredAt !== null && latest === null ? "delivered" : latest;
@@ -93,7 +95,7 @@ export function normalizeGateway(deps: Deps, code: string, raw: Json): ParcelSna
     rawStatus: last === undefined ? null : (asString(last["status"]) ?? asString(last["category"])),
     delivered,
     deliveredAt: delivered ? deliveredAt : null,
-    plannedFrom: delivered ? null : toIso(last?.["momentIndication"], null),
+    plannedFrom: delivered ? null : isoTime(last?.["momentIndication"], { naive: "reject" }),
     pickup,
     url: publicTrackingUrl(code),
     history,

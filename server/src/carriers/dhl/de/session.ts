@@ -5,6 +5,8 @@ import {
   TransientError,
   UnexpectedResponseError,
   type PluginContext,
+  num,
+  parseJsonBody,
 } from "../../../plugin/api.js";
 import {
   DE_ACCOUNT_CLAIM,
@@ -18,7 +20,7 @@ import {
   DE_TOKEN_LIFETIME_MS,
   DE_TOKEN_MARGIN_MS,
 } from "../constants.js";
-import { asNumber, asObject, asString, parseJson } from "../util.js";
+import { asObject, asString } from "../util.js";
 
 type Http = PluginContext<unknown, unknown>["http"];
 
@@ -70,7 +72,7 @@ export function idTokenClaims(idToken: string): Record<string, unknown> | null {
   if (payload === undefined) {
     return null;
   }
-  return asObject(parseJson(Buffer.from(payload, "base64url").toString("utf8")));
+  return asObject(parseJsonBody(Buffer.from(payload, "base64url").toString("utf8")));
 }
 
 async function tokenEndpoint(http: Http): Promise<URL> {
@@ -80,7 +82,7 @@ async function tokenEndpoint(http: Http): Promise<URL> {
   if (response.status !== 200) {
     throw new TransientError(`DHL's sign-in discovery answered HTTP ${response.status}.`);
   }
-  const endpoint = asString(asObject(parseJson(response.body))?.["token_endpoint"]);
+  const endpoint = asString(asObject(parseJsonBody(response.body))?.["token_endpoint"]);
   if (endpoint === null) {
     throw new UnexpectedResponseError("DHL's sign-in discovery has no token endpoint.");
   }
@@ -110,7 +112,7 @@ async function postToken(http: Http, form: Record<string, string>): Promise<Toke
     },
     body: new URLSearchParams({ redirect_uri: DE_REDIRECT_URI, ...form }),
   });
-  const body = asObject(parseJson(response.body));
+  const body = asObject(parseJsonBody(response.body));
   const error = asString(body?.["error"]);
   if (
     (response.status === 400 || response.status === 401) &&
@@ -129,7 +131,7 @@ async function postToken(http: Http, form: Record<string, string>): Promise<Toke
     // The token still authenticates, but the inbox is empty without the account link.
     throw new SignInRejectedError("DHL's ID token is no longer linked to the account.");
   }
-  const expiresIn = asNumber(body["expires_in"]);
+  const expiresIn = num(body["expires_in"], { strings: false });
   return {
     idToken,
     refreshToken: asString(body["refresh_token"]),

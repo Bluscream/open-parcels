@@ -1,16 +1,23 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  isoTime,
+  objects,
+  readObject,
   snapshot,
+  text as kitText,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { instantIso, objects, readObject, text, zonedIso, type Json } from "../../plugin/parse.js";
 import { estimateDay, isPickupSentence, sentenceStatus } from "./status.js";
+
+/** Poste Italiane's fields are strings; a number in one is not taken as text. */
+const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
 export const CARRIER_ID = "poste_italiane";
 const ZONE = "Europe/Rome";
@@ -71,7 +78,7 @@ function pickupPoint(events: readonly Json[]): string | null {
 
 function toSnapshot(raw: Json, barcode: string, report: (text: string) => void): ParcelSnapshot {
   const events = objects(raw["listaMovimenti"])
-    .map((event) => ({ event, at: instantIso(event["dataOra"]) }))
+    .map((event) => ({ event, at: isoTime(event["dataOra"], { naive: "utc", epoch: "ms" }) }))
     .filter((entry): entry is { event: Json; at: string } => entry.at !== null)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const history: SnapshotEvent[] = [];
@@ -102,8 +109,10 @@ function toSnapshot(raw: Json, barcode: string, report: (text: string) => void):
     deliveredAt: delivered
       ? (history.find((entry) => entry.status === "delivered")?.at ?? null)
       : null,
-    plannedFrom: day === null ? null : zonedIso(`${day}T00:00:00`, ZONE),
-    plannedTo: day === null ? null : zonedIso(`${day}T23:59:59`, ZONE),
+    plannedFrom:
+      day === null ? null : isoTime(`${day}T00:00:00`, { naive: { zone: ZONE }, keepOffset: true }),
+    plannedTo:
+      day === null ? null : isoTime(`${day}T23:59:59`, { naive: { zone: ZONE }, keepOffset: true }),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(events.map((entry) => entry.event)),
     url: `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`,

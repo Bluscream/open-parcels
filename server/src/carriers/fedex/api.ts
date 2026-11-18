@@ -6,8 +6,6 @@ import {
   UnexpectedResponseError,
   type HttpResponse,
   type PluginContext,
-} from "../../plugin/api.js";
-import {
   asObject,
   isObject,
   num,
@@ -15,7 +13,7 @@ import {
   readJson,
   text,
   type Json,
-} from "../../plugin/kit/json.js";
+} from "../../plugin/api.js";
 
 export const HOST = "apis.fedex.com";
 /** Tokens are renewed this long before FedEx says they expire. */

@@ -1,5 +1,4 @@
-import type { ParcelSnapshot, SnapshotEvent } from "../../plugin/api.js";
-import { epoch } from "./time.js";
+import { type ParcelSnapshot, type SnapshotEvent, epoch } from "../../plugin/api.js";
 
 export interface Answer {
   readonly backend: string;

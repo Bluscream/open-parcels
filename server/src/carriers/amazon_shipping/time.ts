@@ -1,4 +1,4 @@
-import { isoTime, wallClockToIso, type WallClock } from "../../plugin/api.js";
+import { isoTime, zonedIso, type WallTime } from "../../plugin/api.js";
 
 /**
  * A tracker time. `sortKey` orders events within one parcel (local times are compared as they
@@ -18,7 +18,7 @@ const LOCAL_ISO = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?
 /** The narrow and plain no-break spaces the tracker puts inside its dates. */
 const ODD_SPACES = new RegExp(`[${String.fromCharCode(0x202f, 0xa0)}]`, "g");
 
-function fromWall(wall: WallClock, zone: string | null): Moment {
+function fromWall(wall: WallTime, zone: string | null): Moment {
   const sortKey = Date.UTC(
     wall.year,
     wall.month - 1,
@@ -27,10 +27,10 @@ function fromWall(wall: WallClock, zone: string | null): Moment {
     wall.minute ?? 0,
     wall.second ?? 0,
   );
-  return { sortKey, iso: zone === null ? null : wallClockToIso(wall, zone) };
+  return { sortKey, iso: zone === null ? null : zonedIso(wall, zone) };
 }
 
-function usLong(value: string): WallClock | null {
+function usLong(value: string): WallTime | null {
   const match = US_LONG.exec(value);
   if (match === null) {
     return null;
@@ -67,7 +67,7 @@ export function parseMoment(value: unknown, zone: string | null): Moment | null 
   if (wall !== null) {
     return fromWall(wall, zone);
   }
-  const exact = isoTime(cleaned, null);
+  const exact = isoTime(cleaned, { naive: "reject" });
   if (exact !== null) {
     return { sortKey: Date.parse(exact), iso: exact };
   }

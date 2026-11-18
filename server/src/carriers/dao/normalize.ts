@@ -1,10 +1,25 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
-import { asObject, num, objects, text, type Json } from "../../plugin/kit/json.js";
-import { isoTime, newestFirst } from "../../plugin/kit/time.js";
-import { lookUpStatus, type Status, type StatusTable } from "../../plugin/kit/track.js";
+import {
+  asObject,
+  isoTime as kitIsoTime,
+  lookUpStatus,
+  newestFirst,
+  num,
+  objects,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus as Status,
+  type SnapshotEvent,
+  type StatusTable,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "dao";
 const ZONE = "Europe/Copenhagen";
+
+/** Epoch values (numbers or digit strings), offset times, and offset-less times in Copenhagen. */
+const isoTime = (value: unknown, zone: string): string | null =>
+  kitIsoTime(value, { naive: { zone }, epoch: "auto", epochStrings: true });
 
 /** The closed `statusType` list. `STATUS_INFO` is informational and maps to nothing. */
 const TYPES: StatusTable = {

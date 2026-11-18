@@ -1,4 +1,4 @@
-import { UnexpectedResponseError } from "../../plugin/api.js";
+import { cleanText, unescapeHtml, UnexpectedResponseError } from "../../plugin/api.js";
 
 /**
  * A strict reader for the Colis Privé result page. It fails closed: anything it cannot
@@ -21,32 +21,9 @@ export interface ResultPage {
   readonly rows: readonly Row[];
 }
 
-const ENTITIES: Readonly<Record<string, string>> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-};
-
-function unescape(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
-    if (/^#x/i.test(name)) {
-      return String.fromCodePoint(Number.parseInt(name.slice(2), 16));
-    }
-    if (name.startsWith("#")) {
-      return String.fromCodePoint(Number.parseInt(name.slice(1), 10));
-    }
-    return ENTITIES[name.toLowerCase()] ?? whole;
-  });
-}
-
-/** Visible text of a fragment, whitespace collapsed. */
+/** Visible text of a fragment, whitespace collapsed. Tags vanish without a gap; `<br>` is a space. */
 export function textOf(fragment: string): string {
-  return unescape(fragment.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, ""))
-    .replace(/\s+/g, " ")
-    .trim();
+  return cleanText(unescapeHtml(fragment.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "")));
 }
 
 /** Where the element opened at `start` ends (after its closing tag), counting nested same tags. */

@@ -6,11 +6,21 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  type PluginHttp,
+  asObject,
+  isObject,
+  objects,
+  readObject,
+  text,
+  type Json,
+  epoch,
+  isoTime,
+  newestFirst,
+  expectStatus,
+  trackEach,
+  unknownReporter,
+  type ParcelStatus,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, isObject, objects, readObject, text, type Json } from "../../plugin/kit/json.js";
-import { epoch, isoTime, newestFirst } from "../../plugin/kit/time.js";
-import { expectOk, trackEach, unknownReporter, type Status } from "../../plugin/kit/track.js";
 
 const CARRIER_ID = "dragonfly";
 
@@ -44,7 +54,7 @@ const configSchema = z.object({
 type Config = z.infer<typeof configSchema>;
 
 /** The journey is a four-step ladder; negative steps are exceptions. */
-const STEPS: Readonly<Record<number, Status>> = {
+const STEPS: Readonly<Record<number, ParcelStatus>> = {
   1: "registered",
   2: "in_transit",
   3: "out_for_delivery",
@@ -53,7 +63,7 @@ const STEPS: Readonly<Record<number, Status>> = {
 
 const PLAUSIBLE = /^[A-Z0-9-]{6,40}$/;
 
-function stepStatus(step: unknown): Status | null {
+function stepStatus(step: unknown): ParcelStatus | null {
   if (typeof step !== "number" || !Number.isInteger(step)) {
     return null;
   }
@@ -63,7 +73,7 @@ function stepStatus(step: unknown): Status | null {
 async function lookUp(http: PluginHttp, country: Country, code: string): Promise<Json | null> {
   const url = new URL(`https://${country.host}/cfworker/v3/tracking/${encodeURIComponent(code)}/`);
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  expectOk(response, "Dragonfly tracking");
+  expectStatus(response, "Dragonfly tracking");
   const payload = readObject(response, "Dragonfly tracking");
   const data = asObject(payload["data"]);
   if (payload["success"] === true) {
@@ -99,7 +109,11 @@ function label(status: Json, languages: readonly string[]): string | null {
 function history(raw: Json, country: Country): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const entry of objects(raw["status_list"])) {
-    const at = isoTime(entry["timestamp"], country.zone);
+    const at = isoTime(entry["timestamp"], {
+      naive: { zone: country.zone },
+      epoch: "auto",
+      epochStrings: true,
+    });
     const rawStatus = label(entry, country.languages) ?? text(entry["step"]);
     if (at !== null && rawStatus !== null) {
       events.push({ at, rawStatus, status: stepStatus(entry["step"]), location: null });
@@ -111,8 +125,16 @@ function history(raw: Json, country: Country): SnapshotEvent[] {
 /** The delivery window: the public estimate, widened by the buffered one; a point has no end. */
 function window(raw: Json, zone: string): { from: string | null; to: string | null } {
   const eta = asObject(raw["public_eta"]);
-  let from = isoTime(eta["from"] ?? raw["eta"], zone);
-  let to = isoTime(raw["live_buffered_eta"] ?? eta["to"] ?? raw["buffered_eta"], zone);
+  let from = isoTime(eta["from"] ?? raw["eta"], {
+    naive: { zone: zone },
+    epoch: "auto",
+    epochStrings: true,
+  });
+  let to = isoTime(raw["live_buffered_eta"] ?? eta["to"] ?? raw["buffered_eta"], {
+    naive: { zone: zone },
+    epoch: "auto",
+    epochStrings: true,
+  });
   if (from !== null && to !== null) {
     if (epoch(to) === epoch(from)) {
       to = null;
@@ -145,7 +167,13 @@ function toSnapshot(
     status,
     rawStatus: label(latest, country.languages) ?? stepText,
     delivered,
-    deliveredAt: delivered ? isoTime(latest["timestamp"], country.zone) : null,
+    deliveredAt: delivered
+      ? isoTime(latest["timestamp"], {
+          naive: { zone: country.zone },
+          epoch: "auto",
+          epochStrings: true,
+        })
+      : null,
     plannedFrom: delivered ? null : planned.from,
     plannedTo: delivered ? null : planned.to,
     pickup: latest["task_type"] === "last_mile_pickup",

@@ -1,13 +1,18 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  isObject,
+  num,
   SignInRejectedError,
+  text,
   TransientError,
   UnexpectedResponseError,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { isObject, num, text } from "../../plugin/parse.js";
+
+const STRINGS = { numbers: false } as const;
+const DECIMAL = { decimalComma: true } as const;
 
 /**
  * PostNL accounts sign in on PostNL's own login page in the user's browser (OpenID Connect with
@@ -65,15 +70,15 @@ async function postToken(http: PluginHttp, form: Record<string, string>): Promis
     );
   }
   const body = isObject(payload) ? payload : {};
-  const accessToken = text(body["access_token"]);
+  const accessToken = text(body["access_token"], STRINGS);
   if (response.status === 200 && accessToken !== null) {
     return {
       accessToken,
-      refreshToken: text(body["refresh_token"]),
-      lifetimeMs: (num(body["expires_in"]) ?? DEFAULT_LIFETIME_S) * 1000,
+      refreshToken: text(body["refresh_token"], STRINGS),
+      lifetimeMs: (num(body["expires_in"], DECIMAL) ?? DEFAULT_LIFETIME_S) * 1000,
     };
   }
-  const error = text(body["error"]);
+  const error = text(body["error"], STRINGS);
   if ((response.status === 400 || response.status === 401) && error === "invalid_grant") {
     throw new SignInRejectedError("PostNL no longer accepts this sign-in; sign in again.");
   }

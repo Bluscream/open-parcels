@@ -1,12 +1,22 @@
-import { loadRules, trackingUrl } from "open-parcels-rules";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  isObject,
+  isoTime as kitIsoTime,
+  newestFirst,
+  num,
+  objects,
+  rulesTrackingUrl,
+  snapshot,
+  text,
+  zonedIso,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "gofo";
 /** Transport A answers in this zone's wall-clock time but always stamps a fixed -07:00. */
 export const WALL_CLOCK_ZONE = "America/Los_Angeles";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
-export type Json = Readonly<Record<string, unknown>>;
 
 /** Event process codes, shared by every country. Candidates for the shared rules package. */
 const PROCESS_CODES: Readonly<Record<string, ParcelStatus>> = {
@@ -31,57 +41,27 @@ const ITEM_STATUS: Readonly<Record<string, ParcelStatus>> = {
   Delivered: "delivered",
 };
 
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value === "number") {
-    return String(value);
-  }
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
-const offsetFormat = new Intl.DateTimeFormat("en-US", {
-  timeZone: WALL_CLOCK_ZONE,
-  timeZoneName: "longOffset",
-});
-
-function offsetMinutes(at: number): number {
-  const name = offsetFormat.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
-  const match = /GMT([+-])(\d{2}):(\d{2})/.exec(name);
-  if (match === null) {
-    return 0;
-  }
-  const minutes = Number(match[2]) * 60 + Number(match[3]);
-  return match[1] === "-" ? -minutes : minutes;
-}
-
 /** Parses a timestamp; with `wallClock`, the stamped offset is dropped and the zone's applies. */
 export function isoTime(value: unknown, wallClock: boolean): string | null {
   if (typeof value !== "string") {
     return null;
   }
   if (!wallClock) {
-    const normalised = value.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
-    const parsed = Date.parse(normalised);
-    return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+    return kitIsoTime(value.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"), { naive: "runtime" });
   }
-  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/.exec(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(value);
   if (match === null) {
     return null;
   }
-  const asUtc = Date.parse(`${match[1] ?? ""}T${match[2] ?? ""}Z`);
-  if (Number.isNaN(asUtc)) {
-    return null;
-  }
-  const first = asUtc - offsetMinutes(asUtc) * 60_000;
-  return new Date(asUtc - offsetMinutes(first) * 60_000).toISOString();
+  const n = (index: number): number => Number(match[index] ?? "0");
+  return zonedIso(
+    { year: n(1), month: n(2), day: n(3), hour: n(4), minute: n(5), second: n(6) },
+    WALL_CLOCK_ZONE,
+  );
 }
 
 function events(raw: Json): Json[] {
-  const list = raw["trackEventList"];
-  return Array.isArray(list) ? list.filter(isObject) : [];
+  return objects(raw["trackEventList"]);
 }
 
 function mapCode(code: string | null): ParcelStatus | null {
@@ -109,15 +89,9 @@ function resolve(
   return { status: fallback, rawStatus: itemStatus ?? code };
 }
 
-function weightKg(value: unknown): number | null {
-  const parsed =
-    typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 export function publicUrl(barcode: string, country: string): string {
   return (
-    trackingUrl(loadRules(), CARRIER_ID, barcode) ??
+    rulesTrackingUrl(CARRIER_ID, barcode) ??
     `https://www.gofo.com/${country.toLowerCase()}/track?number=${encodeURIComponent(barcode)}`
   );
 }
@@ -140,7 +114,7 @@ export function toSnapshot(
       history.push({ at, rawStatus: label, status: mapCode(code), location: null });
     }
   }
-  history.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+
   const deliveryEvent =
     events(raw).find((e) => text(e["processCode"]) === "205") ??
     (isObject(raw["lastTrackEvent"]) ? raw["lastTrackEvent"] : {});
@@ -153,8 +127,8 @@ export function toSnapshot(
     deliveredAt: delivered ? isoTime(deliveryEvent["processDate"], options.wallClock) : null,
     pickup: status === "at_pickup_point",
     url: publicUrl(barcode, country),
-    weightKg: weightKg(raw["weight"]),
-    history,
+    weightKg: num(raw["weight"]),
+    history: newestFirst(history),
     raw,
   });
 }

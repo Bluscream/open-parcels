@@ -1,27 +1,18 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
-import { asObject, type Json } from "./session.js";
+import {
+  asObject,
+  isoTime,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+
+/** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
+const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
 
 export const CARRIER_ID = "swiss_post";
-
-function text(value: unknown): string | null {
-  if (typeof value === "number") {
-    return String(value);
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
 
 /** The shipment's `globalStatus`. The event codes run to thousands and stay unmapped. */
 const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
@@ -69,7 +60,7 @@ export function eventWording(texts: ReadonlyMap<string, string>, event: Json): s
 function history(events: readonly Json[], texts: ReadonlyMap<string, string>): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = isoTime(event["timestamp"]);
+    const at = isoTime(event["timestamp"], RUNTIME_TIME);
     const rawStatus = eventWording(texts, event) ?? text(event["eventCode"]);
     if (at !== null && rawStatus !== null) {
       // The place fields of an event have not been confirmed yet, so none is read.
@@ -82,8 +73,9 @@ function history(events: readonly Json[], texts: ReadonlyMap<string, string>): S
 /** `deliveryRange` is a real window; `calculatedDeliveryDate` is a day-level point estimate. */
 function window(raw: Json): { from: string | null; to: string | null } {
   const range = asObject(raw["deliveryRange"]);
-  const from = isoTime(range["start"]) ?? isoTime(raw["calculatedDeliveryDate"]);
-  const to = isoTime(range["end"]);
+  const from =
+    isoTime(range["start"], RUNTIME_TIME) ?? isoTime(raw["calculatedDeliveryDate"], RUNTIME_TIME);
+  const to = isoTime(range["end"], RUNTIME_TIME);
   return { from, to: to === from ? null : to };
 }
 
@@ -122,7 +114,7 @@ export function shipmentSnapshot(
     status,
     rawStatus: text(raw["status"]) ?? code,
     delivered,
-    deliveredAt: delivered ? isoTime(raw["deliveryDate"]) : null,
+    deliveredAt: delivered ? isoTime(raw["deliveryDate"], RUNTIME_TIME) : null,
     plannedFrom: delivered ? null : from,
     plannedTo: delivered ? null : to,
     pickup,

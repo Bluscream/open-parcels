@@ -1,10 +1,20 @@
-import { TransientError, UnexpectedResponseError } from "../../plugin/api.js";
-import type { HttpResponse, PluginHttp } from "../../plugin/http.js";
-import { asObject, isObject, text, type Json } from "../../plugin/parse.js";
+import {
+  asObject,
+  isObject,
+  text as kitText,
+  TransientError,
+  UnexpectedResponseError,
+  type HttpResponse,
+  type Json,
+  type PluginHttp,
+} from "../../plugin/api.js";
 
 export const API_HOST = "moja.posta.si";
 export const AUTH_HOST = "auth.posta.si";
 export const API_BASE = `https://${API_HOST}/api/v1/parcels`;
+
+/** The service's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
 const BLOCK_PAGE =
   /Just a moment|Access Denied|Attention Required|cf-turnstile|_cf_chl_opt|Azure Front Door|Request blocked/i;

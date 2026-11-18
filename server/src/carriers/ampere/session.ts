@@ -1,5 +1,5 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asObject,
   CookieJar,
   isObject,

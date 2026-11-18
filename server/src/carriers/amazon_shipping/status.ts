@@ -1,5 +1,6 @@
-import { loadRules, mapStatus } from "open-parcels-rules";
 import {
+  loadRules,
+  mapStatus,
   asArray,
   asObject,
   text,

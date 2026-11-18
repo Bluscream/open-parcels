@@ -1,13 +1,13 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   asObject,
   defineCarrier,
   isoTime,
   isTimeZone,
   newestFirst,
-  readJsonObject,
+  readObject,
   snapshot,
   text,
   trackEach,
@@ -51,7 +51,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   if (response.status !== 200) {
     throw new TransientError(`Better Trucks tracking answered HTTP ${response.status}.`);
   }
-  const payload = readJsonObject(response, "Better Trucks tracking");
+  const payload = readObject(response, "Better Trucks tracking");
   const status = text(asObject(payload["tracking_status"])["status"]);
   return status === "UNKNOWN" || asArray(payload["tracking_history"]).length === 0 ? null : payload;
 }
@@ -70,7 +70,7 @@ export function betterTrucksSnapshot(
   for (const entry of asArray(raw["tracking_history"])) {
     const event = asObject(entry);
     const eventCode = text(event["status"]);
-    const at = isoTime(event["object_created"], zone);
+    const at = isoTime(event["object_created"], { naive: { zone } });
     if (eventCode !== null && stage(eventCode) === null) {
       unmapped.add(eventCode);
     }
@@ -90,9 +90,9 @@ export function betterTrucksSnapshot(
     status,
     rawStatus: code,
     delivered,
-    deliveredAt: delivered ? isoTime(current["object_created"], zone) : null,
+    deliveredAt: delivered ? isoTime(current["object_created"], { naive: { zone } }) : null,
     // A point estimate; once delivered it is rewritten to the delivery time, so it is dropped.
-    plannedFrom: delivered ? null : isoTime(raw["eta"], zone),
+    plannedFrom: delivered ? null : isoTime(raw["eta"], { naive: { zone } }),
     url: `https://${HOST}/track/${encodeURIComponent(resolved)}`,
     history: newestFirst(history),
     raw,

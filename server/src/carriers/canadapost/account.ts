@@ -1,15 +1,21 @@
 import { z } from "zod";
-import type { Clock } from "../../clock.js";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  asArray,
+  asObject,
+  isObject,
+  num,
+  parseJsonBody,
   SignInRejectedError,
+  text,
   TransientError,
   UnexpectedResponseError,
+  type Clock,
   type HttpResponse,
+  type Json,
+  type PluginHttp,
   type PluginLogger,
   type SessionStore,
 } from "../../plugin/api.js";
-import { asArray, asObject, isObject, num, text, type Json } from "../_kit/json.js";
 
 export const TOKEN_HOST = "sso-osu.canadapost-postescanada.ca";
 export const LIST_HOST = "b3n4knmt6famlj575e5pfn74lm.appsync-api.ca-central-1.amazonaws.com";
@@ -42,11 +48,7 @@ export interface Credentials {
 }
 
 function body(response: HttpResponse): unknown {
-  try {
-    return response.json();
-  } catch {
-    return null;
-  }
+  return parseJsonBody(response.body);
 }
 
 export class CanadaPostAccount {
@@ -77,7 +79,7 @@ export class CanadaPostAccount {
     if (accessToken === null || idToken === null) {
       throw new UnexpectedResponseError("Canada Post sign-in returned no tokens.");
     }
-    const expiresIn = num(payload["expires_in"]);
+    const expiresIn = num(payload["expires_in"], { decimalComma: true });
     this.#tokens = {
       accessToken,
       idToken,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
 import {
   defineCarrier,
   snapshot,
@@ -9,14 +9,7 @@ import {
   type PluginContext,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import {
-  expectStatus,
-  isObject,
-  isoInZone,
-  readJson,
-  text,
-  type Json,
-} from "../../plugin/payload.js";
+import { expectStatus, isObject, isoTime, readJson, text, type Json } from "../../plugin/api.js";
 
 const CARRIER_ID = "ukrposhta";
 const API_HOST = "www.ukrposhta.ua";
@@ -137,7 +130,7 @@ function rawText(event: Json): string | null {
 function history(classified: readonly Classified[]): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const { event, status } of classified) {
-    const at = isoInZone(event["date"], ZONE);
+    const at = isoTime(event["date"], { naive: { zone: ZONE }, dateOnly: false });
     const rawStatus = rawText(event);
     if (at !== null && rawStatus !== null) {
       events.push({ at, status, rawStatus, location: null });
@@ -171,7 +164,9 @@ export function ukrposhtaSnapshot(
     rawStatus: final === undefined ? null : rawText(final.event),
     delivered,
     deliveredAt:
-      deliveredEvent === undefined ? null : isoInZone(deliveredEvent.event["date"], ZONE),
+      deliveredEvent === undefined
+        ? null
+        : isoTime(deliveredEvent.event["date"], { naive: { zone: ZONE }, dateOnly: false }),
     pickup: status === "at_pickup_point",
     url: `https://track.ukrposhta.ua/en/?barcode=${encodeURIComponent(code)}`,
     history: history(classified),

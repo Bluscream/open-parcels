@@ -1,9 +1,9 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   snapshot,
   TransientError,
   UnexpectedResponseError,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import {

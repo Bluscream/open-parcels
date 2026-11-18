@@ -1,23 +1,28 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  isoTime,
+  newestFirst,
+  objects,
+  readObject,
   snapshot,
+  text,
+  trackEach,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type ParcelStatus,
   type PluginContext,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { newestFirst, objects, readObject, text, zonedIso, type Json } from "../../plugin/parse.js";
 
 export const CARRIER_ID = "quickpac";
 const ZONE = "Europe/Zurich";
 const HOST = "parcelsearch.quickpac.ch";
 const BASE = `https://${HOST}/api/ParcelSearch`;
 const BARCODE = /^[A-Z0-9]{8,40}$/i;
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
 
 /**
  * Quickpac's numeric codes, grouped the way its own tracking page picks an icon. Codes outside
@@ -76,32 +81,35 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   return readObject(response, "Quickpac");
 }
 
+const STRINGS = { numbers: false } as const;
+
 const code = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) ? value : null;
 
 function toSnapshot(raw: Json, barcode: string, report: (code: string) => void): ParcelSnapshot {
-  const history: SnapshotEvent[] = [];
+  const events: SnapshotEvent[] = [];
   for (const entry of objects(raw["Protocol"])) {
-    const at = zonedIso(entry["Time"], ZONE);
+    const at = isoTime(entry["Time"], { naive: { zone: ZONE }, keepOffset: true });
     const entryCode = code(entry["Status"]);
-    const rawStatus = text(entry["StatusText"]) ?? (entryCode === null ? null : String(entryCode));
+    const rawStatus =
+      text(entry["StatusText"], STRINGS) ?? (entryCode === null ? null : String(entryCode));
     if (at !== null && rawStatus !== null) {
-      history.push({ at, status: codeStatus(entryCode), rawStatus, location: null });
+      events.push({ at, status: codeStatus(entryCode), rawStatus, location: null });
     }
   }
-  newestFirst(history);
+  const history = newestFirst(events);
   const lastCode = code(raw["LastStatusCode"]);
   const status = codeStatus(lastCode);
   if (lastCode !== null && status === null) {
     report(String(lastCode));
   }
   const delivered = status === "delivered";
-  const identCode = text(raw["IdentCode"]) ?? barcode;
+  const identCode = text(raw["IdentCode"], STRINGS) ?? barcode;
   return snapshot({
     carrier: CARRIER_ID,
     barcode: identCode,
     status,
-    rawStatus: text(raw["LastStatus"]) ?? (lastCode === null ? null : String(lastCode)),
+    rawStatus: text(raw["LastStatus"], STRINGS) ?? (lastCode === null ? null : String(lastCode)),
     delivered,
     deliveredAt: delivered
       ? (history.find((entry) => entry.status === "delivered")?.at ?? null)
@@ -115,20 +123,13 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
 }
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
   const report = (value: string): void => {
     context.reportUnknown("status_code", value);
   };
-  for (const barcode of barcodes) {
-    if (!BARCODE.test(barcode)) {
-      continue;
-    }
+  return trackEach(barcodes, BARCODE, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      snapshots.push(toSnapshot(raw, barcode, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : toSnapshot(raw, barcode, report);
+  });
 }
 
 /** Quickpac (Switzerland): the public parcel search. */

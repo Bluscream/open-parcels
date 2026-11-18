@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
 import {
   defineCarrier,
   snapshot,
@@ -12,13 +12,12 @@ import {
 import {
   asObject,
   isObject,
-  isoInZone,
   isoTime,
   objects,
   readJson,
   text,
   type Json,
-} from "../../plugin/payload.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "uniuni";
 const API_HOST = "delivery-api.uniuni.ca";
@@ -77,7 +76,10 @@ function mapState(code: string | null): Status | null {
 
 /** `ts` is epoch seconds; some late events carry only the local time and the zone name. */
 function eventTime(dateTime: Json): string | null {
-  const fromTs = typeof dateTime["ts"] === "number" ? isoTime(dateTime["ts"], "s") : null;
+  const fromTs =
+    typeof dateTime["ts"] === "number"
+      ? isoTime(dateTime["ts"], { naive: "runtime", epoch: "s" })
+      : null;
   if (fromTs !== null) {
     return fromTs;
   }
@@ -86,7 +88,7 @@ function eventTime(dateTime: Json): string | null {
     return null;
   }
   try {
-    return isoInZone(dateTime["localTime"], zone);
+    return isoTime(dateTime["localTime"], { naive: { zone }, dateOnly: false });
   } catch {
     // An unknown zone name: the event has no anchor and is left out.
     return null;

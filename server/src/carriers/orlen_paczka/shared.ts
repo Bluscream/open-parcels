@@ -1,58 +1,16 @@
-import type { SnapshotEvent } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<SnapshotEvent["status"]>;
+import { text as kitText, zonedIso, type ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "orlen_paczka";
 export const TRACKING_HOST = "nadaj.orlenpaczka.pl";
 
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, isObject, type Json } from "../../plugin/api.js";
 
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
+/** ORLEN's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
 /** Event codes arrive as strings or numbers. */
 export function code(value: unknown): string | null {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : text(value);
-}
-
-const WARSAW = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/Warsaw",
-  hourCycle: "h23",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-/** Minutes Warsaw is ahead of UTC at `instant`. */
-function warsawOffsetMinutes(instant: number): number {
-  const parts = Object.fromEntries(
-    WARSAW.formatToParts(new Date(instant)).map((part) => [part.type, part.value]),
-  );
-  const local = Date.UTC(
-    Number(parts["year"]),
-    Number(parts["month"]) - 1,
-    Number(parts["day"]),
-    Number(parts["hour"]),
-    Number(parts["minute"]),
-  );
-  return Math.round((local - instant) / 60_000);
 }
 
 /** Parses ORLEN's `DD-MM-YYYY, HH:MM` (Warsaw local time) to ISO 8601 UTC; null otherwise. */
@@ -61,16 +19,11 @@ export function isoTime(value: unknown): string | null {
   if (match === null) {
     return null;
   }
-  const [, day, month, year, hour, minute] = match.map(Number);
-  if ([day, month, year, hour, minute].some((part) => part === undefined)) {
-    return null;
-  }
-  const asUtc = Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1, hour ?? 0, minute ?? 0);
-  // Two passes settle the offset across a daylight-saving change.
-  let instant = asUtc - warsawOffsetMinutes(asUtc) * 60_000;
-  instant = asUtc - warsawOffsetMinutes(instant) * 60_000;
-  const parsed = new Date(instant);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  const [day, month, year, hour, minute] = match.slice(1).map(Number);
+  return zonedIso(
+    { year: year ?? 0, month: month ?? 0, day: day ?? 0, hour: hour ?? 0, minute: minute ?? 0 },
+    "Europe/Warsaw",
+  );
 }
 
 /** ORLEN event codes. Kept local until the shared rules carry an ORLEN table. */

@@ -1,5 +1,12 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
-import { objects, text, zonedIso, type Json } from "../../plugin/parse.js";
+import {
+  isoTime,
+  objects,
+  snapshot,
+  type Json,
+  type ParcelSnapshot,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+import { text } from "./shared.js";
 
 export const CARRIER_ID = "posta_slovenije";
 type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
@@ -36,7 +43,7 @@ function timedRows(statuses: unknown): Row[] {
   return objects(statuses)
     .map((row) => ({
       row,
-      at: zonedIso(row["statusDateTime"], "UTC"),
+      at: isoTime(row["statusDateTime"], { naive: { zone: "UTC" }, keepOffset: true }),
       code: text(row["code"]) ?? "",
     }))
     .filter((entry): entry is Row => entry.at !== null)

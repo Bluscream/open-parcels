@@ -1,30 +1,31 @@
 import {
-  snapshot,
-  TransientError,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
+  asArray,
   asObject,
-  asList,
-  fold,
-  instantIso,
+  cleanText,
   isObject,
+  isoTime,
   newestFirst,
   num,
   objects,
   readObject,
+  snapshot,
   text,
+  TransientError,
+  UnexpectedResponseError,
   type Json,
-} from "../../plugin/parse.js";
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "posti";
 export const AUTH_HOST = "auth-service.posti.fi";
 export const GRAPHQL_HOST = "graphql.posti.fi";
 
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+const STRINGS = { numbers: false } as const;
+const DECIMAL = { decimalComma: true } as const;
+const INSTANT = { naive: "utc", epoch: "ms" } as const;
 
 /**
  * Only what the plug-in reads. Pickup PINs, locker ids and sending codes are never requested,
@@ -73,7 +74,8 @@ const EVENTS: Readonly<Record<string, ParcelStatus | null>> = {
   "no digital signature was received": null,
 };
 
-const eventKey = (description: string): string => fold(description).replace(/\.$/, "");
+const eventKey = (description: string): string =>
+  cleanText(description).toLowerCase().replace(/\.$/, "");
 
 interface Tokens {
   readonly authorization: string;
@@ -92,8 +94,8 @@ async function mint(http: PluginHttp): Promise<Tokens> {
   }
   const payload = readObject(response, "Posti's anonymous token");
   const anonymous = objects(payload["role_tokens"]).find((role) => role["type"] === "anonymous");
-  const authorization = text(anonymous?.["token"]);
-  const idToken = text(payload["id_token"]);
+  const authorization = text(anonymous?.["token"], STRINGS);
+  const idToken = text(payload["id_token"], STRINGS);
   if (authorization === null || idToken === null) {
     throw new UnexpectedResponseError("Posti's anonymous token answer has no usable token.");
   }
@@ -136,8 +138,8 @@ async function search(
   if (!isObject(result)) {
     throw new UnexpectedResponseError("Posti tracking answered without search results.");
   }
-  const hit: unknown = asList(result["hits"])[0];
-  return num(result["totalHits"]) === 0 || !isObject(hit) ? null : hit;
+  const hit: unknown = asArray(result["hits"])[0];
+  return num(result["totalHits"], DECIMAL) === 0 || !isObject(hit) ? null : hit;
 }
 
 /** Looks codes up with one token pair, minting a new one once if Posti refuses it. */
@@ -162,7 +164,7 @@ export class PostiTracking {
 
 function weightKg(measurements: Json): number | null {
   const weight = asObject(measurements["weight"]);
-  const value = num(weight["value"]);
+  const value = num(weight["value"], DECIMAL);
   const factor = { kg: 1, g: 0.001 }[String(weight["unit"]).toLowerCase()];
   return value === null || factor === undefined || value <= 0 ? null : value * factor;
 }
@@ -170,14 +172,19 @@ function weightKg(measurements: Json): number | null {
 /** The pickup point named on the newest ready-for-pickup event, else the one Posti lists. */
 function pickupPoint(events: readonly Json[], point: Json): string | null {
   const ready = events.find(
-    (event) => eventKey(text(event["eventDescription"]) ?? "") === "item is ready for a pick up",
+    (event) =>
+      eventKey(text(event["eventDescription"], STRINGS) ?? "") === "item is ready for a pick up",
   );
-  return ready === undefined ? text(asObject(point["address"])["publicName"]) : text(ready["city"]);
+  return ready === undefined
+    ? text(asObject(point["address"])["publicName"], STRINGS)
+    : text(ready["city"], STRINGS);
 }
 
 function receiver(delivery: Json): string | null {
   const name = asObject(delivery["destination"])["name"];
-  const parts = Array.isArray(name) ? name.map(text).filter((part) => part !== null) : [text(name)];
+  const parts = Array.isArray(name)
+    ? name.map((part) => text(part, STRINGS)).filter((part) => part !== null)
+    : [text(name, STRINGS)];
   const joined = parts.filter((part) => part !== null).join(", ");
   return joined === "" ? null : joined;
 }
@@ -188,10 +195,10 @@ export function trackingSnapshot(
   report: (kind: string, key: string) => void,
 ): ParcelSnapshot {
   const events = objects(raw["events"]);
-  const history: SnapshotEvent[] = [];
+  const entries: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = instantIso(event["timestamp"]);
-    const description = text(event["eventDescription"]);
+    const at = isoTime(event["timestamp"], INSTANT);
+    const description = text(event["eventDescription"], STRINGS);
     if (at === null || description === null) {
       continue;
     }
@@ -199,15 +206,15 @@ export function trackingSnapshot(
     if (!(key in EVENTS)) {
       report("event_text", key);
     }
-    history.push({
+    entries.push({
       at,
       status: EVENTS[key] ?? null,
       rawStatus: description,
-      location: text(event["city"]),
+      location: text(event["city"], STRINGS),
     });
   }
-  newestFirst(history);
-  const main = text(asObject(raw["status"])["main"]);
+  const history = newestFirst(entries);
+  const main = text(asObject(raw["status"])["main"], STRINGS);
   const mainStatus = main === null ? undefined : MAIN[main];
   if (main !== null && mainStatus === undefined) {
     report("status_code", main);
@@ -216,7 +223,7 @@ export function trackingSnapshot(
   const status = mainStatus ?? history.find((event) => event.status !== null)?.status ?? null;
   const delivered = status === "delivered";
   const time = asObject(asObject(raw["delivery"])["time"]);
-  const plannedFrom = delivered ? null : instantIso(time["timestamp"]);
+  const plannedFrom = delivered ? null : isoTime(time["timestamp"], INSTANT);
   return snapshot({
     carrier: CARRIER_ID,
     barcode: code,
@@ -225,7 +232,7 @@ export function trackingSnapshot(
     delivered,
     deliveredAt: delivered ? (history[0]?.at ?? null) : null,
     plannedFrom,
-    plannedTo: plannedFrom === null ? null : instantIso(time["timestampLatest"]),
+    plannedTo: plannedFrom === null ? null : isoTime(time["timestampLatest"], INSTANT),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(events, asObject(raw["pickupPoint"])),
     url: `https://www.posti.fi/seuranta/${encodeURIComponent(code)}`,

@@ -1,8 +1,20 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
-import { asObject, instantIso, num, objects, text, type Json } from "../../plugin/parse.js";
+import {
+  asObject,
+  isoTime,
+  num,
+  objects,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "postnord";
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+const STRINGS = { numbers: false } as const;
+const DECIMAL = { decimalComma: true } as const;
+const INSTANT = { naive: "utc", epoch: "ms" } as const;
 
 /*
  * PostNord's machine status, shared by shipments and their events. The shared rules have no
@@ -37,7 +49,7 @@ interface Event {
 function events(raw: Json): Event[] {
   return objects(raw["items"])
     .flatMap((item) => objects(item["events"]))
-    .map((event) => ({ event, at: instantIso(event["eventTime"]) }))
+    .map((event) => ({ event, at: isoTime(event["eventTime"], INSTANT) }))
     .filter((entry): entry is Event => entry.at !== null)
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
@@ -56,7 +68,7 @@ function eventStatus(event: Json): ParcelStatus | null {
   if (RETENTION_EVENTS.has(code)) {
     return "at_pickup_point";
   }
-  return STATUSES[text(event["status"]) ?? ""] ?? null;
+  return STATUSES[text(event["status"], STRINGS) ?? ""] ?? null;
 }
 
 /** History newest first; OTHER events carry the previous stage forward. */
@@ -69,13 +81,13 @@ function history(ordered: readonly Event[]): SnapshotEvent[] {
       status = previous;
     }
     previous = status ?? previous;
-    const rawStatus = text(event["eventDescription"]) ?? eventCode(event);
+    const rawStatus = text(event["eventDescription"], STRINGS) ?? eventCode(event);
     if (rawStatus !== "") {
       entries.push({
         at,
         status,
         rawStatus,
-        location: text(asObject(event["location"])["displayName"]),
+        location: text(asObject(event["location"])["displayName"], STRINGS),
       });
     }
   }
@@ -93,7 +105,7 @@ function weightKg(raw: Json): number | null {
   ];
   for (const candidate of candidates) {
     const weight = asObject(candidate);
-    const value = num(weight["value"]);
+    const value = num(weight["value"], DECIMAL);
     const factor = { kg: 1, g: 0.001 }[String(weight["unit"]).toLowerCase()];
     if (value !== null && factor !== undefined && value > 0) {
       return value * factor;
@@ -104,7 +116,7 @@ function weightKg(raw: Json): number | null {
 
 function pickupPoint(raw: Json, ordered: readonly Event[]): string | null {
   for (const key of ["destinationDeliveryPoint", "deliveryPoint"]) {
-    const name = text(asObject(raw[key])["name"]);
+    const name = text(asObject(raw[key])["name"], STRINGS);
     if (name !== null) {
       return name;
     }
@@ -112,7 +124,9 @@ function pickupPoint(raw: Json, ordered: readonly Event[]): string | null {
   const waiting = ordered
     .filter(({ event }) => event["status"] === "AVAILABLE_FOR_DELIVERY")
     .at(-1);
-  return waiting === undefined ? null : text(asObject(waiting.event["location"])["locationName"]);
+  return waiting === undefined
+    ? null
+    : text(asObject(waiting.event["location"])["locationName"], STRINGS);
 }
 
 export function shipmentSnapshot(
@@ -121,7 +135,7 @@ export function shipmentSnapshot(
   report: (status: string) => void,
 ): ParcelSnapshot {
   const ordered = events(raw);
-  const statusCode = text(raw["status"]);
+  const statusCode = text(raw["status"], STRINGS);
   let status = statusCode === null ? null : (STATUSES[statusCode] ?? null);
   if (statusCode !== null && status === null) {
     report(statusCode);
@@ -136,20 +150,20 @@ export function shipmentSnapshot(
   }
   const delivered = status === "delivered";
   const deliveries = ordered.filter(({ event }) => event["status"] === "DELIVERED");
-  const shipmentId = text(raw["shipmentId"]) ?? code;
+  const shipmentId = text(raw["shipmentId"], STRINGS) ?? code;
   return snapshot({
     carrier: CARRIER_ID,
     barcode: shipmentId,
     status,
-    rawStatus: text(asObject(raw["statusText"])["header"]) ?? statusCode,
+    rawStatus: text(asObject(raw["statusText"])["header"], STRINGS) ?? statusCode,
     delivered,
     deliveredAt: delivered ? (deliveries.at(-1)?.at ?? null) : null,
-    plannedFrom: delivered ? null : instantIso(raw["estimatedTimeOfArrival"]),
+    plannedFrom: delivered ? null : isoTime(raw["estimatedTimeOfArrival"], INSTANT),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(raw, ordered),
     url: `https://tracking.postnord.com/en/tracking?id=${encodeURIComponent(shipmentId)}`,
-    sender: text(asObject(raw["consignor"])["name"]),
-    receiver: text(asObject(raw["consignee"])["name"]),
+    sender: text(asObject(raw["consignor"])["name"], STRINGS),
+    receiver: text(asObject(raw["consignee"])["name"], STRINGS),
     weightKg: weightKg(raw),
     history: history(ordered),
     raw,

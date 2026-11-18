@@ -6,9 +6,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
+  type PluginHttp,
   asObject,
   isObject,
   num,
@@ -16,16 +14,16 @@ import {
   readJson,
   text,
   type Json,
-} from "../../plugin/kit/json.js";
-import { epoch, isoTime, newestFirst } from "../../plugin/kit/time.js";
-import {
-  expectOk,
+  epoch,
+  isoTime,
+  newestFirst,
+  expectStatus,
   lookUpStatus,
   trackEach,
   unknownReporter,
-  type Status,
+  type ParcelStatus,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "fan_courier";
 const HOST = "www.fancourier.ro";
@@ -87,7 +85,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
     headers: { accept: "application/json" },
     body: new URLSearchParams({ action: "get_awb", awb: code, lang: "romana" }),
   });
-  expectOk(response, "FAN Courier tracking");
+  expectStatus(response, "FAN Courier tracking");
   let payload = readJson(response, "FAN Courier tracking");
   if (Array.isArray(payload)) {
     if (payload.length > 1 || (payload.length === 1 && !isObject(payload[0]))) {
@@ -114,7 +112,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
 function history(events: readonly Json[]): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = isoTime(event["date"], ZONE);
+    const at = isoTime(event["date"], { naive: { zone: ZONE }, epoch: "auto", epochStrings: true });
     const code = text(event["id"]);
     const rawStatus = text(event["name"]) ?? code;
     if (at !== null && rawStatus !== null) {
@@ -132,10 +130,11 @@ function history(events: readonly Json[]): SnapshotEvent[] {
 function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
   const events = objects(raw["events"]);
   const entries = history(events);
-  const when = (event: Json): number => epoch(isoTime(event["date"], ZONE));
+  const when = (event: Json): number =>
+    epoch(isoTime(event["date"], { naive: { zone: ZONE }, epoch: "auto", epochStrings: true }));
   const newestRaw = [...events].sort((a, b) => when(b) - when(a))[0] ?? {};
   const code = text(newestRaw["id"]);
-  let status: Status | null = lookUpStatus(CODES, code);
+  let status: ParcelStatus | null = lookUpStatus(CODES, code);
   if (code !== null && status === null) {
     report(code);
   }
@@ -155,7 +154,14 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     barcode,
     status,
     rawStatus: text(newestRaw["name"]) ?? code,
-    deliveredAt: deliveredEvent === undefined ? null : isoTime(deliveredEvent["date"], ZONE),
+    deliveredAt:
+      deliveredEvent === undefined
+        ? null
+        : isoTime(deliveredEvent["date"], {
+            naive: { zone: ZONE },
+            epoch: "auto",
+            epochStrings: true,
+          }),
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? text(newestRaw["location"]) : null,
     url: `https://${HOST}/awb-tracking/?tracking=${encodeURIComponent(barcode)}`,

@@ -5,11 +5,21 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  type PluginHttp,
+  asObject,
+  num,
+  objects,
+  readObject,
+  text,
+  type Json,
+  isoTime,
+  newestFirst,
+  zonedIso,
+  expectStatus,
+  trackEach,
+  unknownReporter,
+  type ParcelStatus,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, num, objects, readObject, text, type Json } from "../../plugin/kit/json.js";
-import { isoTime, newestFirst, zonedIso } from "../../plugin/kit/time.js";
-import { expectOk, trackEach, unknownReporter, type Status } from "../../plugin/kit/track.js";
 
 const CARRIER_ID = "dynalogic";
 const HOST = "api.dynagroup.nl";
@@ -48,7 +58,7 @@ function statusOf(
   scenario: string | null,
   step: number | null,
   code: number | null,
-): Status | null {
+): ParcelStatus | null {
   if (scenario?.endsWith("_FAIL") === true) {
     return "problem";
   }
@@ -72,10 +82,13 @@ function timestamp(value: unknown): string | null {
   const raw = text(value);
   const compact = raw === null ? null : /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(raw);
   if (compact === null) {
-    return isoTime(raw, ZONE);
+    return isoTime(raw, { naive: { zone: ZONE }, epoch: "auto", epochStrings: true });
   }
   const n = (index: number): number => Number(compact[index]);
-  return zonedIso([n(1), n(2), n(3), n(4), n(5), n(6)], ZONE);
+  return zonedIso(
+    { year: n(1), month: n(2), day: n(3), hour: n(4), minute: n(5), second: n(6) },
+    ZONE,
+  );
 }
 
 async function lookUp(http: PluginHttp, code: string, postalCode: string): Promise<Json | null> {
@@ -86,7 +99,7 @@ async function lookUp(http: PluginHttp, code: string, postalCode: string): Promi
   if (response.status === 404) {
     return null;
   }
-  expectOk(response, "Dynalogic tracking");
+  expectStatus(response, "Dynalogic tracking");
   return readObject(response, "Dynalogic tracking");
 }
 

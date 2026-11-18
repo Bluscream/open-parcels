@@ -1,12 +1,17 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   snapshot,
-  TransientError,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type SnapshotEvent,
+  expectStatus,
+  isObject,
+  readObject,
+  text,
+  zonedIso,
+  type Json,
+  type ParcelStatus,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import { isObject, text, zonedIso, type Json, type ParcelStatus } from "./shared.js";
 
 export const CARRIER_ID = "magyar_posta";
 export const TRACKING_HOST = "posta.hu";
@@ -26,11 +31,7 @@ const DELIVERED_CATEGORY = "5";
 const PICKUP_DETAILS = new Set(["KLHKT"]);
 const COURIER_DETAILS = new Set(["IKRKI", "KIJKO"]);
 
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
-
-export function isPlausibleBarcode(barcode: string): boolean {
-  return BARCODE_PATTERN.test(barcode);
-}
+export const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
 
 export type Report = (kind: string, key: string) => void;
 
@@ -41,18 +42,8 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Json[] 
   url.searchParams.set("language", "1");
   url.searchParams.set("registered", "true");
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  if (response.status !== 200) {
-    throw new TransientError(`Magyar Posta tracking answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Magyar Posta tracking did not answer with JSON.");
-  }
-  if (!isObject(payload)) {
-    throw new UnexpectedResponseError("Magyar Posta tracking did not answer with an object.");
-  }
+  expectStatus(response, "Magyar Posta tracking", 200);
+  const payload = readObject(response, "Magyar Posta tracking");
   const values = Object.values(payload);
   const rows = payload[barcode] ?? (values.length === 1 ? values[0] : null);
   if (rows === null || rows === undefined) {

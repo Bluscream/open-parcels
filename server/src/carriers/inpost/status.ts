@@ -1,4 +1,4 @@
-import type { ParcelStatus } from "./shared.js";
+import type { ParcelStatus } from "../../plugin/api.js";
 
 /*
  * Local status tables. The shared rules have no InPost table yet; these belong there and stay

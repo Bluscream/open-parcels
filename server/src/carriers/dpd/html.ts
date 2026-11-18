@@ -1,36 +1,9 @@
+import { textOf, unescapeHtml } from "../../plugin/api.js";
+
 /**
  * A small, dependency-free reader for the server-rendered myDPD pages. Everything is looked up by
  * element id, never by position or layout, so cosmetic changes to the pages do not break it.
  */
-
-const NAMED_ENTITIES: Readonly<Record<string, string>> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  auml: "ä",
-  ouml: "ö",
-  uuml: "ü",
-  Auml: "Ä",
-  Ouml: "Ö",
-  Uuml: "Ü",
-  szlig: "ß",
-};
-
-/** Decodes the HTML entities that appear in attribute values and texts. */
-export function unescapeHtml(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
-    if (name.startsWith("#x") || name.startsWith("#X")) {
-      return String.fromCodePoint(Number.parseInt(name.slice(2), 16));
-    }
-    if (name.startsWith("#")) {
-      return String.fromCodePoint(Number.parseInt(name.slice(1), 10));
-    }
-    return NAMED_ENTITIES[name] ?? whole;
-  });
-}
 
 const ATTRIBUTE = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 const OPENING_TAG = /<([A-Za-z][\w:-]*)\b([^>]*)>/g;
@@ -47,13 +20,6 @@ export function attributes(raw: string): Map<string, string> {
     }
   }
   return result;
-}
-
-/** Tag-free, unescaped, whitespace-collapsed text of an HTML fragment. */
-export function textOf(fragment: string): string {
-  return unescapeHtml(fragment.replace(/<[^>]*>/g, " "))
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export interface Control {

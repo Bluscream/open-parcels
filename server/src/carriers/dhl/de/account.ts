@@ -1,4 +1,4 @@
-import type { FetchResult, ParcelSnapshot, PluginContext } from "../../../plugin/api.js";
+import { type FetchResult, type ParcelSnapshot, type PluginContext } from "../../../plugin/api.js";
 import { DE_ENRICH_LIMIT } from "../constants.js";
 import { asString, type Json } from "../util.js";
 import { activeElements, fetchEnvelope, isNotFound, needsEnrichment } from "./inbox.js";

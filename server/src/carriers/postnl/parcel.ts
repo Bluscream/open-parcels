@@ -1,9 +1,21 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
-import { asObject, instantIso, num, objects, text, type Json } from "../../plugin/parse.js";
+import {
+  asObject,
+  isoTime,
+  num,
+  objects,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 import { META_CODES, observationStatus, phaseStatus } from "./status.js";
 
 export const CARRIER_ID = "postnl";
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+const STRINGS = { numbers: false } as const;
+const DECIMAL = { decimalComma: true } as const;
+const INSTANT = { naive: "utc", epoch: "ms" } as const;
 
 interface Walked {
   readonly history: SnapshotEvent[];
@@ -20,7 +32,7 @@ interface Walked {
  */
 function walk(observations: readonly Json[]): Walked {
   const ordered = observations
-    .map((entry) => ({ entry, at: instantIso(entry["observationDate"]) }))
+    .map((entry) => ({ entry, at: isoTime(entry["observationDate"], INSTANT) }))
     .filter((item): item is { entry: Json; at: string } => item.at !== null)
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   let stage: ParcelStatus = "registered";
@@ -29,7 +41,7 @@ function walk(observations: readonly Json[]): Walked {
   const unknownCodes: string[] = [];
   const history: SnapshotEvent[] = [];
   for (const { entry, at } of ordered) {
-    const code = text(entry["observationCode"]) ?? "";
+    const code = text(entry["observationCode"], STRINGS) ?? "";
     let status = observationStatus(code);
     if (status !== null) {
       stage = status;
@@ -41,7 +53,7 @@ function walk(observations: readonly Json[]): Walked {
     } else if (code !== "") {
       unknownCodes.push(code);
     }
-    const description = text(entry["description"]) ?? code;
+    const description = text(entry["description"], STRINGS) ?? code;
     if (description !== "") {
       history.push({ at, status, rawStatus: description, location: null });
     }
@@ -71,9 +83,9 @@ function plannedWindow(shipment: Json, colli: Json): Window {
   const eta = asObject(colli["eta"]);
   if (Object.keys(route).length > 0) {
     const window = asObject(route["plannedDeliveryTimeWindow"]);
-    const from = instantIso(window["startDateTime"]);
-    const to = instantIso(window["endDateTime"]);
-    const expected = instantIso(route["expectedDeliveryTime"]);
+    const from = isoTime(window["startDateTime"], INSTANT);
+    const to = isoTime(window["endDateTime"], INSTANT);
+    const expected = isoTime(route["expectedDeliveryTime"], INSTANT);
     const inside =
       expected !== null &&
       from !== null &&
@@ -83,11 +95,11 @@ function plannedWindow(shipment: Json, colli: Json): Window {
     return { from: inside ? expected : from, to };
   }
   if (Object.keys(eta).length > 0) {
-    return { from: instantIso(eta["start"]), to: instantIso(eta["end"]) };
+    return { from: isoTime(eta["start"], INSTANT), to: isoTime(eta["end"], INSTANT) };
   }
   return {
-    from: instantIso(shipment["deliveryWindowFrom"]),
-    to: instantIso(shipment["deliveryWindowTo"]),
+    from: isoTime(shipment["deliveryWindowFrom"], INSTANT),
+    to: isoTime(shipment["deliveryWindowTo"], INSTANT),
   };
 }
 
@@ -108,7 +120,7 @@ export function shipmentSnapshot(
   for (const code of walked.unknownCodes) {
     report("observation_code", code);
   }
-  const phase = text(asObject(details["statusPhase"])["message"]);
+  const phase = text(asObject(details["statusPhase"])["message"], STRINGS);
   let status: ParcelStatus | null = walked.stage ?? (phase === null ? null : phaseStatus(phase));
   if (walked.stage === null && phase !== null && status === null) {
     report("status_text", phase);
@@ -119,28 +131,29 @@ export function shipmentSnapshot(
   const delivered = status === "delivered";
   const window = delivered ? { from: null, to: null } : plannedWindow(shipment, details);
   const dimensions = asObject(asObject(details["details"])["dimensions"]);
-  const grams = num(dimensions["weight"]);
-  const receiverTitle = text(shipment["receiverTitle"]);
+  const grams = num(dimensions["weight"], DECIMAL);
+  const receiverTitle = text(shipment["receiverTitle"], STRINGS);
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(shipment["barcode"]) ?? "",
+    barcode: text(shipment["barcode"], STRINGS) ?? "",
     direction: input.direction,
     status,
     rawStatus: phase ?? (delivered ? "Pakket is bezorgd" : null),
     delivered,
     deliveredAt: delivered
-      ? (instantIso(shipment["deliveredTimeStamp"]) ?? walked.deliveredAt)
+      ? (isoTime(shipment["deliveredTimeStamp"], INSTANT) ?? walked.deliveredAt)
       : null,
     plannedFrom: window.from,
     plannedTo: window.to,
     pickup: shipment["deliveryAddressType"] === "ServicePoint",
-    url: text(shipment["detailsUrl"]),
-    sender: text(shipment["title"]),
+    url: text(shipment["detailsUrl"], STRINGS),
+    sender: text(shipment["title"], STRINGS),
     receiver:
-      text(asObject(asObject(details["recipient"])["names"])["personName"]) ?? receiverTitle,
+      text(asObject(asObject(details["recipient"])["names"])["personName"], STRINGS) ??
+      receiverTitle,
     weightKg: grams !== null && grams > 0 ? grams / 1000 : null,
     history: walked.history,
-    externalRef: text(shipment["key"]),
+    externalRef: text(shipment["key"], STRINGS),
     raw: { shipment, colli },
   });
 }

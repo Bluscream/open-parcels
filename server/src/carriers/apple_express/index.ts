@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   asObject,
   defineCarrier,
@@ -8,13 +8,13 @@ import {
   isoTime,
   isTimeZone,
   newestFirst,
-  readJsonObject,
+  readObject,
   snapshot,
   text,
   trackEach,
   TransientError,
   UnexpectedResponseError,
-  wallClockToIso,
+  zonedIso,
   type Json,
   type ParcelSnapshot,
   type PluginContext,
@@ -78,7 +78,7 @@ export function sentenceTime(value: unknown, prefix: string, zone: string): stri
   if (match === null || month === 0 || hour < 1 || hour > 12) {
     return null;
   }
-  return wallClockToIso(
+  return zonedIso(
     {
       year: Number(match[3]),
       month,
@@ -98,7 +98,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   if (response.status !== 200) {
     throw new TransientError(`Apple Express tracking answered HTTP ${response.status}.`);
   }
-  const payload = readJsonObject(response, "Apple Express tracking");
+  const payload = readObject(response, "Apple Express tracking");
   // An unknown code is HTTP 200 with the sections present and explicitly null.
   if (
     "orderDetails" in payload &&
@@ -127,7 +127,7 @@ export function appleExpressSnapshot(
   for (const entry of asArray(raw["statusDetails"])) {
     const event = asObject(entry);
     const code = text(event["status"]);
-    const at = isoTime(event["generatedAt"], zone);
+    const at = isoTime(event["generatedAt"], { naive: { zone } });
     if (code !== null && APPLE_EXPRESS_STATUS[code] === undefined) {
       unmapped.add(code);
     }

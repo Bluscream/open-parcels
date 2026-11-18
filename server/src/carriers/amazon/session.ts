@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { CookieJar } from "../../plugin/api.js";
-import { restoreJar, serializeJar } from "../../plugin/api.js";
+import { type CookieJar, restoreJar, serializeJar } from "../../plugin/api.js";
 import type { TrackPage } from "./pages.js";
 
 /**

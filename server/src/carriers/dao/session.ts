@@ -6,9 +6,12 @@ import {
   UnexpectedResponseError,
   type HttpResponse,
   type PluginContext,
+  type PluginHttp,
+  asObject,
+  num,
+  parseJsonBody,
+  text,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, num, text } from "../../plugin/kit/json.js";
 
 export const AUTH_HOST = "auth.dao.as";
 export const API_HOST = "apiv2.dao.as";
@@ -59,12 +62,8 @@ async function postToken(http: PluginHttp, form: Record<string, string>): Promis
     headers: { accept: "application/json" },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...form }),
   });
-  let body: Record<string, unknown> = {};
-  try {
-    body = asObject(response.json());
-  } catch {
-    // Handled below: a non-JSON answer is never a refusal.
-  }
+  // A non-JSON answer is never a refusal: it reads as an empty object and is handled below.
+  const body: Record<string, unknown> = asObject(parseJsonBody(response.body));
   const error = text(body["error"]);
   if (
     (response.status === 400 || response.status === 401) &&

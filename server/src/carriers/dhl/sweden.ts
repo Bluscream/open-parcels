@@ -4,17 +4,15 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import {
   asArray,
   asObject,
   isObject,
   isoTime,
-  parseJson,
+  readJson,
   text,
   type Json,
   type ParcelStatus,
-} from "../_kit/json.js";
+} from "../../plugin/api.js";
 import { publicTrackingUrl } from "./constants.js";
 
 /** DHL Freight Sweden's public shipment lookup. It accepts ten-character codes only. */
@@ -51,7 +49,7 @@ export async function fetchSweden(
   if (response.status !== 200) {
     throw new TransientError(`DHL Freight Sweden answered HTTP ${response.status}.`);
   }
-  for (const item of asArray(parseJson(response, "DHL Freight Sweden"))) {
+  for (const item of asArray(readJson(response, "DHL Freight Sweden"))) {
     const code = text(asObject(item)["trackingNumber"]);
     if (code !== null && isObject(item) && shaped.includes(code)) {
       found.set(code, item);
@@ -139,7 +137,7 @@ export function normalizeSweden(deps: Deps, code: string, raw: Json): ParcelSnap
   const handover = events.findLast((e) => isHandover(e, method)) ?? events.at(-1);
   const pickup = method !== null && !HOME_METHODS.has(method);
   const history: SnapshotEvent[] = events.flatMap((event) => {
-    const at = isoTime(event["occuredAtTime"]);
+    const at = isoTime(event["occuredAtTime"], { naive: "utc", epoch: "ms" });
     const rawStatus = text(event["eventText"]);
     return at === null || rawStatus === null
       ? []
@@ -151,7 +149,9 @@ export function normalizeSweden(deps: Deps, code: string, raw: Json): ParcelSnap
     status,
     rawStatus: text(events.at(-1)?.["eventText"]),
     delivered,
-    deliveredAt: delivered ? isoTime(handover?.["occuredAtTime"]) : null,
+    deliveredAt: delivered
+      ? isoTime(handover?.["occuredAtTime"], { naive: "utc", epoch: "ms" })
+      : null,
     pickup,
     pickupPoint: pickup ? text(asObject(raw["servicePoint"])["name"]) : null,
     url: publicTrackingUrl(code),

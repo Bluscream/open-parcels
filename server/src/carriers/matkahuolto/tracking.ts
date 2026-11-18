@@ -1,13 +1,18 @@
 import { createHash } from "node:crypto";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   snapshot,
-  TransientError,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type SnapshotEvent,
+  expectStatus,
+  objects,
+  readObject,
+  text,
+  zonedIso,
+  type Json,
+  type ParcelStatus,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import { isObject, nonEmpty, text, zonedIso, type Json, type ParcelStatus } from "./shared.js";
 
 export const CARRIER_ID = "matkahuolto";
 export const TRACKING_HOST = "wwwservice.matkahuolto.fi";
@@ -39,11 +44,7 @@ const PATTERNS: readonly (readonly [string, ParcelStatus, string])[] = [
   ["consignment is being processed", "registered", "Being processed"],
 ];
 
-const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
-
-export function isPlausibleBarcode(barcode: string): boolean {
-  return BARCODE_PATTERN.test(barcode);
-}
+export const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
 
 export type Report = (kind: string, key: string) => void;
 
@@ -57,18 +58,8 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Json | 
   url.searchParams.set("language", "en");
   url.searchParams.set("parcelNumber", barcode);
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  if (response.status !== 200) {
-    throw new TransientError(`Matkahuolto tracking answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Matkahuolto tracking did not answer with JSON.");
-  }
-  if (!isObject(payload)) {
-    throw new UnexpectedResponseError("Matkahuolto tracking did not answer with an object.");
-  }
+  expectStatus(response, "Matkahuolto tracking", 200);
+  const payload = readObject(response, "Matkahuolto tracking");
   if (payload["notFound"] === true) {
     return null;
   }
@@ -119,13 +110,11 @@ function eventTime(event: Json): string | null {
 
 /** The shop name only; the street address after the first comma is more than the field needs. */
 function shopName(place: string | null): string | null {
-  return nonEmpty(place?.split(",")[0]?.trim());
+  return text(place?.split(",")[0]?.trim());
 }
 
 export function trackingSnapshot(raw: Json, barcode: string, report: Report): ParcelSnapshot {
-  const events = Array.isArray(raw["trackingEvents"])
-    ? (raw["trackingEvents"] as unknown[]).filter(isObject)
-    : [];
+  const events = objects(raw["trackingEvents"]);
   const history: SnapshotEvent[] = [];
   let latest: (Matched & { event: Json }) | null = null;
   // The list is newest first.

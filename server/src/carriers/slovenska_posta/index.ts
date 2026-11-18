@@ -1,13 +1,17 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
+  readJson,
+  text,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, CARRIER_ID, resultSnapshot, text, type Json } from "./parse.js";
+import { CARRIER_ID, resultSnapshot, STRINGS } from "./parse.js";
 
 const HOST = "api.posta.sk";
 /** The documented cap on codes per request. */
@@ -28,20 +32,14 @@ async function lookUpBatch(http: PluginHttp, codes: readonly string[]): Promise<
   if (response.status !== 200) {
     throw new TransientError(`Slovenská pošta answered HTTP ${response.status}.`);
   }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Slovenská pošta did not answer with JSON.");
-  }
-  const results = asObject(payload)["results"];
+  const results = asObject(readJson(response, "Slovenská pošta"))["results"];
   if (!Array.isArray(results)) {
     throw new UnexpectedResponseError("Slovenská pošta answered without a result list.");
   }
   const byNumber = new Map<string, Json>();
   for (const item of results) {
     const result = asObject(item);
-    const number = text(result["number"]);
+    const number = text(result["number"], STRINGS);
     // A malformed code is a different signal from "not found"; it never becomes a parcel.
     if (number !== null && result["status"] !== "invalid_format") {
       byNumber.set(number.toUpperCase(), result);

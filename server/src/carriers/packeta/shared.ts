@@ -1,27 +1,13 @@
-import type { ParcelSnapshot } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+import { isoTime as kitIsoTime, text as kitText, type ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "packeta";
 /** One host serves both brands (Packeta and Zásilkovna). */
 export const TRACKING_HOST = "tracking.packeta.com";
 
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, type Json } from "../../plugin/api.js";
 
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
+/** Packeta's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 /** Packeta's numeric `packetStatusId`. Local until open-parcels-rules has a table. */
 const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
   "997": "registered",
@@ -58,59 +44,20 @@ export function mapEventText(sentence: string): ParcelStatus | null {
   return EVENT_TEXTS.find(([needle]) => lowered.includes(needle))?.[1] ?? null;
 }
 
-const NAIVE_TIME = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
-const PRAGUE = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Europe/Prague",
-  hourCycle: "h23",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
-/** Offset of Prague from UTC, in milliseconds, at the given instant. */
-function pragueOffset(utcMs: number): number {
-  const parts = Object.fromEntries(PRAGUE.formatToParts(utcMs).map((p) => [p.type, p.value]));
-  const local = Date.UTC(
-    Number(parts["year"]),
-    Number(parts["month"]) - 1,
-    Number(parts["day"]),
-    Number(parts["hour"]),
-    Number(parts["minute"]),
-    Number(parts["second"]),
-  );
-  return local - utcMs;
-}
+const NAIVE_TIME = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/;
 
 /**
  * Event times come without an offset ("2026-01-01 12:00:00"). Packeta is a Czech carrier, so
- * a naive time is read as Prague local time; a time with an offset is taken as it is.
+ * a naive time is read as Prague local time; anything else is read as `new Date()` reads it.
  */
 export function isoTime(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
-  const match = NAIVE_TIME.exec(value.trim());
-  if (match === null) {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-  }
-  const [, y, mo, d, h, mi, s] = match;
-  const asUtc = Date.UTC(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(h),
-    Number(mi),
-    Number(s ?? 0),
-  );
-  // Two passes settle the offset correctly across a daylight-saving change.
-  const first = asUtc - pragueOffset(asUtc);
-  return new Date(asUtc - pragueOffset(first)).toISOString();
+  return NAIVE_TIME.test(value.trim())
+    ? kitIsoTime(value, { naive: { zone: "Europe/Prague" }, keepFraction: true })
+    : kitIsoTime(value, { naive: "runtime" });
 }
-
 export function publicUrl(barcode: string): string {
   return `https://${TRACKING_HOST}/en/?id=${encodeURIComponent(barcode)}`;
 }

@@ -3,10 +3,12 @@ import {
   defineCarrier,
   SignInRejectedError,
   snapshot,
+  text,
+  trackEach,
+  unknownReporter,
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import { statusReporter, text, trackOneByOne } from "../_kit/json.js";
 import { CanadaPostAccount, LIST_HOST, TOKEN_HOST } from "./account.js";
 import {
   CARRIER_ID,
@@ -34,9 +36,9 @@ function options(config: Config): Options {
 }
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
+  const report = unknownReporter(context, "status_code", { once: false });
   const opts = options(context.config);
-  return trackOneByOne(barcodes, PLAUSIBLE, async (pin) => {
+  return trackEach(barcodes, PLAUSIBLE, async (pin) => {
     const detail = await lookUp(context.http, pin);
     return detail === null ? null : toSnapshot(detail, pin, opts, report);
   });
@@ -54,7 +56,7 @@ async function fetchAccount(context: PluginContext<Config, Secret>) {
     context.logger,
   );
   const items = await account.listItems(context.secret);
-  const report = statusReporter(context);
+  const report = unknownReporter(context, "status_code", { once: false });
   const opts = options(context.config);
   const snapshots: ParcelSnapshot[] = [];
   for (const item of items) {

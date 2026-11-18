@@ -1,22 +1,28 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  expectStatus,
+  isoTime as kitIsoTime,
+  newestFirst,
+  objects,
+  readObject,
   snapshot,
-  TransientError,
+  text as anyText,
+  trackEach,
+  unknownReporter,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type ParcelStatus,
   type PluginContext,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
 
 const CARRIER_ID = "gobolt";
 const API_HOST = "api.secondcloset.com";
 const API_PATH = "/logistics/api/v1/bolt_shipping_labels/search";
 const BARCODE_PATTERN = /^[A-Z0-9-]{6,40}$/i;
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
-type Json = Readonly<Record<string, unknown>>;
 
 /** Label status names. Candidates for the shared rules package. */
 const STATUS: Readonly<Record<string, ParcelStatus>> = {
@@ -29,21 +35,9 @@ const STATUS: Readonly<Record<string, ParcelStatus>> = {
   label_returned_to_warehouse: "returning",
 };
 
-function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
-function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
+const text = (value: unknown): string | null => anyText(value, { numbers: false });
+const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
 function mapName(name: string | null): ParcelStatus | null {
   return name === null ? null : (STATUS[name] ?? null);
@@ -54,18 +48,8 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   const url = new URL(`https://${API_HOST}${API_PATH}`);
   url.searchParams.set("tracking_number", barcode);
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  if (response.status !== 200 && response.status !== 404) {
-    throw new TransientError(`GoBolt answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("GoBolt did not answer with JSON.");
-  }
-  if (!isObject(payload)) {
-    throw new UnexpectedResponseError("GoBolt did not answer with an object.");
-  }
+  expectStatus(response, "GoBolt", 200, 404);
+  const payload = readObject(response, "GoBolt");
   if (response.status === 404) {
     if (text(payload["message"])?.toLowerCase() === "tracking number not found") {
       return null;
@@ -79,8 +63,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
 }
 
 function steps(raw: Json): Json[] {
-  const list = raw["transit_steps"];
-  return Array.isArray(list) ? list.filter(isObject) : [];
+  return objects(raw["transit_steps"]);
 }
 
 function toSnapshot(raw: Json, barcode: string, report: (code: string) => void): ParcelSnapshot {
@@ -102,11 +85,11 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     unmapped.add(labelStatus);
   }
   unmapped.forEach(report);
-  history.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const sorted = newestFirst(history);
   // An unmapped current status falls back to the newest step that maps.
   const status =
     mapName(labelStatus) ??
-    (labelStatus === null ? null : (history.find((e) => e.status !== null)?.status ?? null));
+    (labelStatus === null ? null : (sorted.find((e) => e.status !== null)?.status ?? null));
   const delivered = status === "delivered";
   const deliveryStep = steps(raw).find((s) => s["name"] === "label_delivered");
   return snapshot({
@@ -120,7 +103,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
       : null,
     // A day-level estimate given as an instant: a point, never a window.
     plannedFrom: delivered ? null : isoTime(raw["estimated_delivery_date"]),
-    history,
+    history: sorted,
     raw,
   });
 }
@@ -131,20 +114,11 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
-  const report = (code: string): void => {
-    context.reportUnknown("status_code", code);
-  };
-  for (const barcode of barcodes) {
-    if (!BARCODE_PATTERN.test(barcode)) {
-      continue;
-    }
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      snapshots.push(toSnapshot(raw, barcode, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : toSnapshot(raw, barcode, report);
+  });
 }
 
 export const gobolt = defineCarrier<Config, Secret>({

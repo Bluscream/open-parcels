@@ -1,8 +1,8 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   snapshot,
   TransientError,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import { readOrder } from "./page.js";

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
 import {
   defineCarrier,
   snapshot,
@@ -16,7 +16,10 @@ import {
   readJson,
   text,
   type Json,
-} from "../../plugin/payload.js";
+} from "../../plugin/api.js";
+
+/** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
+const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
 
 const CARRIER_ID = "trunkrs";
 const API_HOST = "api.trunkrs.app";
@@ -75,7 +78,7 @@ function mapState(state: string | null): NonNullable<ParcelSnapshot["status"]> |
 function history(raw: Json): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const attempt of objects(raw["deliveryAttempts"])) {
-    const at = isoTime(attempt["setAt"]);
+    const at = isoTime(attempt["setAt"], RUNTIME_TIME);
     const state = text(attempt["stateName"]);
     if (at !== null && state !== null) {
       events.push({ at, status: mapState(state), rawStatus: state, location: null });
@@ -105,9 +108,9 @@ export function trunkrsSnapshot(
     status,
     rawStatus: state,
     delivered,
-    deliveredAt: delivered ? isoTime(current["setAt"]) : null,
-    plannedFrom: delivered ? null : isoTime(slot["from"] ?? slot["low"]),
-    plannedTo: delivered ? null : isoTime(slot["to"] ?? slot["high"]),
+    deliveredAt: delivered ? isoTime(current["setAt"], RUNTIME_TIME) : null,
+    plannedFrom: delivered ? null : isoTime(slot["from"] ?? slot["low"], RUNTIME_TIME),
+    plannedTo: delivered ? null : isoTime(slot["to"] ?? slot["high"], RUNTIME_TIME),
     url: `https://parcel.trunkrs.nl/${encodeURIComponent(barcode)}/${encodeURIComponent(postcode)}`,
     sender: text(raw["senderName"]) ?? text(raw["merchantName"]),
     receiver: text(raw["recipientName"]),

@@ -1,28 +1,18 @@
-import type { SnapshotEvent } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<SnapshotEvent["status"]>;
+import {
+  isoTime,
+  lookUpStatus,
+  text as kitText,
+  type Json,
+  type ParcelStatus,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "pdn_express";
 export const TRACKING_HOST = "pdn.express";
 
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, isObject, newestFirst, type Json } from "../../plugin/api.js";
 
-export function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
-
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
+/** PDN's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 /**
  * PDN Express event codes. Not in the shared rules package yet, so kept here; mapping too little
  * beats mapping wrongly. D845 comes from the tracking page's stage list, not from a seen scan.
@@ -46,12 +36,7 @@ export function mapCode(code: string | null, report: (code: string) => void): Pa
   if (code === null || NOTE_CODES.has(code)) {
     return null;
   }
-  const mapped = STATUS_MAP[code];
-  if (mapped === undefined) {
-    report(code);
-    return null;
-  }
-  return mapped;
+  return lookUpStatus(STATUS_MAP, code, report);
 }
 
 const OFFSET_PATTERN = /^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/;
@@ -69,14 +54,11 @@ export function eventTime(event: Json): string | null {
   }
   const hours = (offset[2] ?? "0").padStart(2, "0");
   const minutes = offset[3] ?? "00";
-  const parsed = new Date(`${local[1]}T${local[2]}${offset[1]}${hours}:${minutes}`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return isoTime(`${local[1] ?? ""}T${local[2] ?? ""}`, {
+    naive: { offset: `${offset[1] ?? "+"}${hours}:${minutes}` },
+  });
 }
 
 export function publicUrl(barcode: string): string {
   return `https://pdn.express/en/track/${encodeURIComponent(barcode)}`;
-}
-
-export function newestFirst(events: SnapshotEvent[]): SnapshotEvent[] {
-  return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }

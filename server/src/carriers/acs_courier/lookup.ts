@@ -1,9 +1,9 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   isObject,
   RateLimitedError,
-  readJsonObject,
+  readObject,
   TransientError,
   UnexpectedResponseError,
   type Json,
@@ -83,7 +83,7 @@ export async function lookUp(
   if (response.status !== 200) {
     throw new TransientError(`ACS Courier tracking answered HTTP ${response.status}.`);
   }
-  const items: unknown = readJsonObject(response, "ACS Courier tracking")["items"];
+  const items: unknown = readObject(response, "ACS Courier tracking")["items"];
   if (!Array.isArray(items)) {
     throw new UnexpectedResponseError("ACS Courier tracking answered without an item list.");
   }

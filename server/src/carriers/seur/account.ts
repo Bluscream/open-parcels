@@ -1,13 +1,17 @@
 import {
+  asObject,
+  readObject,
   SignInRejectedError,
+  text,
   TransientError,
   UnexpectedResponseError,
   type HttpResponse,
+  type Json,
+  type PluginHttp,
   type PluginLogger,
   type SessionStore,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, text, type Json } from "./parse.js";
+import { STRINGS } from "./parse.js";
 
 export const SSO_HOST = "sso.seur.com";
 export const WEB_HOST = "www.seur.com";
@@ -36,28 +40,19 @@ interface Session {
 
 function readSession(value: unknown, username: string): Session | null {
   const object = asObject(value);
-  const accessToken = text(object["accessToken"]);
-  const uuid = text(object["uuid"]);
+  const accessToken = text(object["accessToken"], STRINGS);
+  const uuid = text(object["uuid"], STRINGS);
   return accessToken !== null && uuid !== null && object["username"] === username
     ? { accessToken, uuid, username }
     : null;
 }
 
 function json(response: HttpResponse, what: string): Json {
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError(`SEUR ${what} did not answer with JSON.`);
-  }
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-    throw new UnexpectedResponseError(`SEUR ${what} did not answer with an object.`);
-  }
-  return payload as Json;
+  return readObject(response, `SEUR ${what}`);
 }
 
 function backendFailed(body: Json): boolean {
-  return text(body["codigo_error"]) !== null || text(body["msg_error"]) !== null;
+  return text(body["codigo_error"], STRINGS) !== null || text(body["msg_error"], STRINGS) !== null;
 }
 
 async function signIn(http: PluginHttp, credentials: Credentials): Promise<Session> {
@@ -82,7 +77,7 @@ async function signIn(http: PluginHttp, credentials: Credentials): Promise<Sessi
   if (tokenResponse.status !== 200) {
     throw new TransientError(`SEUR sign-in answered HTTP ${tokenResponse.status}.`);
   }
-  const accessToken = text(json(tokenResponse, "sign-in")["access_token"]);
+  const accessToken = text(json(tokenResponse, "sign-in")["access_token"], STRINGS);
   if (accessToken === null) {
     throw new UnexpectedResponseError("SEUR sign-in returned no access token.");
   }
@@ -96,8 +91,8 @@ async function signIn(http: PluginHttp, credentials: Credentials): Promise<Sessi
     throw new UnexpectedResponseError(`SEUR profile answered HTTP ${profileResponse.status}.`);
   }
   const user = asObject(profile["usuario"]);
-  const uuid = text(user["uuid"]);
-  const known = text(user["username"]);
+  const uuid = text(user["uuid"], STRINGS);
+  const known = text(user["username"], STRINGS);
   if (uuid === null) {
     throw new UnexpectedResponseError("SEUR profile carried no account id.");
   }

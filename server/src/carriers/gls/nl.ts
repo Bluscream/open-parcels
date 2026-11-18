@@ -1,23 +1,24 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  asArray as asList,
+  asObject,
+  expectStatus,
+  isObject,
+  readJson,
   snapshot,
-  TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
+  type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import {
-  asList,
-  asObject,
   CARRIER_ID,
   compactPostcode,
-  isObject,
   isoTime,
+  latestHistory,
   mapGls,
-  newestFirst,
   NL_HOST,
   text,
-  type Json,
 } from "./shared.js";
 
 /**
@@ -36,18 +37,11 @@ export async function lookUpNl(
   if (response.status === 204 || response.status === 404) {
     return null;
   }
-  if (response.status !== 200) {
-    throw new TransientError(`GLS Netherlands answered HTTP ${response.status}.`);
-  }
+  expectStatus(response, "GLS Netherlands", 200);
   if (response.body.trim() === "") {
     return null;
   }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("GLS Netherlands did not answer with JSON.");
-  }
+  const payload = readJson(response, "GLS Netherlands");
   if (!isObject(payload)) {
     throw new UnexpectedResponseError("GLS Netherlands answered with something not a parcel.");
   }
@@ -70,7 +64,7 @@ function scans(raw: Json): SnapshotEvent[] {
     }
     events.push({ at, rawStatus, status: mapGls(code)?.status ?? null, location: null });
   }
-  return newestFirst(events);
+  return latestHistory(events);
 }
 
 function pickupPoint(raw: Json): string | null {

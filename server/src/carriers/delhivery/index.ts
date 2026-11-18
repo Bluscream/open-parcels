@@ -6,22 +6,30 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, isObject, objects, readObject, text, type Json } from "../../plugin/kit/json.js";
-import { isoTime, newestFirst } from "../../plugin/kit/time.js";
-import {
-  expectOk,
+  asObject,
+  expectStatus,
+  isObject,
+  isoTime as kitIsoTime,
   lookUpStatus,
+  newestFirst,
+  objects,
+  readObject,
+  text,
   trackEach,
   unknownReporter,
-  type Status,
+  type Json,
+  type ParcelStatus as Status,
+  type PluginHttp,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "delhivery";
 const HOST = "dlv-api.delhivery.com";
 const ZONE = "Asia/Kolkata";
+
+/** Epoch values (numbers or digit strings), offset times, and offset-less times in India. */
+const isoTime = (value: unknown, zone: string): string | null =>
+  kitIsoTime(value, { naive: { zone }, epoch: "auto", epochStrings: true });
 /** The endpoint answers 401 to every request without the website's own origin. */
 const SITE_HEADERS = {
   accept: "application/json",
@@ -65,7 +73,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   const url = new URL(`https://${HOST}/v3/unified-tracking-new`);
   url.searchParams.set("wbn", code);
   const response = await http.request(url, { headers: SITE_HEADERS });
-  expectOk(response, "Delhivery tracking");
+  expectStatus(response, "Delhivery tracking");
   // The envelope claims success even for unknown waybills; only a filled `data` list is a hit.
   const data = readObject(response, "Delhivery tracking")["data"];
   if (data === undefined || data === null || (Array.isArray(data) && data.length === 0)) {

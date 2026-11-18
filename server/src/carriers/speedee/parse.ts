@@ -1,12 +1,15 @@
-import { loadRules, trackingUrl } from "open-parcels-rules";
-import type { ParcelStatus } from "../../domain/parcel.js";
 import {
+  cleanText,
+  readTables,
+  rulesTrackingUrl,
   snapshot,
   UnexpectedResponseError,
+  zonedIso,
+  type HtmlTable,
   type ParcelSnapshot,
+  type ParcelStatus,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { clean, readPage, type Table } from "./html.js";
 
 export const CARRIER_ID = "speedee";
 
@@ -23,7 +26,7 @@ const PREFIXES: readonly (readonly [string, ParcelStatus])[] = [
 ];
 
 export function classify(value: string | null): ParcelStatus | null {
-  const key = clean(value ?? "").toLowerCase();
+  const key = cleanText(value ?? "").toLowerCase();
   if (key === "") {
     return null;
   }
@@ -32,42 +35,35 @@ export function classify(value: string | null): ParcelStatus | null {
 
 /** The text without its per-scan tail, which may name a place. */
 export function stem(value: string): string {
-  return clean(value)
+  return cleanText(value)
     .replace(/\s*[(:][\s\S]*$/, "")
     .trim();
 }
 
 const STAMP = /^(\d{1,2})\/(\d{1,2})\/(\d{4}) (\d{1,2}):(\d{2})(?::(\d{2}))? ?([AP]M)$/i;
 
-function chicagoOffsetMinutes(utcMs: number): number {
-  const name = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    timeZoneName: "longOffset",
-  })
-    .formatToParts(new Date(utcMs))
-    .find((part) => part.type === "timeZoneName")?.value;
-  const match = /GMT([+-])(\d{2}):(\d{2})/.exec(name ?? "");
-  if (match === null) {
-    return 0;
-  }
-  const minutes = Number(match[2]) * 60 + Number(match[3]);
-  return match[1] === "-" ? -minutes : minutes;
-}
-
 /** The page shows US Central time as `MM/DD/YYYY hh:mm[:ss] AM`. */
 export function centralTime(value: string): string | null {
-  const match = STAMP.exec(clean(value));
+  const match = STAMP.exec(cleanText(value));
   if (match === null) {
     return null;
   }
   const [, mo, d, y, h, mi, s, half] = match;
   const hour = (Number(h) % 12) + (half?.toUpperCase() === "PM" ? 12 : 0);
-  const asUtc = Date.UTC(Number(y), Number(mo) - 1, Number(d), hour, Number(mi), Number(s ?? 0));
-  const guess = asUtc - chicagoOffsetMinutes(asUtc) * 60_000;
-  return new Date(asUtc - chicagoOffsetMinutes(guess) * 60_000).toISOString();
+  return zonedIso(
+    {
+      year: Number(y),
+      month: Number(mo),
+      day: Number(d),
+      hour,
+      minute: Number(mi),
+      second: Number(s ?? 0),
+    },
+    "America/Chicago",
+  );
 }
 
-function summary(tables: readonly Table[]): Map<string, string> {
+function summary(tables: readonly HtmlTable[]): Map<string, string> {
   const table = tables.find((candidate) => candidate.classes.has("u-full-width"));
   if (table === undefined) {
     throw new UnexpectedResponseError("Spee-Dee page has no summary table.");
@@ -93,7 +89,7 @@ interface Scan {
   readonly activity: string;
 }
 
-function progress(tables: readonly Table[]): Scan[] {
+function progress(tables: readonly HtmlTable[]): Scan[] {
   const table = tables.find((candidate) => candidate.heading === "package progress");
   const header = table?.rows[0]?.map((cell) => cell.toLowerCase());
   if (table === undefined || header === undefined) {
@@ -130,7 +126,7 @@ export function pageSnapshot(
   barcode: string,
   report: (text: string) => void,
 ): ParcelSnapshot {
-  const page = readPage(html);
+  const page = readTables(html, "Spee-Dee");
   const facts = summary(page.tables);
   const summaryStatus = facts.get("status") ?? "";
   if (summaryStatus === "") {
@@ -167,7 +163,7 @@ export function pageSnapshot(
     rawStatus: stem(summaryStatus),
     deliveredAt: delivered ? centralTime(facts.get("delivered on") ?? "") : null,
     url:
-      trackingUrl(loadRules(), CARRIER_ID, barcode) ??
+      rulesTrackingUrl(CARRIER_ID, barcode) ??
       `https://www.speedeedelivery.com/track/?tracking=${encodeURIComponent(barcode)}`,
     history,
     raw: { summaryStatus, scans },

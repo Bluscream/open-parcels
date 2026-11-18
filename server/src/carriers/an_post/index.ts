@@ -4,7 +4,7 @@ import {
   defineCarrier,
   isObject,
   isoTime,
-  readJsonObject,
+  readObject,
   SignInRejectedError,
   snapshot,
   text,
@@ -55,9 +55,11 @@ export function anPostSnapshot(item: Json, report: (key: string) => void): Parce
     status,
     rawStatus: typeof category === "number" ? String(category) : null,
     delivered,
-    deliveredAt: delivered ? isoTime(item["dateDelivered"], ZONE) : null,
+    deliveredAt: delivered ? isoTime(item["dateDelivered"], { naive: { zone: ZONE } }) : null,
     // A single expected moment, not a window.
-    plannedFrom: delivered ? null : isoTime(item["estimatedDeliveryDateTime"], ZONE),
+    plannedFrom: delivered
+      ? null
+      : isoTime(item["estimatedDeliveryDateTime"], { naive: { zone: ZONE } }),
     url: `https://www.anpost.com/Post-Parcels/Track/Search?trackingNumber=${encodeURIComponent(barcode)}`,
     sender: text(item["retailerName"]),
     receiver: text(item["recipientName"]) ?? text(item["receiverName"]),
@@ -86,7 +88,7 @@ async function fetchAccount(context: PluginContext<Config, Secret>): Promise<Fet
   if (response.status !== 200) {
     throw new TransientError(`An Post's deliveries answered HTTP ${response.status}.`);
   }
-  const payload = readJsonObject(response, "An Post's deliveries");
+  const payload = readObject(response, "An Post's deliveries");
   const items: unknown = payload["trackingItems"];
   if (payload["success"] !== true || !Array.isArray(items)) {
     throw new UnexpectedResponseError("An Post's deliveries did not report success.");

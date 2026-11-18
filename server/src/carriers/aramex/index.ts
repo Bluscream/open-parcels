@@ -1,18 +1,18 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   asObject,
   defineCarrier,
   isObject,
   isoTime,
   newestFirst,
-  readJsonObject,
+  readObject,
   snapshot,
   text,
   trackEach,
   TransientError,
-  wallClockToIso,
+  zonedIso,
   type Json,
   type ParcelSnapshot,
   type PluginContext,
@@ -69,7 +69,7 @@ async function lookUp(http: PluginHttp, country: Country, barcode: string): Prom
     throw new TransientError(`Aramex tracking answered HTTP ${response.status}.`);
   }
   // An unknown label and one not scanned yet both answer 200 without a scan list.
-  const result = readJsonObject(response, "Aramex tracking")["result"];
+  const result = readObject(response, "Aramex tracking")["result"];
   return isObject(result) && Array.isArray(result["Scans"]) ? result : null;
 }
 
@@ -82,7 +82,7 @@ interface Scan {
 function scans(result: Json, zone: string): Scan[] {
   return asArray(result["Scans"]).flatMap((entry) => {
     const scan = asObject(entry);
-    const at = isoTime(scan["RealDateTime"] ?? scan["Date"], zone);
+    const at = isoTime(scan["RealDateTime"] ?? scan["Date"], { naive: { zone } });
     return at === null
       ? []
       : [{ at, code: text(scan["Status"]), label: clean(scan["StatusDescription"]) }];
@@ -97,8 +97,8 @@ function etaWindow(value: unknown, zone: string): { from: string | null; to: str
   }
   const day = { year: Number(match[3]), month: Number(match[2]), day: Number(match[1]) };
   return {
-    from: wallClockToIso(day, zone),
-    to: wallClockToIso({ ...day, hour: 23, minute: 59, second: 59 }, zone),
+    from: zonedIso(day, zone),
+    to: zonedIso({ ...day, hour: 23, minute: 59, second: 59 }, zone),
   };
 }
 

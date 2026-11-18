@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   defineCarrier,
   SignInRejectedError,
-  type ParcelSnapshot,
+  trackEach,
   type PluginContext,
 } from "../../plugin/api.js";
 import { itSnapshot, plSnapshot } from "./account-parcels.js";
@@ -16,7 +16,7 @@ import {
   TRACKING_COUNTRIES,
   TRACKING_HOST,
 } from "./shared.js";
-import { isPlausibleBarcode, lookUp, trackingSnapshot } from "./tracking.js";
+import { BARCODE_PATTERN, lookUp, trackingSnapshot } from "./tracking.js";
 
 const configSchema = z.looseObject({
   /** Account sources: the market the account is registered in. Default Poland. */
@@ -59,18 +59,11 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
   const report = (code: string): void => {
     context.reportUnknown("status_code", code);
   };
-  const snapshots: ParcelSnapshot[] = [];
   // One at a time: the host limiter paces them, and an error stops the run before more go out.
-  for (const barcode of barcodes) {
-    if (!isPlausibleBarcode(barcode)) {
-      continue;
-    }
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode);
-    if (raw !== null) {
-      snapshots.push(trackingSnapshot(raw, barcode, country, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : trackingSnapshot(raw, barcode, country, report);
+  });
 }
 
 /**

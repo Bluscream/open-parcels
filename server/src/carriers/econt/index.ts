@@ -7,16 +7,20 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { isObject, num, readObject, text, type Json } from "../../plugin/kit/json.js";
-import { isoTime, localDay, newestFirst } from "../../plugin/kit/time.js";
-import {
-  expectOk,
+  type PluginHttp,
+  isObject,
+  num,
+  readObject,
+  text,
+  type Json,
+  isoTime,
+  localDay,
+  newestFirst,
+  expectStatus,
   lookUpStatus,
   unknownReporter,
   type StatusTable,
-} from "../../plugin/kit/track.js";
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "econt";
 const HOST = "ee.econt.com";
@@ -66,7 +70,7 @@ async function lookUpBatch(http: PluginHttp, codes: readonly string[]): Promise<
       body: JSON.stringify({ shipmentNumbers: codes }),
     },
   );
-  expectOk(response, "Econt tracking");
+  expectStatus(response, "Econt tracking");
   const statuses = readObject(response, "Econt tracking")["shipmentStatuses"];
   if (!Array.isArray(statuses)) {
     throw new UnexpectedResponseError("Econt's answer has no shipment list.");
@@ -99,7 +103,7 @@ function history(raw: Json, report: (key: string) => void): SnapshotEvent[] {
     if (!isObject(event)) {
       continue;
     }
-    const at = isoTime(event["time"], ZONE);
+    const at = isoTime(event["time"], { naive: { zone: ZONE }, epoch: "auto", epochStrings: true });
     const type = text(event["destinationType"]);
     const rawStatus =
       text(event["destinationDetailsEn"]) ?? text(event["destinationDetails"]) ?? type;
@@ -116,13 +120,21 @@ function history(raw: Json, report: (key: string) => void): SnapshotEvent[] {
 
 function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
   const rawStatus = text(raw["shortDeliveryStatusEn"]) ?? text(raw["shortDeliveryStatus"]);
-  const deliveredAt = isoTime(raw["deliveryTime"], ZONE);
+  const deliveredAt = isoTime(raw["deliveryTime"], {
+    naive: { zone: ZONE },
+    epoch: "auto",
+    epochStrings: true,
+  });
   const delivered = deliveredAt !== null || rawStatus === "Delivered";
   const mapped = delivered ? "delivered" : lookUpStatus(STATUSES, rawStatus);
   if (rawStatus !== null && mapped === null) {
     report(rawStatus);
   }
-  const expected = isoTime(raw["expectedDeliveryDate"], ZONE);
+  const expected = isoTime(raw["expectedDeliveryDate"], {
+    naive: { zone: ZONE },
+    epoch: "auto",
+    epochStrings: true,
+  });
   // Econt gives a delivery day, not a time: the window is that whole day in Bulgaria.
   const day = delivered || expected === null ? null : localDay(expected, ZONE);
   const weight = num(raw["weight"]);

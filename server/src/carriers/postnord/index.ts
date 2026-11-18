@@ -1,12 +1,15 @@
 import { z } from "zod";
 import {
+  asArray,
   defineCarrier,
+  isObject,
+  readObject,
   TransientError,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import { asList, isObject, readObject } from "../../plugin/parse.js";
+
 import { CARRIER_ID, shipmentSnapshot } from "./parcel.js";
 
 const HOST = "api2.postnord.com";
@@ -44,7 +47,7 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     if (!isObject(envelope)) {
       throw new UnexpectedResponseError("PostNord answered without its tracking envelope.");
     }
-    const first: unknown = asList(envelope["shipments"])[0];
+    const first: unknown = asArray(envelope["shipments"])[0];
     if (first === undefined) {
       continue;
     }

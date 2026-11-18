@@ -1,5 +1,15 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  asArray,
+  asObject,
+  epochIso,
+  newestFirst,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "shopee_xpress";
 
@@ -15,28 +25,11 @@ export const MARKETS = {
 export type Market = keyof typeof MARKETS;
 export const MARKET_IDS = Object.keys(MARKETS) as [Market, ...Market[]];
 
-export type Json = Readonly<Record<string, unknown>>;
+const STRINGS = { numbers: false } as const;
 
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-/** SPX stamps in epoch seconds. */
+/** SPX stamps in epoch seconds; zero and negative values mean "not set". */
 function epochSeconds(value: unknown): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-  return new Date(value * 1000).toISOString();
+  return typeof value === "number" && value > 0 ? epochIso(value, "s") : null;
 }
 
 /** The coarse `milestone_code` of a tracking record. 10 covers both legs of a return. */
@@ -60,16 +53,15 @@ function mapRecord(record: Json): ParcelStatus | null {
 
 function describe(record: Json): string | null {
   return (
-    text(record["buyer_description"]) ??
-    text(record["description"]) ??
-    text(record["tracking_name"]) ??
-    text(record["tracking_code"])
+    text(record["buyer_description"], STRINGS) ??
+    text(record["description"], STRINGS) ??
+    text(record["tracking_name"], STRINGS) ??
+    text(record["tracking_code"], STRINGS)
   );
 }
 
 function records(raw: Json): Json[] {
-  const list = asObject(raw["sls_tracking_info"])["records"];
-  return Array.isArray(list) ? list.map(asObject) : [];
+  return asArray(asObject(raw["sls_tracking_info"])["records"]).map((record) => asObject(record));
 }
 
 /** Turns one `data` block into a snapshot; `report` receives unmapped milestone codes. */
@@ -87,18 +79,18 @@ export function orderSnapshot(
   if (code !== null && status === null) {
     report(String(code));
   }
-  const history: SnapshotEvent[] = [];
+  const entries: SnapshotEvent[] = [];
   for (const record of all) {
     const at = epochSeconds(record["actual_time"]);
     const rawStatus = describe(record);
     if (record["display_flag"] === 1 && at !== null && rawStatus !== null) {
-      history.push({ at, status: mapRecord(record), rawStatus, location: null });
+      entries.push({ at, status: mapRecord(record), rawStatus, location: null });
     }
   }
-  history.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const history = newestFirst(entries);
   const delivered = status === "delivered";
   const estimate = asObject(raw["edd_info"]);
-  const barcode = text(asObject(raw["order_info"])["spx_tn"]) ?? requested;
+  const barcode = text(asObject(raw["order_info"])["spx_tn"], STRINGS) ?? requested;
   return snapshot({
     carrier: CARRIER_ID,
     barcode,
@@ -107,7 +99,7 @@ export function orderSnapshot(
     deliveredAt: delivered ? epochSeconds(newest["actual_time"]) : null,
     plannedFrom: delivered ? null : epochSeconds(estimate["edd_min"]),
     plannedTo: delivered ? null : epochSeconds(estimate["edd_max"]),
-    receiver: text(asObject(raw["sls_tracking_info"])["receiver_name"]),
+    receiver: text(asObject(raw["sls_tracking_info"])["receiver_name"], STRINGS),
     url: `https://${MARKETS[market].host}/track?${encodeURIComponent(barcode)}`,
     history,
     raw,

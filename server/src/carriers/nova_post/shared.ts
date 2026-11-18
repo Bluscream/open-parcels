@@ -1,4 +1,4 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
+import type { ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "nova_post";
 export const TRACKING_HOST = "api.novaposhta.ua";
@@ -75,42 +75,3 @@ export const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
 /** The carrier's own catch-all: known, but deliberately left unmapped. */
 export const UNDETERMINED_CODE = "999";
 export const RECEIVED_CODES: ReadonlySet<string> = new Set(["9", "10", "11", "106"]);
-
-export type Json = Readonly<Record<string, unknown>>;
-
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-const OFFSET_PATTERN = /(?:Z|[+-]\d{2}:?\d{2})$/i;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?/;
-
-/** ISO 8601 for a carrier timestamp; a value without offset is read as UTC. Null when unparseable. */
-export function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
-    return null;
-  }
-  const normalised = value.trim().replace(" ", "T");
-  const withZone = OFFSET_PATTERN.test(normalised)
-    ? normalised
-    : normalised.length === 10
-      ? `${normalised}T00:00:00Z`
-      : `${normalised}Z`;
-  const parsed = Date.parse(withZone);
-  return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
-}

@@ -7,7 +7,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
 import { flightEvents } from "./flight.js";
 import { CARRIER_ID, eventsSnapshot, type Json } from "./parse.js";
 

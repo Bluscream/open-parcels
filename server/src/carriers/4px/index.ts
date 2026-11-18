@@ -1,14 +1,14 @@
-import { loadRules, trackingUrl } from "open-parcels-rules";
-import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  loadRules,
+  trackingUrl,
+  type PluginHttp,
   asArray,
   asObject,
   defineCarrier,
   isObject,
   isoTime,
   newestFirst,
-  readJsonObject,
+  readObject,
   snapshot,
   text,
   trackEach,
@@ -20,6 +20,7 @@ import {
   type SnapshotEvent,
   type StatusTable,
 } from "../../plugin/api.js";
+import { z } from "zod";
 
 const CARRIER_ID = "4px";
 const HOST = "track.4px.com";
@@ -64,7 +65,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   if (response.status !== 200) {
     throw new TransientError(`4PX tracking answered HTTP ${response.status}.`);
   }
-  const payload = readJsonObject(response, "4PX tracking");
+  const payload = readObject(response, "4PX tracking");
   const data = asArray(payload["data"]);
   const parcel: unknown = data[0];
   if (payload["result"] !== 1 || data.length !== 1 || !isObject(parcel)) {
@@ -85,7 +86,7 @@ function history(tracks: readonly unknown[]): SnapshotEvent[] {
   for (const entry of tracks) {
     const track = asObject(entry);
     // `tkDate` carries an offset; a value without one is skipped rather than guessed.
-    const at = isoTime(track["tkDate"], null);
+    const at = isoTime(track["tkDate"], { naive: "reject" });
     const code = text(track["tkCode"]);
     if (at === null || code === null) {
       continue;
@@ -124,7 +125,7 @@ export function fourPxSnapshot(
     status,
     rawStatus: text(latest["tkDesc"]) ?? code,
     delivered,
-    deliveredAt: delivered ? isoTime(latest["tkDate"], null) : null,
+    deliveredAt: delivered ? isoTime(latest["tkDate"], { naive: "reject" }) : null,
     url:
       trackingUrl(loadRules(), CARRIER_ID, resolved) ??
       `https://${HOST}/#/result/0/${encodeURIComponent(resolved)}`,

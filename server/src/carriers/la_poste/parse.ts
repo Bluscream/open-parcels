@@ -1,9 +1,16 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  asObject,
+  isObject,
+  isoTime as kitIsoTime,
+  snapshot,
+  text as anyText,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "la_poste";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
-export type Json = Readonly<Record<string, unknown>>;
 
 /** Colissimo event groups and current-state codes. Candidates for the shared rules package. */
 const COLISSIMO: Readonly<Record<string, ParcelStatus>> = {
@@ -45,25 +52,9 @@ const CHRONOPOST: Readonly<Record<string, ParcelStatus>> = {
   DI1: "delivered",
 };
 
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
-
-export function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
-function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
+const text = (value: unknown): string | null => anyText(value, { numbers: false });
+const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
 /** An unknown product has no vocabulary: every code is reported rather than guessed. */
 function mapCode(product: string, code: string | null): ParcelStatus | null {

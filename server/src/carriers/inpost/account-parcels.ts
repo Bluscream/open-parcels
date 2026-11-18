@@ -1,15 +1,13 @@
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
 import {
-  asList,
+  asArray as asList,
   asObject,
-  CARRIER_ID,
-  isoTime,
-  lookUpCode,
   newestFirst,
-  publicUrl,
-  text,
+  snapshot,
   type Json,
-} from "./shared.js";
+  type ParcelSnapshot,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+import { CARRIER_ID, isoTime, lookUpCode, publicUrl, text } from "./shared.js";
 import { GROUP_STATUSES, INBOX_GROUPS, INBOX_STATUSES, PAYMENT_STATUSES } from "./status.js";
 
 type Report = (code: string) => void;
@@ -113,8 +111,8 @@ export function itSnapshot(raw: Json, report: Report): ParcelSnapshot | null {
       location: null,
     });
   }
-  newestFirst(history);
-  const latest = history[0];
+  const sorted = newestFirst(history);
+  const latest = sorted[0];
   const status = latest?.status ?? null;
   const delivered = status === "delivered";
   return snapshot({
@@ -129,7 +127,7 @@ export function itSnapshot(raw: Json, report: Report): ParcelSnapshot | null {
     url: publicUrl(barcode, "IT"),
     sender: text(asObject(raw["sender"])["representativeName"]),
     receiver: text(asObject(raw["receiver"])["representativeName"]),
-    history,
+    history: sorted,
     raw,
   });
 }

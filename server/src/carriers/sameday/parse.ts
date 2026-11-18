@@ -1,36 +1,22 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  asArray,
+  asObject,
+  isoTime,
+  newestFirst,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "sameday";
 export const COUNTRIES = ["ro", "hu", "bg"] as const;
 export type Country = (typeof COUNTRIES)[number];
 
-export type Json = Readonly<Record<string, unknown>>;
-
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-function text(value: unknown): string | null {
-  if (typeof value === "number") {
-    return String(value);
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-function isoTime(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
+/** Sameday's dates are read as the runtime's `Date` reads them; numbers are epoch milliseconds. */
+const TIME = { naive: "runtime", epoch: "ms" } as const;
 
 /**
  * The numeric `statusStateId` of an AWB event. Returns, cancellations and failures map to the
@@ -85,16 +71,15 @@ interface Entry {
 }
 
 function entries(raw: Json): Entry[] {
-  const list = Array.isArray(raw["awbHistory"]) ? (raw["awbHistory"] as unknown[]) : [];
   const result: Entry[] = [];
-  for (const item of list) {
+  for (const item of asArray(raw["awbHistory"])) {
     const event = asObject(item);
-    const at = isoTime(event["statusDate"]);
+    const at = isoTime(event["statusDate"], TIME);
     if (at !== null) {
       result.push({ at, code: text(event["statusStateId"]), raw: event });
     }
   }
-  return result.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  return newestFirst(result);
 }
 
 function location(event: Json): string | null {

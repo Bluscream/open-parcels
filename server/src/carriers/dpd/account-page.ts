@@ -1,4 +1,5 @@
-import { inputValues, Page, textOf, type Control } from "./html.js";
+import { textOf } from "../../plugin/api.js";
+import { inputValues, Page, type Control } from "./html.js";
 
 /*
  * What the myDPD pages look like. The recipient-postcode gate (`hidZipCode`) and every address

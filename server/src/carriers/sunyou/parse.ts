@@ -1,26 +1,15 @@
-import type { ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  asObject,
+  isoTime,
+  snapshot,
+  text,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "sunyou";
-
-export type Json = Readonly<Record<string, unknown>>;
-
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-function text(value: unknown): string | null {
-  if (typeof value === "number") {
-    return String(value);
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
 
 /** The numeric event `status`. A failed delivery for "return" is the reason, not the return leg. */
 const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
@@ -70,8 +59,7 @@ export function eventTime(event: Json): string | null {
   }
   const zone = text(event["timeZone"]);
   const offset = zone !== null && /^[+-]\d{2}:\d{2}$/.test(zone) ? zone : "Z";
-  const parsed = new Date(`${wall[1] ?? ""}T${wall[2] ?? ""}${offset}`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return isoTime(`${wall[1] ?? ""}T${wall[2] ?? ""}`, { naive: { offset } });
 }
 
 /** Every leg's events; only `origin` has been seen, but any leg is read. */

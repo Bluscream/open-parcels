@@ -1,25 +1,23 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  defineCarrier,
-  snapshot,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type PluginContext,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
 import {
   asArray,
   asObject,
+  defineCarrier,
   isObject,
-  isoTime,
-  mapLocal,
+  isoTime as kitIsoTime,
+  lookUpStatus,
   newestFirst,
   requestJson,
-  statusReporter,
+  snapshot,
   text,
+  UnexpectedResponseError,
+  unknownReporter,
   type Json,
-} from "../_kit/json.js";
+  type ParcelSnapshot,
+  type PluginContext,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 import { ACTION_STATUS } from "./status.js";
 
 const CARRIER_ID = "cainiao";
@@ -28,8 +26,12 @@ const PLAUSIBLE = /^[A-Z0-9]{8,40}$/i;
 /** Codes per request; the endpoint documents no limit, so stay small. */
 export const BATCH_SIZE = 10;
 
+/** Offset-less times are UTC; numbers are epoch milliseconds. */
+const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "utc", epoch: "ms", keepFraction: true });
+
 function mapAction(code: string | null, report?: (c: string) => void) {
-  return mapLocal(ACTION_STATUS, code?.toUpperCase() ?? null, report);
+  return lookUpStatus(ACTION_STATUS, code?.toUpperCase() ?? null, report);
 }
 
 /** One batch; returns the entries keyed by tracking number. Unknown numbers are left out. */
@@ -106,7 +108,7 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
+  const report = unknownReporter(context, "status_code", { once: false });
   const codes = barcodes.filter((code) => PLAUSIBLE.test(code));
   const snapshots: ParcelSnapshot[] = [];
   for (let start = 0; start < codes.length; start += BATCH_SIZE) {

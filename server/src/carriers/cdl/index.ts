@@ -1,34 +1,32 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  defineCarrier,
-  snapshot,
-  TransientError,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type PluginContext,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
 import {
   asArray,
   asObject,
+  defineCarrier,
   isObject,
-  mapLocal,
-  parseJson,
-  statusReporter,
+  lookUpStatus,
+  parseLocal,
+  readJson,
+  snapshot,
   text,
+  trackEach,
+  TransientError,
+  UnexpectedResponseError,
+  unknownReporter,
   type Json,
+  type ParcelSnapshot,
   type ParcelStatus,
-} from "../_kit/json.js";
-import { parseLocal } from "../_kit/zoned.js";
+  type PluginContext,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "cdl";
 const HOST = "apps.cdldelivers.com";
 /** Scan times carry no offset; Eastern time is the service's home zone, not proven by the payload. */
 const ZONE = "America/New_York";
 /** The lookup also matches shippers' own references; only these shapes are ever sent. */
-const LABEL = /^CDL\d{11}$/;
-const ORDER = /^\d{9}-\d$/;
+const PLAUSIBLE = /^(?:CDL\d{11}|\d{9}-\d)$/;
 /** Responses inline proof-of-delivery photos, so allow a bit more than usual. */
 const MAX_BYTES = 4 * 1024 * 1024;
 
@@ -68,7 +66,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   if (response.status !== 200) {
     throw new TransientError(`CDL tracking answered HTTP ${response.status}.`);
   }
-  const body = parseJson(response, "CDL tracking");
+  const body = readJson(response, "CDL tracking");
   if (
     !isObject(body) ||
     !Array.isArray(body["trackingEvents"]) ||
@@ -110,7 +108,7 @@ function scans(raw: Json): Scan[] {
 function toSnapshot(raw: Json, code: string, report: (c: string) => void): ParcelSnapshot {
   const ordered = scans(raw);
   const map = (wording: string, rep?: (c: string) => void) =>
-    mapLocal(WORDING_STATUS, wording.toLowerCase(), rep);
+    lookUpStatus(WORDING_STATUS, wording.toLowerCase(), rep);
   const completion = ordered.findLast((scan) => scan.wording.toLowerCase() === COMPLETION);
   const newest = ordered.at(-1);
   if (newest !== undefined && completion === undefined) {
@@ -149,19 +147,12 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const report = statusReporter(context);
-  const snapshots: ParcelSnapshot[] = [];
-  for (const barcode of barcodes) {
-    const code = normalizeCode(barcode);
-    if (!LABEL.test(code) && !ORDER.test(code)) {
-      continue;
-    }
+  const report = unknownReporter(context, "status_code", { once: false });
+  const options = { plausible: PLAUSIBLE, normalize: normalizeCode, dedupe: false };
+  return trackEach(barcodes, options, async (code, barcode) => {
     const raw = await lookUp(context.http, code);
-    if (raw !== null) {
-      snapshots.push(toSnapshot(raw, barcode, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : toSnapshot(raw, barcode, report);
+  });
 }
 
 export const cdl = defineCarrier<Config, Secret>({

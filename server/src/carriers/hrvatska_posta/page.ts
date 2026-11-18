@@ -1,4 +1,4 @@
-import { UnexpectedResponseError } from "../../plugin/api.js";
+import { cleanText, unescapeHtml, UnexpectedResponseError } from "../../plugin/api.js";
 
 /**
  * Reader for the tracking page, which has no structured alternative. It fails closed: anything it
@@ -44,31 +44,6 @@ export interface Page {
   readonly number: string;
   readonly weight: string | null;
   readonly rows: readonly ScanRow[];
-}
-
-export function cleanText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function decodeHtml(value: string): string {
-  const named: Record<string, string> = {
-    amp: "&",
-    lt: "<",
-    gt: ">",
-    quot: '"',
-    apos: "'",
-    nbsp: " ",
-  };
-  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, entity: string) => {
-    const lower = entity.toLowerCase();
-    if (lower.startsWith("#x")) {
-      return String.fromCodePoint(Number.parseInt(lower.slice(2), 16));
-    }
-    if (lower.startsWith("#")) {
-      return String.fromCodePoint(Number(lower.slice(1)));
-    }
-    return named[lower] ?? whole;
-  });
 }
 
 interface Node {
@@ -168,7 +143,7 @@ class Walker {
   }
 
   data(raw: string): void {
-    const value = decodeHtml(raw);
+    const value = unescapeHtml(raw);
     if (this.#inTitle) {
       this.title += value;
     }

@@ -1,9 +1,9 @@
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  type PluginHttp,
   asArray,
   asObject,
   isObject,
-  readJsonObject,
+  readObject,
   text,
   TransientError,
   UnexpectedResponseError,
@@ -100,7 +100,7 @@ export async function lookUp(
   if (response.status !== 200) {
     throw new TransientError(`Amazon Shipping tracking answered HTTP ${response.status}.`);
   }
-  const envelope = decodeNested(readJsonObject(response, "Amazon Shipping tracking"));
+  const envelope = decodeNested(readObject(response, "Amazon Shipping tracking"));
   const tracker = asObject(envelope["progressTracker"]);
   const errors = asArray(tracker["errors"])
     .map((error) => text(asObject(error)["errorCode"]))

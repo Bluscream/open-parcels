@@ -7,11 +7,10 @@ import {
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import { text } from "../../plugin/parse.js";
 import { readAccount } from "./account.js";
 import { TokenKeeper } from "./auth.js";
 import { CARRIER_ID, scanSnapshot } from "./scans.js";
-import { API_BASE, API_HOST, AUTH_HOST, getJson, parcelOf, resultOf } from "./shared.js";
+import { API_BASE, API_HOST, AUTH_HOST, getJson, parcelOf, resultOf, text } from "./shared.js";
 
 const BARCODE = /^[A-Z0-9]{8,40}$/i;
 

@@ -4,9 +4,11 @@ import {
   TransientError,
   UnexpectedResponseError,
   type PluginContext,
+  objects,
+  parseJsonBody,
 } from "../../../plugin/api.js";
 import { DE_COOKIE_NAME, DE_TRACKING_HEADERS, DE_TRACKING_URL } from "../constants.js";
-import { asObject, asObjects, asString, parseJson, type Json } from "../util.js";
+import { asObject, asString, type Json } from "../util.js";
 import type { DeSession } from "./session.js";
 
 type Deps = Pick<PluginContext<unknown, unknown>, "http">;
@@ -45,7 +47,7 @@ export async function fetchEnvelope(
   if (response.status !== 200) {
     throw new TransientError(`DHL's tracking endpoint answered HTTP ${response.status}.`);
   }
-  const body = asObject(parseJson(response.body));
+  const body = asObject(parseJsonBody(response.body));
   if (body === null) {
     // Most likely a consent or challenge page; stop instead of guessing.
     throw new UnexpectedResponseError("DHL's tracking endpoint did not answer with JSON.");
@@ -56,7 +58,7 @@ export async function fetchEnvelope(
   if (!Array.isArray(body["sendungen"])) {
     throw new UnexpectedResponseError("DHL's tracking answer has no shipment list.");
   }
-  return asObjects(body["sendungen"]);
+  return objects(body["sendungen"]);
 }
 
 const ARCHIVED = "ARCHIVIERT";

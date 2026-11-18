@@ -1,13 +1,16 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
+  readJson,
+  trackEach,
   TransientError,
   UnexpectedResponseError,
-  type ParcelSnapshot,
+  type Json,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, awbSnapshot, CARRIER_ID, COUNTRIES, type Country, type Json } from "./parse.js";
+import { awbSnapshot, CARRIER_ID, COUNTRIES, type Country } from "./parse.js";
 
 /** AWB numbers are digits, sometimes with a letter prefix; anything else is never sent. */
 const AWB_PATTERN = /^[A-Z0-9]{6,30}$/i;
@@ -32,13 +35,7 @@ async function lookUp(http: PluginHttp, barcode: string, country: Country): Prom
   if (response.status !== 200) {
     throw new TransientError(`Sameday answered HTTP ${response.status}.`);
   }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("Sameday did not answer with JSON.");
-  }
-  const body = asObject(payload);
+  const body = asObject(readJson(response, "Sameday"));
   if (!Array.isArray(body["awbHistory"])) {
     throw new UnexpectedResponseError("Sameday answered without an AWB history.");
   }
@@ -47,20 +44,13 @@ async function lookUp(http: PluginHttp, barcode: string, country: Country): Prom
 
 async function track(context: PluginContext<Config, null>, barcodes: readonly string[]) {
   const country = context.config.country ?? "ro";
-  const snapshots: ParcelSnapshot[] = [];
   const report = (code: string): void => {
     context.reportUnknown("status_code", code);
   };
-  for (const barcode of barcodes) {
-    if (!AWB_PATTERN.test(barcode)) {
-      continue;
-    }
+  return trackEach(barcodes, AWB_PATTERN, async (barcode) => {
     const raw = await lookUp(context.http, barcode, country);
-    if (raw !== null) {
-      snapshots.push(awbSnapshot(raw, barcode, country, report));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : awbSnapshot(raw, barcode, country, report);
+  });
 }
 
 export const sameday = defineCarrier<Config, null>({

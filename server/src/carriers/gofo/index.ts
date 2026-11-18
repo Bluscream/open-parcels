@@ -1,13 +1,19 @@
 import { z } from "zod";
 import {
   defineCarrier,
-  TransientError,
+  expectStatus,
+  isObject,
+  objects,
+  readObject,
+  text,
+  trackEach,
+  unknownReporter,
   UnexpectedResponseError,
-  type ParcelSnapshot,
+  type Json,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { CARRIER_ID, isObject, text, toSnapshot, WALL_CLOCK_ZONE, type Json } from "./parse.js";
+import { CARRIER_ID, toSnapshot, WALL_CLOCK_ZONE } from "./parse.js";
 
 const API_HOST = "www.gofo.com";
 /** Two keyless transports, chosen by the country letters after the `GF` prefix. */
@@ -35,26 +41,12 @@ async function post(
     body: JSON.stringify({ numberList: [barcode] }),
     headers: { "content-type": "application/json", accept: "application/json", ...headers },
   });
-  if (response.status !== 200) {
-    throw new TransientError(`GOFO answered HTTP ${response.status}.`);
-  }
-  let payload: unknown;
-  try {
-    payload = response.json();
-  } catch {
-    throw new UnexpectedResponseError("GOFO did not answer with JSON.");
-  }
-  if (!isObject(payload)) {
-    throw new UnexpectedResponseError("GOFO did not answer with an object.");
-  }
-  return payload;
+  expectStatus(response, "GOFO", 200);
+  return readObject(response, "GOFO");
 }
 
 function pick(items: unknown, barcode: string): Json | null {
-  if (!Array.isArray(items)) {
-    return null;
-  }
-  return items.filter(isObject).find((item) => text(item["waybillNo"]) === barcode) ?? null;
+  return objects(items).find((item) => text(item["waybillNo"]) === barcode) ?? null;
 }
 
 /** US and CA. A failure envelope with an `error` block means not found. */
@@ -99,15 +91,9 @@ const secretSchema = z.null();
 type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
-  const snapshots: ParcelSnapshot[] = [];
-  const report = (code: string): void => {
-    context.reportUnknown("status_code", code);
-  };
-  for (const barcode of barcodes) {
-    const country = countryOf(barcode);
-    if (country === null) {
-      continue;
-    }
+  const report = unknownReporter(context, "status_code", { once: false });
+  return trackEach(barcodes, BARCODE_PATTERN, async (barcode) => {
+    const country = countryOf(barcode) ?? "";
     const wallClock = TRANSPORT_A.has(country);
     let raw: Json | null = null;
     if (wallClock) {
@@ -115,11 +101,8 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     } else if (TRANSPORT_B_LANG[country] !== undefined) {
       raw = await transportB(context.http, barcode, country);
     }
-    if (raw !== null) {
-      snapshots.push(toSnapshot(raw, barcode, country, { wallClock, report }));
-    }
-  }
-  return { snapshots, complete: true };
+    return raw === null ? null : toSnapshot(raw, barcode, country, { wallClock, report });
+  });
 }
 
 export const gofo = defineCarrier<Config, Secret>({

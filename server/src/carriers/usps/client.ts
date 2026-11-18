@@ -1,11 +1,11 @@
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
 import {
   SignInRejectedError,
   UnexpectedResponseError,
   type PluginLogger,
   type SessionStore,
 } from "../../plugin/api.js";
-import { expectStatus, isObject, readJson, text, type Json } from "../../plugin/payload.js";
+import { expectStatus, isObject, readJson, text, type Json } from "../../plugin/api.js";
 
 export const API_HOST = "apis.usps.com";
 

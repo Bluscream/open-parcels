@@ -1,4 +1,6 @@
 import {
+  asObject,
+  readJson,
   restoreJar,
   serializeJar,
   TransientError,
@@ -7,27 +9,13 @@ import {
   type HttpResponse,
   type SessionStore,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
+import type { PluginHttp } from "../../plugin/api.js";
+
+export const LABEL = "Swiss Post";
 
 export const HOST = "service.post.ch";
 const BASE = `https://${HOST}/ekp-web`;
 const REFERER = `${BASE}/ui/`;
-
-export type Json = Readonly<Record<string, unknown>>;
-
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-export function readJson(response: HttpResponse, what: string): unknown {
-  try {
-    return response.json();
-  } catch {
-    throw new UnexpectedResponseError(`Swiss Post ${what} did not answer with JSON.`);
-  }
-}
 
 /**
  * The anonymous tracker session: a cookie, the CSRF token and the anonymous user id handed out
@@ -70,7 +58,7 @@ export class TrackerSession {
     if (response.status !== 200) {
       throw new TransientError(`Swiss Post session handshake answered HTTP ${response.status}.`);
     }
-    const user = asObject(readJson(response, "session handshake"))["userIdentifier"];
+    const user = asObject(readJson(response, `${LABEL} session handshake`))["userIdentifier"];
     const csrf = response.headers.get("x-csrf-token");
     if (typeof user !== "string" || user === "" || csrf === null || csrf === "") {
       throw new UnexpectedResponseError("Swiss Post session handshake lacked its id or token.");
@@ -101,7 +89,7 @@ export class TrackerSession {
     if (registration.status !== 200) {
       throw new TransientError(`Swiss Post registration answered HTTP ${registration.status}.`);
     }
-    const digest = asObject(readJson(registration, "registration"))["hash"];
+    const digest = asObject(readJson(registration, `${LABEL} registration`))["hash"];
     if (typeof digest !== "string" || digest === "") {
       throw new UnexpectedResponseError("Swiss Post registration returned no hash.");
     }
@@ -115,7 +103,7 @@ export class TrackerSession {
     if (result.status !== 200) {
       throw new TransientError(`Swiss Post shipment answered HTTP ${result.status}.`);
     }
-    const shipments = readJson(result, "shipment");
+    const shipments = readJson(result, `${LABEL} shipment`);
     if (!Array.isArray(shipments)) {
       throw new UnexpectedResponseError("Swiss Post shipment answer was not a list.");
     }

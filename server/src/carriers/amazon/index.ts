@@ -1,6 +1,11 @@
-import { loadRules, type Rules } from "open-parcels-rules";
+import {
+  loadRules,
+  type Rules,
+  defineCarrier,
+  SignInRejectedError,
+  type CarrierPlugin,
+} from "../../plugin/api.js";
 import { z } from "zod";
-import { defineCarrier, SignInRejectedError, type CarrierPlugin } from "../../plugin/api.js";
 import { readAccount, type AmazonConfig } from "./account.js";
 import {
   amazonSecretSchema,

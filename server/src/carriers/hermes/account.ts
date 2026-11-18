@@ -1,14 +1,17 @@
 import { z } from "zod";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
+  isObject,
+  readJson,
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
   type HttpResponse,
+  type Json,
+  type PluginHttp,
   type PluginLogger,
   type SessionStore,
 } from "../../plugin/api.js";
-import { ACCOUNT_HOST, isObject, type Json } from "./shared.js";
+import { ACCOUNT_HOST } from "./shared.js";
 
 const BASE = `https://${ACCOUNT_HOST}/api/v12/`;
 /**
@@ -37,11 +40,7 @@ function isHtml(response: HttpResponse): boolean {
 }
 
 function parseJson(response: HttpResponse, what: string): unknown {
-  try {
-    return response.json();
-  } catch {
-    throw new UnexpectedResponseError(`Hermes ${what} did not answer with JSON.`);
-  }
+  return readJson(response, `Hermes ${what}`);
 }
 
 export class HermesAccount {

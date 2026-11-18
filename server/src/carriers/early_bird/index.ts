@@ -7,11 +7,19 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  type PluginHttp,
+  asObject,
+  isObject,
+  objects,
+  readObject,
+  text,
+  type Json,
+  isoTime,
+  expectStatus,
+  trackEach,
+  unknownReporter,
+  type ParcelStatus,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, isObject, objects, readObject, text, type Json } from "../../plugin/kit/json.js";
-import { isoTime } from "../../plugin/kit/time.js";
-import { expectOk, trackEach, unknownReporter, type Status } from "../../plugin/kit/track.js";
 
 const CARRIER_ID = "early_bird";
 const HOST = "earlybird.se";
@@ -23,7 +31,7 @@ const REPORT_LENGTH = 80;
  * Early Bird has no status codes, only sentences in English or Swedish. Each is recognised by
  * how it starts; a sentence that names a city or a time still begins the same way.
  */
-const STEMS: readonly (readonly [Status | null, readonly string[]])[] = [
+const STEMS: readonly (readonly [ParcelStatus | null, readonly string[]])[] = [
   [
     "registered",
     [
@@ -89,7 +97,7 @@ const PLAUSIBLE = /^[A-Z0-9-]{6,40}$/;
 const clean = (value: unknown): string => text(value)?.replace(/\s+/g, " ") ?? "";
 
 /** `known` is false for a sentence we have never seen; `status` is null for one that adds nothing. */
-function classify(sentence: string): { known: boolean; status: Status | null } {
+function classify(sentence: string): { known: boolean; status: ParcelStatus | null } {
   const lowered = sentence.toLowerCase();
   for (const [status, stems] of STEMS) {
     if (stems.some((stem) => lowered.startsWith(stem))) {
@@ -116,7 +124,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   ) {
     return null;
   }
-  expectOk(response, "Early Bird tracking");
+  expectStatus(response, "Early Bird tracking");
   if (payload["type"] !== "timeline" && payload["type"] !== "external_link") {
     throw new UnexpectedResponseError("Early Bird answered with an unknown reply type.");
   }
@@ -132,7 +140,11 @@ function timeline(raw: Json): Json[] {
 function history(events: readonly Json[]): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = isoTime(event["occurredAt"], ZONE);
+    const at = isoTime(event["occurredAt"], {
+      naive: { zone: ZONE },
+      epoch: "auto",
+      epochStrings: true,
+    });
     const rawStatus = clean(event["text"]);
     if (at !== null && rawStatus !== "") {
       result.push({ at, rawStatus, status: classify(rawStatus).status, location: null });
@@ -143,7 +155,7 @@ function history(events: readonly Json[]): SnapshotEvent[] {
 
 function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
   const events = timeline(raw);
-  let status: Status | null = null;
+  let status: ParcelStatus | null = null;
   let source: Json | null = null;
   if (raw["type"] === "external_link") {
     // Handed over to another carrier for the last mile; Early Bird has nothing more to say.
@@ -169,7 +181,14 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     barcode,
     status,
     rawStatus: headline,
-    deliveredAt: status === "delivered" ? isoTime(source?.["occurredAt"], ZONE) : null,
+    deliveredAt:
+      status === "delivered"
+        ? isoTime(source?.["occurredAt"], {
+            naive: { zone: ZONE },
+            epoch: "auto",
+            epochStrings: true,
+          })
+        : null,
     pickup:
       status === "at_pickup_point" ||
       lowered.some((sentence) => LOCKER_MARKERS.some((marker) => sentence.includes(marker))),

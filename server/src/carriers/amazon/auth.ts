@@ -1,13 +1,13 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { CookieJar } from "../../plugin/api.js";
 import {
+  type CookieJar,
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
   type HttpResponse,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
 import type { Storefront } from "./storefronts.js";
 
 /**

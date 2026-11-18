@@ -3,12 +3,13 @@ import {
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
+  isObject,
+  num,
+  type Clock,
+  type PluginHttp,
   type SessionStore,
 } from "../../plugin/api.js";
-import type { Clock } from "../../clock.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { isObject, num, text } from "../../plugin/parse.js";
-import { AUTH_HOST } from "./shared.js";
+import { AUTH_HOST, text } from "./shared.js";
 
 /**
  * MojaPošta signs in with an OpenID Connect password grant on the app's public client id. No
@@ -60,7 +61,7 @@ function readTokens(answer: TokenAnswer, clock: Clock, previousRefresh: string |
   if (accessToken === null) {
     throw new UnexpectedResponseError("MojaPošta sign-in returned no access token.");
   }
-  const lifetime = num(answer.payload["expires_in"]) ?? DEFAULT_LIFETIME_S;
+  const lifetime = num(answer.payload["expires_in"], { decimalComma: true }) ?? DEFAULT_LIFETIME_S;
   return {
     accessToken,
     refreshToken: text(answer.payload["refresh_token"]) ?? previousRefresh,

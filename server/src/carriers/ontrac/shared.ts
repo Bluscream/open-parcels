@@ -1,46 +1,25 @@
-import { loadRules, trackingUrl } from "open-parcels-rules";
-import type { SnapshotEvent } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<SnapshotEvent["status"]>;
+import {
+  isoTime as kitIsoTime,
+  num as kitNum,
+  rulesTrackingUrl,
+  text as kitText,
+  type ParcelStatus,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "ontrac";
 export const TRACKING_HOST = "webtrack.ontrac.com";
 
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, isObject, type Json } from "../../plugin/api.js";
 
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
+/** OnTrac's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-export function num(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
+/** Only real numbers; numeric strings stay text. */
+export const num = (value: unknown): number | null => kitNum(value, { strings: false });
 
 /** ISO 8601 for a timestamp string; null when it does not parse. Naive values count as UTC. */
-export function isoTime(value: unknown): string | null {
-  const raw = text(value);
-  if (raw === null) {
-    return null;
-  }
-  const zoned = /(Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`;
-  const parsed = new Date(zoned);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
+export const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "utc", keepFraction: true });
 /**
  * OnTrac event codes. Kept local until the shared rules carry an OnTrac table. NFRP ("delivered"
  * to another carrier) is deliberately absent: neither delivered nor in transit is certain.
@@ -67,7 +46,7 @@ export function mapCode(code: string | null): ParcelStatus | null {
 
 export function publicUrl(barcode: string): string {
   return (
-    trackingUrl(loadRules(), CARRIER_ID, barcode, "en") ??
+    rulesTrackingUrl(CARRIER_ID, barcode, "en") ??
     `https://www.ontrac.com/tracking/?number=${encodeURIComponent(barcode)}`
   );
 }

@@ -1,13 +1,15 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
+  type PluginHttp,
 } from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
-import { asObject, CARRIER_ID, orderSnapshot, type Json } from "./parse.js";
+import { CARRIER_ID, orderSnapshot } from "./parse.js";
 
 const HOST = "www.sypost.net";
 const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;

@@ -1,24 +1,25 @@
-import type { PluginHttp } from "../../plugin/http.js";
-import {
-  snapshot,
-  TransientError,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
 import {
   asArray,
   asObject,
+  expectStatus,
   isObject,
-  isoTime,
-  mapLocal,
+  isoTime as kitIsoTime,
+  lookUpStatus,
   newestFirst,
-  parseJson,
+  parseLocal,
+  readJson,
+  snapshot,
   text,
+  UnexpectedResponseError,
   type Json,
+  type ParcelSnapshot,
   type ParcelStatus,
-} from "../_kit/json.js";
-import { parseLocal } from "../_kit/zoned.js";
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+/** Offset-less times are UTC; numbers are epoch milliseconds. */
+const isoTime = (value: unknown): string | null =>
+  kitIsoTime(value, { naive: "utc", epoch: "ms", keepFraction: true });
 
 /** CTT Express (Spain) runs its own keyless tracker; it knows every all-digit code. */
 export const EXPRESS_HOST = "wct.cttexpress.com";
@@ -46,13 +47,11 @@ export async function lookUpExpress(http: PluginHttp, code: string): Promise<Jso
   const url = new URL(`https://${EXPRESS_HOST}/p_track_redis_v2.php`);
   url.searchParams.set("sc", code);
   const response = await http.request(url, { headers: { accept: "application/json" } });
-  if (response.status < 200 || response.status >= 300) {
-    throw new TransientError(`CTT Express answered HTTP ${response.status}.`);
-  }
+  expectStatus(response, "CTT Express");
   if (response.body.trim() === "") {
     return null;
   }
-  const body = parseJson(response, "CTT Express");
+  const body = readJson(response, "CTT Express");
   const history = asObject(asObject(body)["data"])["shipping_history"];
   if (!isObject(body) || (body["error"] !== null && body["error"] !== undefined)) {
     throw new UnexpectedResponseError("CTT Express reported an error.");
@@ -76,7 +75,7 @@ export function expressSnapshot(
   // Only STATUS events carry the state; MANAGEMENTS record actions such as a new date.
   const statusEvents = events.filter(({ event }) => event["type"] === "STATUS");
   const newest = statusEvents.at(-1);
-  const status = mapLocal(
+  const status = lookUpStatus(
     EXPRESS_STATUS,
     newest === undefined ? null : text(newest.event["code"]),
     report,
@@ -94,7 +93,14 @@ export function expressSnapshot(
     const rawStatus = text(event["description"]) ?? text(event["code"]);
     return at === null || rawStatus === null
       ? []
-      : [{ at, rawStatus, status: mapLocal(EXPRESS_STATUS, text(event["code"])), location: null }];
+      : [
+          {
+            at,
+            rawStatus,
+            status: lookUpStatus(EXPRESS_STATUS, text(event["code"])),
+            location: null,
+          },
+        ];
   });
   return snapshot({
     carrier: "ctt",

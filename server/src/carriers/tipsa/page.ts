@@ -3,9 +3,18 @@
  * shows the same data unmasked in another, so a mask is no privacy boundary: only the fields on
  * the allow-list below are read, and the recipient's name, address, contact and notes never are.
  */
-import { UnexpectedResponseError } from "../../plugin/api.js";
-import { foldWording, zonedIso } from "../../plugin/payload.js";
-import { cleanText, walkHtml, type HtmlHandler } from "./html.js";
+import {
+  cleanText,
+  UnexpectedResponseError,
+  walkHtml,
+  zonedIso,
+  type HtmlHandler,
+} from "../../plugin/api.js";
+
+/** Upper-case, accent-free, whitespace-collapsed form of a TIPSA wording, for table lookups. */
+export function foldWording(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toUpperCase();
+}
 
 export const ZONE = "Europe/Madrid";
 
@@ -174,14 +183,16 @@ export function madridTime(day: string, time = "00:00"): string | null {
   if (dayMatch === null || timeMatch === null) {
     return null;
   }
-  return zonedIso(ZONE, {
-    year: 2000 + Number(dayMatch[3]),
-    month: Number(dayMatch[2]),
-    day: Number(dayMatch[1]),
-    hour: Number(timeMatch[1]),
-    minute: Number(timeMatch[2]),
-    second: 0,
-  });
+  return zonedIso(
+    {
+      year: 2000 + Number(dayMatch[3]),
+      month: Number(dayMatch[2]),
+      day: Number(dayMatch[1]),
+      hour: Number(timeMatch[1]),
+      minute: Number(timeMatch[2]),
+    },
+    ZONE,
+  );
 }
 
 function events(rows: readonly string[][]): PageEvent[] {

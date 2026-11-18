@@ -1,25 +1,23 @@
 import { z } from "zod";
-import { loadRules, trackingUrl } from "open-parcels-rules";
-import {
-  defineCarrier,
-  snapshot,
-  TransientError,
-  UnexpectedResponseError,
-  type ParcelSnapshot,
-  type PluginContext,
-  type SnapshotEvent,
-} from "../../plugin/api.js";
-import type { PluginHttp } from "../../plugin/http.js";
 import {
   asObject,
+  defineCarrier,
   isObject,
+  isoTime,
   objects,
   positive,
   readObject,
-  text,
-  zonedIso,
+  rulesTrackingUrl,
+  snapshot,
+  text as kitText,
+  TransientError,
+  UnexpectedResponseError,
   type Json,
-} from "../../plugin/parse.js";
+  type ParcelSnapshot,
+  type PluginContext,
+  type PluginHttp,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 import { codeStatus } from "./status.js";
 
 export const CARRIER_ID = "poczta_polska";
@@ -29,6 +27,9 @@ export const API_HOST = "uss.poczta-polska.pl";
 /** The only endpoint the widget key is ever sent to; the portal must advertise exactly this. */
 const API_BASE = `https://${API_HOST}/uss/v2.0/tracking`;
 const BARCODE = /^[A-Z0-9]{8,40}$/i;
+
+/** Poczta Polska's fields are strings; a number in one is not taken as text. */
+const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
 const configSchema = z.object({});
 const secretSchema = z.null();
@@ -94,7 +95,10 @@ function found(payload: Json): Json | null {
 function toSnapshot(raw: Json, barcode: string, report: (code: string) => void): ParcelSnapshot {
   const mail = asObject(raw["mailInfo"]);
   const timed = usable(mail)
-    .map((event) => ({ event, at: zonedIso(event["time"], ZONE) }))
+    .map((event) => ({
+      event,
+      at: isoTime(event["time"], { naive: { zone: ZONE }, keepOffset: true }),
+    }))
     .filter((entry): entry is { event: Json; at: string } => entry.at !== null)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const history: SnapshotEvent[] = [];
@@ -125,7 +129,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? text(office["name"]) : null,
     url:
-      trackingUrl(loadRules(), CARRIER_ID, barcode, "pl") ??
+      rulesTrackingUrl(CARRIER_ID, barcode, "pl") ??
       `https://emonitoring.poczta-polska.pl/?numer=${encodeURIComponent(barcode)}`,
     weightKg: positive(mail["weight"]),
     history,

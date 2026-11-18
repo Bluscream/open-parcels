@@ -1,17 +1,23 @@
 import { z } from "zod";
 import {
+  asObject,
   defineCarrier,
+  isObject,
+  objects,
+  readObject,
   SignInRejectedError,
+  text,
   TransientError,
   UnexpectedResponseError,
+  type Json,
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import { asObject, isObject, objects, readObject, text, type Json } from "../../plugin/parse.js";
 import { finishSignIn, LOGIN_HOST, PostnlSession, startSignIn } from "./auth.js";
 import { CARRIER_ID, shipmentSnapshot } from "./parcel.js";
 
 const API_HOST = "jouw.postnl.nl";
+const STRINGS = { numbers: false } as const;
 /** At most this many track & trace calls per run; delivered parcels never need one. */
 export const DETAIL_LIMIT = 25;
 
@@ -82,8 +88,8 @@ async function colli(
   session: PostnlSession,
   shipment: Json,
 ): Promise<Json | null> {
-  const key = text(shipment["key"]);
-  const barcode = text(shipment["barcode"]);
+  const key = text(shipment["key"], STRINGS);
+  const barcode = text(shipment["barcode"], STRINGS);
   if (key === null || barcode === null) {
     return null;
   }
@@ -119,7 +125,7 @@ async function fetchAccount(context: PluginContext<Config, Secret>) {
   ] as const;
   for (const [list, direction] of lists) {
     for (const shipment of objects(tracked[list])) {
-      if (text(shipment["barcode"]) === null) {
+      if (text(shipment["barcode"], STRINGS) === null) {
         continue;
       }
       const wantDetail = shipment["delivered"] !== true && details < DETAIL_LIMIT;

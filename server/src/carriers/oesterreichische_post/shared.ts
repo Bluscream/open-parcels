@@ -1,89 +1,35 @@
-import type { ParcelSnapshot } from "../../plugin/api.js";
-
-type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+import {
+  isoTime as kitIsoTime,
+  num as kitNum,
+  text as kitText,
+  type ParcelStatus,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "oesterreichische_post";
 export const TRACKING_HOST = "api.post.at";
 
-/** Narrowing helpers for untrusted JSON. */
-export type Json = Readonly<Record<string, unknown>>;
+export { asObject, isObject, type Json } from "../../plugin/api.js";
 
-export function isObject(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/** Austrian Post's fields are strings; a number in one is not taken as text. */
+export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 
-export function asObject(value: unknown): Json {
-  return isObject(value) ? value : {};
-}
+/** Only real numbers; numeric strings stay text. */
+export const num = (value: unknown): number | null => kitNum(value, { strings: false });
 
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-export function num(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-const VIENNA = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Europe/Vienna",
-  hourCycle: "h23",
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-  hour: "numeric",
-  minute: "numeric",
-  second: "numeric",
-});
-
-/** Offset of Vienna from UTC, in milliseconds, at the given instant. */
-function viennaOffset(at: number): number {
-  const parts = Object.fromEntries(
-    VIENNA.formatToParts(new Date(at)).map((part) => [part.type, Number(part.value)]),
-  ) as Record<string, number>;
-  const wall = Date.UTC(
-    parts["year"] ?? 0,
-    (parts["month"] ?? 1) - 1,
-    parts["day"] ?? 1,
-    parts["hour"] ?? 0,
-    parts["minute"] ?? 0,
-    parts["second"] ?? 0,
-  );
-  return wall - (at - (at % 1000));
-}
-
-const HAS_ZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
 const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$/;
 
 /**
  * ISO 8601 for a carrier timestamp. Austrian Post stamps in local time and sometimes leaves the
- * offset off; such values are read as Vienna time, never as UTC. Numbers are epoch milliseconds.
+ * offset off; such values are read as Vienna time, never as UTC. Numbers are epoch milliseconds;
+ * other strings are read as `new Date()` reads them.
  */
 export function isoTime(value: unknown): string | null {
-  if (typeof value === "number") {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-  }
   const raw = text(value);
-  if (raw === null) {
-    return null;
+  if (raw !== null && LOCAL_TIME.test(raw)) {
+    return kitIsoTime(raw, { naive: { zone: "Europe/Vienna" }, keepFraction: true });
   }
-  if (HAS_ZONE.test(raw) || !LOCAL_TIME.test(raw)) {
-    const parsed = Date.parse(raw);
-    return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
-  }
-  const asUtc = Date.parse(`${raw.replace(" ", "T")}${raw.length === 10 ? "T00:00:00" : ""}Z`);
-  if (Number.isNaN(asUtc)) {
-    return null;
-  }
-  // Two passes settle the offset around a daylight-saving switch.
-  const first = asUtc - viennaOffset(asUtc);
-  return new Date(asUtc - viennaOffset(first)).toISOString();
+  return kitIsoTime(raw ?? value, { naive: "runtime", epoch: "ms" });
 }
-
 /** The state keys arrive in camelCase; the vocabulary is written in UPPER_SNAKE. */
 export function normalizeKey(key: unknown): string | null {
   const raw = text(key);

@@ -1,11 +1,15 @@
-import { loadRules, mapStatus, trackingUrl, type MappedStatus } from "open-parcels-rules";
-import type { ParcelSnapshot } from "../../plugin/api.js";
+import {
+  rulesStatus,
+  rulesTrackingUrl,
+  type MappedStatus,
+  type ParcelStatus,
+} from "../../plugin/api.js";
 
-export type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
+export type { ParcelStatus };
 
 /** DPD's codes and texts as canonical statuses, from the shared rules' DPD table. */
 export function mapDpd(raw: { code?: string; text?: string }): MappedStatus | null {
-  return mapStatus(loadRules(), "dpd", raw);
+  return rulesStatus("dpd", raw);
 }
 
 export function textStatus(text: string): ParcelStatus | null {
@@ -63,7 +67,7 @@ export const KNOWN_SLOT_TEXTS = new Set(
 /** The public page for one parcel, from the shared carrier registry when it lists one. */
 export function publicUrl(barcode: string): string {
   return (
-    trackingUrl(loadRules(), "dpd", barcode, "de") ??
+    rulesTrackingUrl("dpd", barcode, "de") ??
     `https://tracking.dpd.de/status/de_DE/parcel/${encodeURIComponent(barcode)}`
   );
 }

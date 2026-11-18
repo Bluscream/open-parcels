@@ -4,9 +4,11 @@ import {
   resolveStatus,
   type RawStatus,
   type Rules,
-} from "open-parcels-rules";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
-import { arrivalWindow, parseClock, pastDay, zonedIso, type Day } from "./dates.js";
+  snapshot,
+  type ParcelSnapshot,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+import { arrivalWindow, parseClock, pastDay, localIso, type Day } from "./dates.js";
 import { shipmentKey, type OrderTile, type TrackPage } from "./pages.js";
 import type { Storefront } from "./storefronts.js";
 import { foldText, maskDigits } from "./text.js";
@@ -99,7 +101,7 @@ function history(input: BuildInput, timeZone: string): SnapshotEvent[] {
       input.report("event_text", maskDigits(event.message));
     }
     events.push({
-      at: zonedIso(day, clock.hour, clock.minute, timeZone),
+      at: localIso(day, clock.hour, clock.minute, timeZone),
       status: mapped?.status ?? null,
       rawStatus: event.message,
       location: event.location,
@@ -166,7 +168,7 @@ function deliveredAt(
     return event.at;
   }
   const day = pastDay(input.rules, lead.statusText, input.now, timeZone);
-  return day === null ? null : zonedIso(day, 0, 0, timeZone);
+  return day === null ? null : localIso(day, 0, 0, timeZone);
 }
 
 function pageUrl(storefront: Storefront, path: string): string {

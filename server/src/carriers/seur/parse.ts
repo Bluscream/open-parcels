@@ -1,31 +1,21 @@
-import type { Direction, ParcelStatus } from "../../domain/parcel.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../../plugin/api.js";
+import {
+  asObject,
+  isoTime,
+  snapshot,
+  text,
+  type Direction,
+  type Json,
+  type ParcelSnapshot,
+  type ParcelStatus,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
 
 export const CARRIER_ID = "seur";
 
-export type Json = Readonly<Record<string, unknown>>;
-
-export function asObject(value: unknown): Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-}
-
-export function text(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-function isoTime(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
+/** SEUR's fields are strings; a number is never read as text. */
+export const STRINGS = { numbers: false } as const;
+/** SEUR dates are read as the runtime's `Date` reads them; numbers are not timestamps. */
+const TIME = { naive: "runtime" } as const;
 
 /** SEUR situation codes seen on real parcels. Anything else is reported, never guessed. */
 const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
@@ -48,7 +38,7 @@ function mapCode(code: string | null): ParcelStatus | null {
 
 function partyName(party: unknown): string | null {
   const object = asObject(party);
-  return text(object["razon_social"]) ?? text(object["nombre_contacto"]);
+  return text(object["razon_social"], STRINGS) ?? text(object["nombre_contacto"], STRINGS);
 }
 
 /** One account shipment as a snapshot, or null when it has no barcode. History is newest first. */
@@ -57,7 +47,7 @@ export function shipmentSnapshot(
   direction: Direction,
   report: (code: string) => void,
 ): ParcelSnapshot | null {
-  const barcode = text(raw["clave_envio"]);
+  const barcode = text(raw["clave_envio"], STRINGS);
   if (barcode === null) {
     return null;
   }
@@ -65,8 +55,8 @@ export function shipmentSnapshot(
   const history: SnapshotEvent[] = [];
   for (const item of situations) {
     const event = asObject(item);
-    const at = isoTime(event["fecha"]);
-    const code = text(event["cod_situacion"]);
+    const at = isoTime(event["fecha"], TIME);
+    const code = text(event["cod_situacion"], STRINGS);
     if (at !== null && code !== null) {
       history.push({ at, status: mapCode(code), rawStatus: code, location: null });
     }
@@ -88,7 +78,7 @@ export function shipmentSnapshot(
     rawStatus: code,
     deliveredAt: status === "delivered" ? (latest?.at ?? null) : null,
     pickup,
-    pickupPoint: pickup ? text(asObject(raw["destinatario"])["centro_seur"]) : null,
+    pickupPoint: pickup ? text(asObject(raw["destinatario"])["centro_seur"], STRINGS) : null,
     sender: partyName(raw["remitente"]),
     receiver: partyName(raw["destinatario"]),
     weightKg: typeof weight === "number" && Number.isFinite(weight) ? weight : null,
