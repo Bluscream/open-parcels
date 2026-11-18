@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { loadSecretKey, SecretBox } from "./crypto/secrets.js";
 import { migrateToLatest, openDatabase } from "./db/database.js";
 import { applyRetention } from "./engine/retention.js";
+import { announceToHomeAssistant, isSupervised, supervisedEnvironment } from "./ha/supervisor.js";
 import { createLogger } from "./log/logger.js";
 import { createServices, type Services } from "./services.js";
 
@@ -20,7 +21,8 @@ async function runMaintenance(services: Services): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const supervised = isSupervised();
+  const config = loadConfig(supervised ? supervisedEnvironment(process.env) : process.env);
   const logger = createLogger(config.logLevel);
   mkdirSync(config.dataDir, { recursive: true });
 
@@ -61,6 +63,21 @@ async function main(): Promise<void> {
   services.scheduler.start();
   services.live.start();
   await services.mail.start();
+
+  const supervisorToken = process.env["SUPERVISOR_TOKEN"];
+  if (supervised && supervisorToken !== undefined) {
+    announceToHomeAssistant({
+      token: supervisorToken,
+      auth: services.auth,
+      port: config.port,
+      logger,
+    }).catch((error: unknown) => {
+      logger.warn(
+        { err: error },
+        "Announcing to Home Assistant failed; add the integration by hand.",
+      );
+    });
+  }
 
   const maintenance = setInterval(() => {
     runMaintenance(services).catch((error: unknown) => {
