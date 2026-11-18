@@ -9,6 +9,7 @@ import { appleExpress } from "../carriers/apple-express/index.js";
 import { aramex } from "../carriers/aramex/index.js";
 import { betterTrucks } from "../carriers/better-trucks/index.js";
 import { boxNow } from "../carriers/boxnow/index.js";
+import { bpost } from "../carriers/bpost/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { hermes } from "../carriers/hermes/index.js";
@@ -30,6 +31,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(aramex),
   register(betterTrucks),
   register(boxNow),
+  register(bpost),
   register(dhl),
   register(dpd),
   register(hermes),
