@@ -8,6 +8,7 @@ import { ceskaposta } from "../carriers/ceskaposta/index.js";
 import { colisprive } from "../carriers/colisprive/index.js";
 import { colisweb } from "../carriers/colisweb/index.js";
 import { correos } from "../carriers/correos/index.js";
+import { ctt } from "../carriers/ctt/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { hermes } from "../carriers/hermes/index.js";
@@ -28,6 +29,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(colisprive),
   register(colisweb),
   register(correos),
+  register(ctt),
   register(dhl),
   register(dpd),
   register(hermes),
