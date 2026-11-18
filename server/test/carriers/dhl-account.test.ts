@@ -6,16 +6,8 @@ import {
   TransientError,
   UnexpectedResponseError,
 } from "../../src/plugin/api.js";
-import {
-  dhl,
-  fetchAccount,
-  formOf,
-  header,
-  idToken,
-  json,
-  World,
-  type Route,
-} from "./dhl-harness.js";
+import { fetchAccount, formOf, header, idToken, json, World, type Route } from "./dhl-harness.js";
+import { pasted } from "./pasted.js";
 
 // Made-up values only: no real tracking numbers, names or addresses.
 const CODE = "00340000000000000001";
@@ -105,18 +97,16 @@ function element(code: string, extra: { verlauf?: object; details?: object; info
 
 describe("DHL Germany sign-in", () => {
   it("starts with a fresh PKCE challenge and state every time", async () => {
-    if (dhl.signIn.type !== "pasted_redirect") {
-      throw new Error("expected a pasted-link sign-in");
-    }
-    const clock = new World().clock;
-    const first = await dhl.signIn.start({ config: {}, clock });
-    const second = await dhl.signIn.start({ config: {}, clock });
+    const world = new World();
+    const first = await pasted(world.plugin).start({}, world.clock);
+    const second = await pasted(world.plugin).start({}, world.clock);
+    expect(first.state.flow).toBe("de_account");
     const url = new URL(first.url);
     expect(url.hostname).toBe("login.dhl.de");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("scope")).toBe("openid offline_access");
     expect(url.searchParams.get("claims")).toContain("post_number");
-    const { verifier, state } = first.state as { verifier: string; state: string };
+    const { verifier, state } = first.state.inner as { verifier: string; state: string };
     expect(url.searchParams.get("state")).toBe(state);
     expect(url.searchParams.get("code_challenge")).toBe(
       createHash("sha256").update(verifier).digest("base64url"),
@@ -125,26 +115,26 @@ describe("DHL Germany sign-in", () => {
   });
 
   it("exchanges the pasted address for a refresh token", async () => {
-    if (dhl.signIn.type !== "pasted_redirect") {
-      throw new Error("expected a pasted-link sign-in");
-    }
     const world = new World();
     discovery(world);
     tokens(world, [tokenResponse("first", REFRESH)]);
-    const started = await dhl.signIn.start({ config: {}, clock: world.clock });
-    const { verifier, state } = started.state as { verifier: string; state: string };
+    const driver = pasted(world.plugin);
+    const started = await driver.start({}, world.clock);
+    const { verifier, state } = started.state.inner as { verifier: string; state: string };
 
     await expect(
-      dhl.signIn.finish(
-        world,
+      driver.finish(
+        world.http,
+        world.clock,
         started.state,
         "dhllogin://de.deutschepost.dhl/login?code=c1&state=wrong",
       ),
     ).rejects.toBeInstanceOf(SignInRejectedError);
     expect(world.calls).toEqual([]);
 
-    const secret = await dhl.signIn.finish(
-      world,
+    const secret = await driver.finish(
+      world.http,
+      world.clock,
       started.state,
       `dhllogin://de.deutschepost.dhl/login?code=c1&state=${state}`,
     );

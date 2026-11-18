@@ -22,6 +22,8 @@ import {
   type SnapshotEvent,
 } from "../../plugin/api.js";
 
+import { fetchAirmeeAccount, smsSignIn } from "./account.js";
+
 const CARRIER_ID = "airmee";
 const HOST = "api.airmee.com";
 const ORIGIN = "https://tracking.airmee.com";
@@ -136,8 +138,15 @@ export function airmeeSnapshot(
 }
 
 const configSchema = z.looseObject({});
-/** Per-recipient value the tracking page sends alongside the link token. */
-const secretSchema = z.object({ phoneNumberHash: z.string().min(1) });
+/**
+ * A tracking source keeps the per-recipient value the tracking page sends alongside the link
+ * token; an account source the token pair from the phone sign-in.
+ */
+const secretSchema = z.object({
+  phoneNumberHash: z.string().min(1).optional(),
+  accessToken: z.string().min(1).optional(),
+  refreshToken: z.string().min(1).optional(),
+});
 type Config = z.infer<typeof configSchema>;
 type Secret = z.infer<typeof secretSchema>;
 
@@ -145,16 +154,33 @@ export const airmee = defineCarrier<Config, Secret>({
   id: CARRIER_ID,
   name: "Airmee",
   countries: ["SE"],
-  sourceKinds: ["tracking"],
+  sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "api_key" },
+  signIn: [smsSignIn<Config>(), { type: "api_key", kinds: ["tracking"] }],
   http: {
     limits: { [HOST]: { intervalMs: 5_000, burst: 2 }, "*": { intervalMs: 10_000, burst: 1 } },
   },
+  async fetchAccount(context) {
+    const { accessToken, refreshToken } = context.secret;
+    if (accessToken === undefined || refreshToken === undefined) {
+      throw new SignInRejectedError("Sign in to your Airmee account first.");
+    }
+    return fetchAirmeeAccount(context, { accessToken, refreshToken }, (raw, reference) => ({
+      // The inbox has no tracking-link token; the order id stands in, and there is no page.
+      ...airmeeSnapshot(raw, reference, (code) => {
+        context.reportUnknown("status_code", code);
+      }),
+      url: null,
+    }));
+  },
   track: (context: PluginContext<Config, Secret>, barcodes) =>
     trackEach(barcodes, PLAUSIBLE, async (token) => {
-      const raw = await lookUp(context.http, context.secret.phoneNumberHash, token);
+      const hash = context.secret.phoneNumberHash;
+      if (hash === undefined) {
+        throw new SignInRejectedError("Enter the phone number hash from the tracking page.");
+      }
+      const raw = await lookUp(context.http, hash, token);
       return raw === null
         ? null
         : airmeeSnapshot(raw, token, (code) => {

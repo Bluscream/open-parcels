@@ -194,6 +194,19 @@ export interface ImageCacheTable {
   expires_at: Timestamp | null;
 }
 
+export interface SignInAttemptTable {
+  id: string;
+  source_id: string;
+  flow: string;
+  /** Encrypted JSON {state, step}; the AAD binds it to the attempt and the source. */
+  blob: Buffer;
+  failures: Generated<number>;
+  created_at: Timestamp;
+  expires_at: Timestamp;
+  /** Set while the step waits for an approval: polls before this are refused. */
+  poll_not_before: Timestamp | null;
+}
+
 export interface Database {
   owner: OwnerTable;
   sessions: SessionTable;
@@ -211,6 +224,7 @@ export interface Database {
   outbox: OutboxTable;
   unknown_vocab: UnknownVocabTable;
   image_cache: ImageCacheTable;
+  sign_in_attempts: SignInAttemptTable;
 }
 
 export type ParcelRow = Selectable<ParcelTable>;

@@ -3,6 +3,7 @@ import { Kysely, SqliteDialect } from "kysely";
 import { Migrator, type Migration, type MigrationProvider } from "kysely/migration";
 import * as m0001 from "./migrations/0001-initial.js";
 import * as m0002 from "./migrations/0002-reconciler.js";
+import * as m0003 from "./migrations/0003-sign-in-attempts.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -12,6 +13,7 @@ import type { Database } from "./schema.js";
 const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0001-initial": m0001,
   "0002-reconciler": m0002,
+  "0003-sign-in-attempts": m0003,
 };
 
 const staticProvider: MigrationProvider = {

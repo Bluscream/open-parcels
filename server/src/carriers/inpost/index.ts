@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  pastedRedirect,
   SignInRejectedError,
   trackEach,
   type PluginContext,
@@ -78,11 +79,10 @@ export const inpost = defineCarrier<Config, Secret>({
   sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: {
-    type: "pasted_redirect",
+  signIn: pastedRedirect<Config, Secret>({
     start: ({ config }) => Promise.resolve(startSignIn(config.market ?? "PL", config.language)),
     finish: (context, state, pasted) => finishSignIn(context.http, state, pasted),
-  },
+  }),
   http: {
     limits: {
       [TRACKING_HOST]: { intervalMs: 5_000, burst: 2 },

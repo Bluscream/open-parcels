@@ -1,45 +1,67 @@
 import { z } from "zod";
-import { defineCarrier, SignInRejectedError } from "../../plugin/api.js";
+import { defineCarrier, pastedRedirect, SignInRejectedError } from "../../plugin/api.js";
 import { fetchDeAccount } from "./de/account.js";
 import { finishSignIn, startSignIn } from "./de/session.js";
 import { IBERIA_HOST } from "./iberia.js";
+import { fetchNlAccount, NL_HOST, nlSignIn } from "./nl/account.js";
 import { SWEDEN_HOST } from "./sweden.js";
 import { trackCodes } from "./tracking.js";
 
 /**
- * Sign-in data. An account source stores the refresh token from the pasted-link sign-in; a
- * tracking source may store the user's own key for DHL's official tracking API.
+ * Sign-in data. A German account source stores the refresh token from the pasted-link sign-in, a
+ * Dutch one the account's email and password; a tracking source may store the user's own key for
+ * DHL's official tracking API.
  */
 const secretSchema = z
   .object({
     refreshToken: z.string().min(1).optional(),
     apiKey: z.string().min(1).optional(),
+    nl: z.object({ email: z.string().min(1), password: z.string().min(1) }).optional(),
   })
   .nullable();
+type Secret = z.infer<typeof secretSchema>;
+
+const configSchema = z.looseObject({
+  /**
+   * Regional DHL networks to ask as well, for parcels the gateway does not know: `ES`/`PT`
+   * (DHL eCommerce Iberia) and `SE` (DHL Freight Sweden). Off by default, so codes are not
+   * sent to back ends that cannot know them.
+   */
+  regions: z.array(z.enum(["ES", "PT", "SE"])).optional(),
+  /** Which DHL account an account source reads: dhl.de (default) or my.dhlecommerce.nl. */
+  account: z.enum(["de", "nl"]).optional(),
+});
+type Config = z.infer<typeof configSchema>;
 
 /**
  * DHL. Tracking asks the keyless DHL Parcel gateway and, with a key, DHL's official API, and
- * merges their answers. The German account lists everything a dhl.de account sees.
+ * merges their answers. The German account lists everything a dhl.de account sees; the Dutch
+ * account everything my.dhlecommerce.nl lists.
  */
-export const dhl = defineCarrier({
+export const dhl = defineCarrier<Config, Secret>({
   id: "dhl",
   name: "DHL",
   countries: ["*"],
   sourceKinds: ["account", "tracking"],
-  configSchema: z.looseObject({
-    /**
-     * Regional DHL networks to ask as well, for parcels the gateway does not know: `ES`/`PT`
-     * (DHL eCommerce Iberia) and `SE` (DHL Freight Sweden). Off by default, so codes are not
-     * sent to back ends that cannot know them.
-     */
-    regions: z.array(z.enum(["ES", "PT", "SE"])).optional(),
-  }),
+  configSchema,
   secretSchema,
-  signIn: {
-    type: "pasted_redirect",
-    start: () => Promise.resolve(startSignIn()),
-    finish: (context, state, pasted) => finishSignIn(context.http, state, pasted),
-  },
+  signIn: [
+    pastedRedirect<Config, Secret>({
+      id: "de_account",
+      label: "DHL Germany account (sign in in your browser)",
+      kinds: ["account"],
+      when: (config) => config.account !== "nl",
+      start: () => Promise.resolve(startSignIn()),
+      finish: (context, state, pasted) => finishSignIn(context.http, state, pasted),
+    }),
+    nlSignIn<Config>({ when: (config) => config.account === "nl" }),
+    {
+      type: "api_key",
+      id: "tracking_api_key",
+      label: "DHL API key (optional)",
+      kinds: ["tracking"],
+    },
+  ],
   http: {
     // Conservative: these are free services; nothing here needs to be fast.
     limits: {
@@ -48,12 +70,20 @@ export const dhl = defineCarrier({
       "api-eu.dhl.com": { intervalMs: 6_000, burst: 1 },
       "login.dhl.de": { intervalMs: 5_000, burst: 2 },
       "www.dhl.de": { intervalMs: 6_000, burst: 2 },
+      [NL_HOST]: { intervalMs: 6_000, burst: 2 },
       [IBERIA_HOST]: { intervalMs: 6_000, burst: 2 },
       [SWEDEN_HOST]: { intervalMs: 6_000, burst: 2 },
       "*": { intervalMs: 10_000, burst: 1 },
     },
   },
   async fetchAccount(context) {
+    if (context.config.account === "nl") {
+      const credentials = context.secret?.nl;
+      if (credentials === undefined) {
+        throw new SignInRejectedError("Sign in to your DHL Netherlands account first.");
+      }
+      return fetchNlAccount(context, credentials);
+    }
     const refreshToken = context.secret?.refreshToken;
     if (refreshToken === undefined) {
       throw new SignInRejectedError("Sign in to your DHL account first.");

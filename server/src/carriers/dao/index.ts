@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  pastedRedirect,
   TransientError,
   UnexpectedResponseError,
   type FetchResult,
@@ -139,11 +140,10 @@ export const dao = defineCarrier<Config, Secret>({
   sourceKinds: ["account"],
   configSchema,
   secretSchema,
-  signIn: {
-    type: "pasted_redirect",
+  signIn: pastedRedirect<Config, Secret>({
     start: () => Promise.resolve(startSignIn()),
     finish: (context, state, pasted) => finishSignIn(context.http, state, pasted),
-  },
+  }),
   http: {
     limits: {
       [API_HOST]: { intervalMs: 4_000, burst: 2 },

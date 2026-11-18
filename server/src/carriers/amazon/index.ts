@@ -3,6 +3,7 @@ import {
   loadRules,
   type Rules,
   defineCarrier,
+  pastedRedirect,
   SignInRejectedError,
   type CarrierPlugin,
 } from "../../plugin/api.js";
@@ -43,8 +44,7 @@ export function amazonCarrier(rules?: Rules): CarrierPlugin<AmazonConfig, Amazon
     sourceKinds: ["shop"],
     configSchema,
     secretSchema: amazonSecretSchema.nullable(),
-    signIn: {
-      type: "pasted_redirect",
+    signIn: pastedRedirect<AmazonConfig, AmazonSecret | null>({
       start({ config }) {
         const deviceSerial = newDeviceSerial();
         const verifier = newVerifier();
@@ -63,7 +63,7 @@ export function amazonCarrier(rules?: Rules): CarrierPlugin<AmazonConfig, Amazon
         }
         return registerDevice(http, storefront, state, code);
       },
-    },
+    }),
     http: {
       limits: { "*": AMAZON_LIMIT },
       // Pages are read as a mobile browser: the order pages are the website.

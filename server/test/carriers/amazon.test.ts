@@ -31,6 +31,7 @@ import {
   trackPath,
   type TileSpec,
 } from "./amazon-fixtures.js";
+import { pasted } from "./pasted.js";
 
 const rules = loadRules();
 const plugin = amazonCarrier(rules);
@@ -544,31 +545,35 @@ describe("Amazon courier map", () => {
 describe("Amazon registration", () => {
   it("is shipped as a built-in shop with a pasted-link sign-in", () => {
     const amazon = BUILTIN_CARRIERS.find((entry) => entry.info.id === "amazon");
-    expect(amazon?.info).toMatchObject({ sourceKinds: ["shop"], signIn: "pasted_redirect" });
+    expect(amazon?.info).toMatchObject({ sourceKinds: ["shop"], signIn: "interactive" });
+    expect(amazon?.info.signInFlows.map((flow) => flow.id)).toEqual(["pasted_redirect"]);
     expect(amazon?.canReadLive).toBe(true);
     expect(amazon?.info.browserUserAgentReason).not.toBeNull();
   });
 
   it("starts a sign-in with a fresh device and finishes it from the pasted address", async () => {
     const amazon = BUILTIN_CARRIERS.find((entry) => entry.info.id === "amazon");
+    if (amazon === undefined) {
+      throw new Error("Amazon is not registered.");
+    }
     const clock = new FakeClock();
-    const started = await amazon?.startSignIn({ storefront: "amazon.de" }, clock);
-    expect(started?.url).toContain("openid.oa2.code_challenge=");
+    const started = await pasted(amazon).start({ storefront: "amazon.de" }, clock);
+    expect(started.url).toContain("openid.oa2.code_challenge=");
     const h = harness(() =>
       json({ response: { success: { tokens: { bearer: { refresh_token: REFRESH } } } } }),
     );
-    const finished = await amazon?.finishSignIn(
+    const finished = await pasted(amazon).finish(
       h.context.http,
       clock,
-      started?.state,
+      started.state,
       "https://www.amazon.com/ap/maplanding?openid.oa2.authorization_code=made-up",
     );
     expect(finished).toMatchObject({ refreshToken: REFRESH });
     await expect(
-      amazon?.finishSignIn(
+      pasted(amazon).finish(
         h.context.http,
         clock,
-        started?.state,
+        started.state,
         "https://www.amazon.com/ap/maplanding",
       ),
     ).rejects.toBeInstanceOf(SignInRejectedError);

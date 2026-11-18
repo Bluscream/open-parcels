@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { Clock } from "../clock.js";
 import type { HttpPolicy, PluginHttp } from "./http.js";
 import type { LiveReading, LiveTarget } from "./live.js";
+import type { SignInFlow } from "./sign-in.js";
 import type { ParcelSnapshot } from "./snapshot.js";
 
 export * from "./errors.js";
@@ -60,24 +61,20 @@ export interface FetchResult {
   readonly complete: boolean;
 }
 
-/** How the user signs in. Each flow is driven by the generic sign-in routes and the UI. */
-export type SignInFlow<Config, Secret> =
-  | { readonly type: "none" }
-  | { readonly type: "credentials" }
-  | { readonly type: "api_key" }
-  | {
-      /** The user signs in in their own browser and pastes the final redirect URL back. */
-      readonly type: "pasted_redirect";
-      start(context: {
-        readonly config: Config;
-        readonly clock: Clock;
-      }): Promise<{ url: string; state: unknown }>;
-      finish(
-        context: { readonly http: PluginHttp; readonly clock: Clock },
-        state: unknown,
-        pasted: string,
-      ): Promise<Secret>;
-    };
+export { pastedRedirect } from "./sign-in.js";
+export type {
+  InteractiveSignIn,
+  SignInContext,
+  SignInField,
+  SignInFlow,
+  SignInInput,
+  SignInOption,
+  SignInScope,
+  SignInStep,
+  SignInStepKind,
+  SignInTurn,
+  StaticSignIn,
+} from "./sign-in.js";
 
 export interface CarrierPlugin<Config = unknown, Secret = unknown> {
   readonly id: string;
@@ -87,7 +84,12 @@ export interface CarrierPlugin<Config = unknown, Secret = unknown> {
   readonly sourceKinds: readonly PluginSourceKind[];
   readonly configSchema: z.ZodType<Config>;
   readonly secretSchema: z.ZodType<Secret>;
-  readonly signIn: SignInFlow<Config, Secret>;
+  /**
+   * How the user signs in: one flow, or several. With several, each flow's `kinds` and `when`
+   * decide where it applies (DHL: the German account by pasted link, the Dutch one by password);
+   * the first applicable one is the default.
+   */
+  readonly signIn: SignInFlow<Config, Secret> | readonly SignInFlow<Config, Secret>[];
   readonly http: HttpPolicy;
   /** Account and shop sources: return everything the account lists. */
   fetchAccount?(context: PluginContext<Config, Secret>): Promise<FetchResult>;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { postnl } from "../../src/carriers/postnl/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
 import { json, onPrefix, World } from "./harness.js";
+import { pasted } from "./pasted.js";
 
 // Made-up codes and values only.
 const CODE = "3STEST000000001";
@@ -53,11 +54,11 @@ const tnt = (barcode: string, codes: [string, string][]) =>
 describe("PostNL sign-in", () => {
   it("builds a PKCE login address and trades the pasted code for a refresh token", async () => {
     const world = new World(postnl, [onPrefix(TOKEN, tokens(1))]);
-    const { url, state } = await world.plugin.startSignIn({}, world.clock);
+    const { url, state } = await pasted(world.plugin).start({}, world.clock);
     const login = new URL(url);
     expect(login.searchParams.get("code_challenge_method")).toBe("S256");
     const sent = login.searchParams.get("state") ?? "";
-    const secretOut = await world.plugin.finishSignIn(
+    const secretOut = await pasted(world.plugin).finish(
       world.base().http,
       world.clock,
       state,
@@ -66,7 +67,7 @@ describe("PostNL sign-in", () => {
     expect(secretOut).toEqual({ refreshToken: "rt-1" });
     expect(world.calls[0]?.body).toContain("code_verifier=");
     await expect(
-      world.plugin.finishSignIn(
+      pasted(world.plugin).finish(
         world.base().http,
         world.clock,
         state,
