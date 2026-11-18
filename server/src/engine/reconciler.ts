@@ -6,7 +6,7 @@ import type { Database, ParcelRow, SourceRow } from "../db/schema.js";
 import { effectiveStatus, PARCEL_STATUSES, type ParcelStatus } from "../domain/parcel.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
-import { ParcelRepository } from "../parcels/repository.js";
+import { ParcelRepository, RAW_PRESENTATION, type Presentation } from "../parcels/repository.js";
 import type { FetchResult, LiveTarget } from "../plugin/api.js";
 import type { ParcelSnapshot } from "../plugin/snapshot.js";
 import { mergeParcel, type Authority, type ParcelState } from "./merge.js";
@@ -113,6 +113,7 @@ export class Reconciler {
     private readonly bus: EventBus,
     private readonly clock: Clock,
     private readonly logger: Logger,
+    private readonly presentation: Presentation = RAW_PRESENTATION,
   ) {}
 
   async ingest(sourceId: string, result: FetchResult): Promise<IngestSummary> {
@@ -207,7 +208,7 @@ export class Reconciler {
       eventView(after, manual),
     );
     if (derived.length > 0) {
-      const parcel = await new ParcelRepository(trx).get(parcelId);
+      const parcel = await new ParcelRepository(trx, this.presentation).get(parcelId);
       for (const event of derived) {
         if (parcel !== undefined) {
           await appendEvent(trx, this.clock, {
@@ -484,7 +485,7 @@ export class Reconciler {
       return 0;
     }
     await this.db.transaction().execute(async (trx) => {
-      const repository = new ParcelRepository(trx);
+      const repository = new ParcelRepository(trx, this.presentation);
       for (const { id } of candidates) {
         await trx
           .updateTable("parcels")

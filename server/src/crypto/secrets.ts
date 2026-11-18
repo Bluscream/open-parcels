@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -91,6 +91,13 @@ export class SecretBox {
         { cause: error },
       );
     }
+  }
+
+  /** A separate key for another purpose (signing, for example), derived so the master key never leaves. */
+  derive(purpose: string): Buffer {
+    return Buffer.from(
+      hkdfSync("sha256", this.#key, Buffer.alloc(0), `open-parcels ${purpose}`, KEY_BYTES),
+    );
   }
 
   encryptJson(value: unknown, associatedData: string): Buffer {

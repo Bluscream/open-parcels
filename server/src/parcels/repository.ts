@@ -45,7 +45,6 @@ interface Related {
   orders: Map<string, Parcel["order"]>;
 }
 
-/** Reads parcels in the normalised shape, loading related rows in one query per table. */
 /** A courier position held in memory by the live tracker. */
 export interface LivePosition {
   readonly latitude: number | null;
@@ -54,13 +53,25 @@ export interface LivePosition {
   readonly positionAt: string | null;
 }
 
-export type PositionLookup = (parcelId: string) => LivePosition | undefined;
+/**
+ * How stored data is presented to clients and events: courier positions come from memory (they
+ * are never stored), and remote pictures are replaced by the server's image-proxy address.
+ */
+export interface Presentation {
+  position(parcelId: string): LivePosition | undefined;
+  imagePath(remote: string | null): string | null;
+}
 
+export const RAW_PRESENTATION: Presentation = {
+  position: () => undefined,
+  imagePath: (remote) => remote,
+};
+
+/** Reads parcels in the normalised shape, loading related rows in one query per table. */
 export class ParcelRepository {
   constructor(
     private readonly db: Kysely<Database>,
-    /** Courier positions are never stored; the live tracker supplies them from memory. */
-    private readonly positions: PositionLookup = () => undefined,
+    private readonly presentation: Presentation = RAW_PRESENTATION,
   ) {}
 
   async list(filter: ParcelFilter, withHistory: boolean): Promise<Parcel[]> {
@@ -174,7 +185,7 @@ export class ParcelRepository {
         parcelId,
         list.map((item) => ({
           title: item.title,
-          image_url: item.image_ref,
+          image_url: this.presentation.imagePath(item.image_ref),
           url: item.url,
           quantity: item.quantity,
         })),
@@ -182,7 +193,7 @@ export class ParcelRepository {
     }
     const liveMap = new Map<string, Live>(
       live.map((row) => {
-        const position = this.positions(row.parcel_id);
+        const position = this.presentation.position(row.parcel_id);
         return [
           row.parcel_id,
           {

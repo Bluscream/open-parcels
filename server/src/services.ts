@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { humanCode } from "./auth/crypto.js";
@@ -15,6 +16,8 @@ import { SourceRunner } from "./engine/runner.js";
 import { Scheduler } from "./engine/scheduler.js";
 import { SourceService } from "./engine/sources.js";
 import { EventBus } from "./events/bus.js";
+import { ImageProxy } from "./images/proxy.js";
+import type { Presentation } from "./parcels/repository.js";
 import { ParcelService } from "./parcels/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
 
@@ -58,6 +61,7 @@ export interface Services {
   readonly bus: EventBus;
   readonly registry: PluginRegistry;
   readonly sources: SourceService;
+  readonly images: ImageProxy;
   readonly reconciler: Reconciler;
   readonly runner: SourceRunner;
   readonly scheduler: Scheduler;
@@ -105,7 +109,17 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   await bus.start();
   const registry = new PluginRegistry(deps.plugins ?? BUILTIN_CARRIERS);
   const sources = new SourceService(db, registry, deps.secrets, bus, clock);
-  const reconciler = new Reconciler(db, bus, clock, logger);
+  const images = new ImageProxy({
+    secretKey: deps.secrets.derive("image proxy"),
+    cacheDir: path.join(deps.config.dataDir, "images"),
+    logger,
+  });
+  // Filled in once the live tracker exists; reads before that see no positions.
+  const presentation: Presentation = {
+    position: (parcelId) => live.position(parcelId),
+    imagePath: (remote) => images.pathFor(remote),
+  };
+  const reconciler = new Reconciler(db, bus, clock, logger, presentation);
   const runner = new SourceRunner({
     db,
     registry,
@@ -142,6 +156,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
       await sources.requestRun(sourceId);
       scheduler.wake();
     },
+    presentation,
   });
   const parcels = new ParcelService(
     db,
@@ -156,7 +171,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
       scheduler.wake();
       return sourceId;
     },
-    (parcelId) => live.position(parcelId),
+    presentation,
   );
   const setup = new SetupGate((await auth.hasOwner()) ? undefined : humanCode());
   return {
@@ -166,6 +181,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     bus,
     registry,
     sources,
+    images,
     reconciler,
     runner,
     scheduler,

@@ -5,7 +5,7 @@ import type { Database } from "../db/schema.js";
 import type { LiveState } from "../domain/parcel.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
-import { ParcelRepository, type LivePosition } from "../parcels/repository.js";
+import { ParcelRepository, type LivePosition, type Presentation } from "../parcels/repository.js";
 import { RateLimitedError, type LiveReading, type LiveTarget } from "../plugin/api.js";
 import type { SourceRunner } from "./runner.js";
 
@@ -37,6 +37,7 @@ export interface LiveDeps {
   readonly logger: Logger;
   /** Asks for an immediate full poll of a source, so `delivered` follows within a minute. */
   readonly refreshSource: (sourceId: string) => Promise<void>;
+  readonly presentation: Presentation;
 }
 
 /**
@@ -252,7 +253,7 @@ export class LiveTracker {
       await this.deps.db.deleteFrom("live_state").where("parcel_id", "=", parcelId).execute();
     }
     await this.deps.db.transaction().execute(async (trx) => {
-      const parcel = await new ParcelRepository(trx).get(parcelId);
+      const parcel = await new ParcelRepository(trx, this.deps.presentation).get(parcelId);
       if (parcel === undefined) {
         return;
       }

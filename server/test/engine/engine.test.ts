@@ -269,6 +269,10 @@ describe("hand-off between a shop and a carrier", () => {
       order: { shop: "fakeshop" },
       items: [{ title: "Example widget" }],
     });
+    // Pictures are served through the image proxy; the remote address never reaches clients or events.
+    expect(parcels[0]?.items[0]?.image_url).toMatch(/^\/img\/[\w-]+\.[\w-]{32}$/);
+    const outbox = await context.services.db.selectFrom("outbox").select("payload").execute();
+    expect(JSON.stringify(outbox)).not.toContain("images.example.invalid");
     expect(parcels[0]?.sources.map((source) => source.role).sort()).toEqual(["handoff", "primary"]);
   });
 

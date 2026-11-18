@@ -10,7 +10,7 @@ import {
 import { deriveEvents, type EventView } from "../engine/rules.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
-import { ParcelRepository, type PositionLookup } from "./repository.js";
+import { ParcelRepository, RAW_PRESENTATION, type Presentation } from "./repository.js";
 
 export class DuplicateParcelError extends Error {
   override readonly name = "DuplicateParcelError";
@@ -59,9 +59,9 @@ export class ParcelService {
     private readonly bus: EventBus,
     private readonly clock: Clock,
     private readonly linkTracking: TrackingLinker,
-    positions: PositionLookup = () => undefined,
+    private readonly presentation: Presentation = RAW_PRESENTATION,
   ) {
-    this.repository = new ParcelRepository(db, positions);
+    this.repository = new ParcelRepository(db, presentation);
   }
 
   async create(input: NewParcelInput): Promise<Parcel> {
@@ -102,7 +102,7 @@ export class ParcelService {
           })
           .execute();
       }
-      const parcel = await new ParcelRepository(trx).get(id);
+      const parcel = await new ParcelRepository(trx, this.presentation).get(id);
       if (parcel === undefined) {
         throw new Error("Inserted parcel could not be read back.");
       }
@@ -137,7 +137,7 @@ export class ParcelService {
     }
     await this.db.transaction().execute(async (trx) => {
       await trx.updateTable("parcels").set(changes).where("id", "=", id).execute();
-      const after = await new ParcelRepository(trx).get(id);
+      const after = await new ParcelRepository(trx, this.presentation).get(id);
       if (after === undefined) {
         return;
       }
