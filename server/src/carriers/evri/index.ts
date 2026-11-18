@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   type ParcelSnapshot,
@@ -11,11 +12,10 @@ import {
   type Json,
   isoTime,
   newestFirst,
-  lookUpStatus,
+  rulesStatus,
   trackEach,
   unknownReporter,
   type ParcelStatus,
-  type StatusTable,
 } from "../../plugin/api.js";
 import { EvriTracking, HOST } from "./api.js";
 
@@ -30,29 +30,18 @@ const configSchema = z.object({
 });
 type Config = z.infer<typeof configSchema>;
 
-/** Tracking stage codes; the suffix tells courier, shop and locker apart. */
-const STAGES: StatusTable = {
-  "0": "registered",
-  "1": "registered",
-  "2": "in_transit",
-  "3": "in_transit",
-  "4": "in_transit",
-  "4_COURIER": "out_for_delivery",
-  "4_SHOP": "at_pickup_point",
-  "4_LOCKER": "at_pickup_point",
-  "5_COURIER": "delivered",
-  "5_SHOP": "delivered",
-  A: "returning",
-  "6": "problem",
-  "6_INFO": "problem",
-  "6_ACTION": "problem",
-};
+const PLAUSIBLE = carrierPattern("evri");
 
-const PLAUSIBLE = /^[A-Z0-9]{8,30}$/;
-
-/** On a return parcel the in-network stages are the way back. */
+/**
+ * A tracking stage code (the suffix tells courier, shop and locker apart) from the shared table,
+ * which also knows that on a return parcel the in-network stages are the way back.
+ */
 function stageStatus(code: string | null, returning: boolean): ParcelStatus | null {
-  return returning && (code === "3" || code === "4") ? "returning" : lookUpStatus(STAGES, code);
+  if (code === null) {
+    return null;
+  }
+  const leg = returning ? "return" : "forward";
+  return rulesStatus(CARRIER_ID, { code, fields: { stage: code, leg } })?.status ?? null;
 }
 
 const stageOf = (event: Json): string | null =>
@@ -114,7 +103,10 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     deliveredAt: delivered
       ? (byTime.find((entry) => stageStatus(entry.stage, returning) === "delivered")?.at ?? null)
       : null,
-    pickup: raw["parcelShopDelivery"] === true || stage === "4_SHOP" || stage === "4_LOCKER",
+    // Shop and locker stages carry `pickup` in the shared table.
+    pickup:
+      raw["parcelShopDelivery"] === true ||
+      (stage !== null && rulesStatus(CARRIER_ID, { code: stage })?.pickup === true),
     url: `https://www.evri.com/track/parcel/${encodeURIComponent(barcode)}/details`,
     sender: text(asObject(raw["sender"])["displayName"]),
     history: entries,

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { defineCarrier, type ParcelSnapshot, type PluginContext } from "../../plugin/api.js";
+import {
+  carrierPattern,
+  defineCarrier,
+  type ParcelSnapshot,
+  type PluginContext,
+} from "../../plugin/api.js";
 import {
   AUTH_HOST,
   CARRIER_ID,
@@ -8,7 +13,7 @@ import {
   trackingSnapshot,
 } from "./tracking.js";
 
-const BARCODE = /^[A-Z0-9]{8,40}$/i;
+const BARCODE = carrierPattern("posti");
 
 const configSchema = z.object({});
 const secretSchema = z.null();

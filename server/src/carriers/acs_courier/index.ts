@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   defineCarrier,
   localDay,
   isoTime,
   newestFirst,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -20,43 +22,34 @@ import { API_HOST, lookUp, SITE_HOST, TRACKING_PAGE } from "./lookup.js";
 const CARRIER_ID = "acs_courier";
 /** ACS works in Greece and Cyprus; its times carry no offset and are Athens time. */
 const ZONE = "Europe/Athens";
-const PLAUSIBLE = /^[A-Z0-9]{6,30}$/i;
+const PLAUSIBLE = carrierPattern("acs_courier");
 const MIDNIGHT = /^\d{4}-\d{2}-\d{2}(?:[T ]00:00(?::00(?:\.0+)?)?)?$/;
-
-/** Parcel-level `shipmentStatusId`. Other values fall back to the newest mappable event. */
-const SHIPMENT_STATUS: Readonly<Record<number, ParcelStatus>> = { 4: "delivered", 7: "returning" };
-
-/**
- * History `controlPid`; a child entry inherits its `controlParentPid`'s meaning. 400 is left
- * out on purpose: it covers both "with the courier" and "in a locker", told apart only by text.
- */
-const EVENT_STATUS: Readonly<Record<number, ParcelStatus>> = {
-  100: "in_transit",
-  200: "in_transit",
-  300: "in_transit",
-  600: "delivered",
-  620: "returning",
-};
-/** Known entries that say nothing about where the parcel is (306, and 404: a notification). */
-const NEUTRAL_EVENTS = new Set([306, 404]);
 
 interface Dated {
   readonly at: string;
   readonly event: Json;
 }
 
+/** A `controlPid` from the shared table; `unknown` there marks entries that say nothing. */
+const pidStatus = (pid: number): ParcelStatus | null => ruleStatus(CARRIER_ID, `controlPid:${pid}`);
+
+/** History `controlPid`; a child entry inherits its `controlParentPid`'s meaning. */
 function eventStatus(event: Json, report: (key: string) => void): ParcelStatus | null {
   const pid = event["controlPid"];
-  if (typeof pid !== "number" || NEUTRAL_EVENTS.has(pid)) {
+  if (typeof pid !== "number") {
+    return null;
+  }
+  const own = pidStatus(pid);
+  if (own === "unknown") {
     return null;
   }
   const parent = event["controlParentPid"];
-  const mapped =
-    EVENT_STATUS[pid] ?? (typeof parent === "number" ? EVENT_STATUS[parent] : undefined);
-  if (mapped === undefined) {
+  const inherited = typeof parent === "number" ? pidStatus(parent) : null;
+  const mapped = own ?? (inherited === "unknown" ? null : inherited);
+  if (mapped === null) {
     report(`controlPid:${pid}`);
   }
-  return mapped ?? null;
+  return mapped;
 }
 
 /** Dated entries, oldest first: the wire order follows the code, not the time. */
@@ -83,7 +76,8 @@ export function acsSnapshot(
   const events = datedEvents(raw);
   const mapped = events.map(({ at, event }) => ({ at, event, status: eventStatus(event, report) }));
   const statusId = raw["shipmentStatusId"];
-  const fromId = typeof statusId === "number" ? SHIPMENT_STATUS[statusId] : undefined;
+  const fromId =
+    typeof statusId === "number" ? ruleStatus(CARRIER_ID, `shipmentStatusId:${statusId}`) : null;
   const newestMapped = [...mapped].reverse().find((entry) => entry.status !== null);
   const status = fromId ?? newestMapped?.status ?? null;
   if (status === null && typeof statusId === "number") {

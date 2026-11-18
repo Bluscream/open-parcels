@@ -1,5 +1,6 @@
 import {
   asObject,
+  carrierKey,
   readObject,
   SignInRejectedError,
   text,
@@ -59,7 +60,7 @@ async function signIn(http: PluginHttp, credentials: Credentials): Promise<Sessi
   const username = credentials.username.trim();
   const form = new URLSearchParams({
     grant_type: "password",
-    client_id: "miseur",
+    client_id: carrierKey("seur", "client_id"),
     username,
     password: credentials.password,
   });

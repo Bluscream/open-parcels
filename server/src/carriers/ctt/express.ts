@@ -4,10 +4,10 @@ import {
   expectStatus,
   isObject,
   isoTime as kitIsoTime,
-  lookUpStatus,
   newestFirst,
   parseLocal,
   readJson,
+  ruleStatus,
   snapshot,
   text,
   UnexpectedResponseError,
@@ -24,19 +24,9 @@ const isoTime = (value: unknown): string | null =>
 /** CTT Express (Spain) runs its own keyless tracker; it knows every all-digit code. */
 export const EXPRESS_HOST = "wct.cttexpress.com";
 
-/** Keyed on the STATUS event code; the label is display text. */
-const EXPRESS_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "0000": "registered",
-  "0500": "in_transit",
-  "1000": "in_transit",
-  "3900": "in_transit",
-  "1500": "out_for_delivery",
-  "2400": "out_for_delivery",
-  "1600": "problem",
-  "2100": "delivered",
-  "2310": "at_pickup_point",
-  "2500": "returning",
-};
+/** A STATUS event code (the label is display text) from the shared table. */
+const expressStatus = (code: string | null, report?: () => void): ParcelStatus | null =>
+  code === null ? null : ruleStatus("ctt", `express:${code}`, report);
 
 export function isExpressCode(code: string): boolean {
   return /^\d+$/.test(code);
@@ -75,11 +65,10 @@ export function expressSnapshot(
   // Only STATUS events carry the state; MANAGEMENTS record actions such as a new date.
   const statusEvents = events.filter(({ event }) => event["type"] === "STATUS");
   const newest = statusEvents.at(-1);
-  const status = lookUpStatus(
-    EXPRESS_STATUS,
-    newest === undefined ? null : text(newest.event["code"]),
-    report,
-  );
+  const newestCode = newest === undefined ? null : text(newest.event["code"]);
+  const status = expressStatus(newestCode, () => {
+    report(newestCode ?? "");
+  });
   const delivered = status === "delivered";
   const revised = events
     .filter(({ event }) => event["code"] === "71_INAT")
@@ -97,7 +86,7 @@ export function expressSnapshot(
           {
             at,
             rawStatus,
-            status: lookUpStatus(EXPRESS_STATUS, text(event["code"])),
+            status: expressStatus(text(event["code"])),
             location: null,
           },
         ];

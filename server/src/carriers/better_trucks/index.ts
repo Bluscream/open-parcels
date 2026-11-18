@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   asArray,
   asObject,
@@ -8,6 +9,7 @@ import {
   isTimeZone,
   newestFirst,
   readObject,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -17,31 +19,16 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "better_trucks";
 const HOST = "tracking.bettertrucks.com";
-const PLAUSIBLE = /^[A-Z0-9_-]{6,40}$/i;
+const PLAUSIBLE = carrierPattern("better_trucks");
 /** Its times carry no offset; the one confirmed capture read correctly as UTC. */
 const DEFAULT_ZONE = "UTC";
 
-export const BETTER_TRUCKS_STATUS: StatusTable = {
-  SHIPMENT_CREATED: "registered",
-  TRANSACTION_CREATED: "registered",
-  INJECTED: "in_transit",
-  OUT_FOR_DELIVERY: "out_for_delivery",
-  DELIVERED: "delivered",
-};
-/** `SCANNED_AT_HUB_<facility>`: the suffix names a hub, not a state. */
-const HUB_SCAN = "SCANNED_AT_HUB";
-
-function stage(code: string | null): ParcelStatus | null {
-  if (code === null) {
-    return null;
-  }
-  return BETTER_TRUCKS_STATUS[code] ?? (code.startsWith(HUB_SCAN) ? "in_transit" : null);
-}
+/** A status code from the shared table (which also reads `SCANNED_AT_HUB_<facility>`). */
+const stage = (code: string | null): ParcelStatus | null => ruleStatus(CARRIER_ID, code);
 
 /** The endpoint answers 200 for everything; an unknown number says UNKNOWN with no history. */
 async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {

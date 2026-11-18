@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -20,7 +21,7 @@ import {
 } from "./shared.js";
 
 /** OnTrac numbers are letters and digits; anything else is never sent. */
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+const BARCODE_PATTERN = carrierPattern("ontrac");
 const LB_IN_KG = 0.45359237;
 const PERSONAL_KEYS = new Set([
   "Consignee",

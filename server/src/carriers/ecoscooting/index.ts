@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  carrierPattern,
+  carrierKey,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
@@ -11,17 +13,16 @@ import {
   num,
   objects,
   readObject,
+  ruleStatus,
   text,
   type Json,
   epochIso,
   isoTime,
   newestFirst,
   expectStatus,
-  lookUpStatus,
   trackEach,
   unknownReporter,
   type ParcelStatus,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "ecoscooting";
@@ -31,54 +32,19 @@ const HOST = "de-link.cainiao.com";
 const NOT_FOUND = "P-011-0201-00-00-502";
 const HOUR_MS = 3_600_000;
 
-const STATUSES: StatusTable = {
-  CREATE: "registered",
-  LABEL_CREATED: "registered",
-  CREATE_ORDER_CES: "registered",
-  GTMS_ACCEPT: "in_transit",
-  SL_ACCEPT: "in_transit",
-  PU_PICKUP_SUCCESS: "in_transit",
-  TD_TRANSWH_OUTBOUND: "in_transit",
-  TD_TRANS_ARRIVE_C: "in_transit",
-  IN_TRANSIT: "in_transit",
-  COMMON_INTRANSIT: "in_transit",
-  PARTNER_OUTBOUND: "in_transit",
-  TRANSFER_ARRIVE: "in_transit",
-  TRANSFER_DEPART: "in_transit",
-  SC_INBOUND: "in_transit",
-  SC_OUTBOUND: "in_transit",
-  GTMS_DO_DEPART: "out_for_delivery",
-  LM_DELIVERY_DEPART: "out_for_delivery",
-  GTMS_STA_SIGNED: "at_pickup_point",
-  PUDO_DELIVERY: "at_pickup_point",
-  GTMS_PUDO_INBOUND: "at_pickup_point",
-  PUDO_INBOUND: "at_pickup_point",
-  GTMS_SIGNED: "delivered",
-  LM_SIGN_SUCCESS: "delivered",
-  GTMS_PUDO_SIGNED: "delivered",
-  PUDO_SIGN_SUCCESS: "delivered",
-  GTMS_DEL_FAILURE: "problem",
-  LM_DELIVERY_FAILURE: "problem",
-  LM_PARCEL_EXCEPTION: "problem",
-  GTMS_PUDO_OVERDUE: "returning",
-  PUDO_OVERDUE: "returning",
-  GTMS_SIGN_FAILURE: "returning",
-  LM_UNREACHABLE_RETURN: "returning",
-};
+const PLAUSIBLE = carrierPattern("ecoscooting");
 
-const PLAUSIBLE = /^[A-Z0-9]{8,40}$/;
-
-/** Every code of the return leg starts with `RT_`. */
+/** Event codes from the shared table (every code of the return leg starts with `RT_`). */
 function statusOf(code: string | null): ParcelStatus | null {
   const key = code?.toUpperCase() ?? null;
-  return key?.startsWith("RT_") === true ? "returning" : lookUpStatus(STATUSES, key);
+  return ruleStatus(CARRIER_ID, key);
 }
 
 async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   const body = new URLSearchParams({
     logistics_interface: JSON.stringify({ mailNo: code, locale: "en_US", role: "endUser" }),
     msg_type: "CN_OVERSEA_LOGISTICS_INQUIRY_TRACKING",
-    logistic_provider_id: "DISTRIBUTOR_30250031",
+    logistic_provider_id: carrierKey(CARRIER_ID, "logistic_provider_id"),
     data_digest: "x",
     to_code: "CNL_EU",
   });

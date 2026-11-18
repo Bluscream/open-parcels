@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineCarrier } from "../../plugin/api.js";
+import { carrierKey, defineCarrier } from "../../plugin/api.js";
 import { fetchDeAccount } from "./account.js";
 import { TRACKING_HOST, trackDe } from "./tracking.js";
 
@@ -36,8 +36,7 @@ export const dpd = defineCarrier({
       "*": ACCOUNT_LIMIT,
     },
     userAgent: {
-      value:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      value: carrierKey("dpd", "browser_user_agent"),
       reason:
         "The myDPD sign-in and account pages are served to browsers; other clients get a page without the parcel list.",
     },

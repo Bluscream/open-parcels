@@ -8,12 +8,13 @@ import {
   asArray,
   asObject,
   isObject,
-  lookUpStatus,
   num,
   readJson,
+  rulesStatus,
   text,
   parseLocal,
   type Json,
+  type MappedStatus,
   type ParcelStatus,
 } from "../../plugin/api.js";
 import { publicTrackingUrl } from "./constants.js";
@@ -26,43 +27,6 @@ const IBERIA_URL = `https://${IBERIA_HOST}/LiveTracking.GTW/api/shipment-detail`
  * mainland time is the closest single answer.
  */
 const ZONE = "Europe/Madrid";
-
-const CODE_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  BS: "in_transit",
-  HS: "in_transit",
-  AS: "in_transit",
-  ES: "in_transit",
-  GT: "in_transit",
-  DIA: "in_transit",
-  EC: "in_transit",
-  ZZZ: "in_transit",
-  A: "out_for_delivery",
-  IS: "at_pickup_point",
-  NH: "problem",
-  CR: "problem",
-  CH: "problem",
-  PE: "problem",
-  FM: "problem",
-  OH: "problem",
-  FA: "problem",
-  AI: "problem",
-  RT: "returning",
-  R: "delivered",
-  PC: "delivered",
-  RS: "delivered",
-};
-
-/** Scans without a code are told apart by their English wording only. */
-const WORDING_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "Shipment received at DHL Depot": "in_transit",
-  "Arrived at": "in_transit",
-  "In transit in": "in_transit",
-  "Departed from": "in_transit",
-  "Picked up": "in_transit",
-};
-
-/** Codes that put the parcel on its way to, or at, a ServicePoint. */
-const PICKUP_CODES = new Set(["AS", "ES", "IS", "RS"]);
 
 type Deps = Pick<PluginContext<unknown, unknown>, "http" | "reportUnknown">;
 
@@ -92,15 +56,31 @@ export async function fetchIberia(deps: Deps, code: string): Promise<Json | null
   return isObject(body) && text(body["ExpeditionNumber"])?.toUpperCase() === code ? body : null;
 }
 
+/** An Iberia key ("iberia:<code>") from the shared DHL table; reported when it does not map. */
+const iberia = (key: string | null, report?: (key: string) => void): MappedStatus | null => {
+  if (key === null) {
+    return null;
+  }
+  const mapped = rulesStatus("dhl", { code: `iberia:${key}` });
+  if (mapped === null) {
+    report?.(`iberia:${key}`);
+  }
+  return mapped;
+};
+
+/** The scan code; without one, the solution code; without either, the scan's English wording. */
 function mapEvent(event: Json, report?: (key: string) => void): ParcelStatus | null {
   const code = text(event["Code"]);
   if (code !== null) {
-    return lookUpStatus(CODE_STATUS, code, (c) => report?.(`iberia:${c}`));
+    return iberia(code, report)?.status ?? null;
   }
-  if (event["SolutionCode"] === "DOC") {
-    return "registered";
+  const solution = rulesStatus("dhl", {
+    code: `iberia:solution:${text(event["SolutionCode"]) ?? ""}`,
+  });
+  if (solution !== null) {
+    return solution.status;
   }
-  return lookUpStatus(WORDING_STATUS, text(event["Description"]), (c) => report?.(`iberia:${c}`));
+  return iberia(text(event["Description"]), report)?.status ?? null;
 }
 
 function wording(event: Json): string | null {
@@ -139,7 +119,8 @@ export function normalizeIberia(deps: Deps, code: string, raw: Json): ParcelSnap
   const delivered = status === "delivered";
   const pickup =
     raw["DeliveredInServicePoint"] === true ||
-    events.some((e) => PICKUP_CODES.has(text(e["Code"]) ?? ""));
+    // Codes that put the parcel on its way to, or at, a ServicePoint carry `pickup`.
+    events.some((e) => iberia(text(e["Code"]))?.pickup === true);
   const history: SnapshotEvent[] = mapped.flatMap(({ event, status: eventStatus }) => {
     const at = eventTime(event);
     const rawStatus = wording(event);

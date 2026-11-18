@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
@@ -18,11 +19,11 @@ import {
   isoTime,
   newestFirst,
   expectStatus,
-  lookUpStatus,
+  ruleStatus,
+  rulesStatus,
   trackEach,
   unknownReporter,
   type ParcelStatus,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "fan_courier";
@@ -30,54 +31,11 @@ const HOST = "www.fancourier.ro";
 const ZONE = "Europe/Bucharest";
 const DELIVERED_CODE = "S2";
 
-const CODES: StatusTable = {
-  C0: "registered",
-  ...Object.fromEntries(
-    ["H0", "H1", "H2", "H3", "H4", "H10", "H11", "H12", "H13", "H15", "H17", "S35", "S47"].map(
-      (code) => [code, "in_transit"],
-    ),
-  ),
-  C1: "out_for_delivery",
-  S1: "out_for_delivery",
-  S2: "delivered",
-  ...Object.fromEntries(
-    [
-      "S3",
-      "S4",
-      "S5",
-      "S6",
-      "S7",
-      "S10",
-      "S14",
-      "S15",
-      "S19",
-      "S20",
-      "S21",
-      "S22",
-      "S24",
-      "S25",
-      "S27",
-      "S28",
-      "S30",
-      "S37",
-      "S42",
-      "S50",
-    ].map((code) => [code, "problem"]),
-  ),
-  S43: "returning",
-  S46: "at_pickup_point",
-};
+/** Event names that mean the parcel waits in a locker, whatever the code says (shared table). */
+const mentionsLocker = (name: string): boolean =>
+  rulesStatus(CARRIER_ID, { text: name, fields: { use: "locker" } }) !== null;
 
-/** Event names that mean the parcel waits in a locker, whatever the code says. */
-const LOCKER_WORDS = [
-  "fanbox",
-  "easybox",
-  "locker",
-  "automat de colete",
-  "disponibil pentru ridicare",
-];
-
-const PLAUSIBLE = /^\d{8,20}$/;
+const PLAUSIBLE = carrierPattern("fan_courier");
 
 async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   const response = await http.request(new URL(`https://${HOST}/limit-tracking.php`), {
@@ -119,7 +77,7 @@ function history(events: readonly Json[]): SnapshotEvent[] {
       result.push({
         at,
         rawStatus,
-        status: lookUpStatus(CODES, code),
+        status: ruleStatus(CARRIER_ID, code),
         location: text(event["location"]),
       });
     }
@@ -134,12 +92,12 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     epoch(isoTime(event["date"], { naive: { zone: ZONE }, epoch: "auto", epochStrings: true }));
   const newestRaw = [...events].sort((a, b) => when(b) - when(a))[0] ?? {};
   const code = text(newestRaw["id"]);
-  let status: ParcelStatus | null = lookUpStatus(CODES, code);
+  let status: ParcelStatus | null = ruleStatus(CARRIER_ID, code);
   if (code !== null && status === null) {
     report(code);
   }
   const name = text(newestRaw["name"])?.toLowerCase() ?? "";
-  if (status !== "delivered" && LOCKER_WORDS.some((word) => name.includes(word))) {
+  if (status !== "delivered" && mentionsLocker(name)) {
     status = "at_pickup_point";
   }
   const deliveredEvent = events.find((event) => text(event["id"]) === DELIVERED_CODE);

@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   asArray,
   asObject,
   isoTime,
@@ -29,18 +30,10 @@ export function localDate(value: unknown): string | null {
   }
   return /[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? isoTime(raw, { naive: "runtime" }) : null;
 }
-/** The event `stateCode`. Both return codes are `returning`; the raw text keeps them apart. */
-const STATE_MAP: Readonly<Record<string, ParcelStatus>> = {
-  received: "registered",
-  transit: "in_transit",
-  notified: "at_pickup_point",
-  delivered: "delivered",
-  returning: "returning",
-  returned: "returning",
-};
 
+/** The event `stateCode`. Both return codes are `returning`; the raw text keeps them apart. */
 function mapState(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATE_MAP[code] ?? null);
+  return ruleStatus(CARRIER_ID, code);
 }
 
 function rawStatus(event: Json): string | null {

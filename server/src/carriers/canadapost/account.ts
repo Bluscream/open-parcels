@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   asArray,
   asObject,
+  carrierKey,
   isObject,
   num,
   parseJsonBody,
@@ -21,8 +22,6 @@ export const TOKEN_HOST = "sso-osu.canadapost-postescanada.ca";
 export const LIST_HOST = "b3n4knmt6famlj575e5pfn74lm.appsync-api.ca-central-1.amazonaws.com";
 const TOKEN_URL = `https://${TOKEN_HOST}/mga/sps/oauth/oauth20/token`;
 const LIST_URL = `https://${LIST_HOST}/graphql`;
-/** The public client the carrier's own app signs in with; there is no client secret. */
-const CLIENT_ID = "cpc-nativeapp-2020";
 const REFRESH_MARGIN_MS = 60_000;
 /** Pages are 300 items; more than this many pages means pagination is not advancing. */
 const MAX_PAGES = 20;
@@ -68,7 +67,12 @@ export class CanadaPostAccount {
     const response = await this.http.request(new URL(TOKEN_URL), {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams({ ...form, client_id: CLIENT_ID, scope: "openid profile" }),
+      // The public client the carrier's own app signs in with; there is no client secret.
+      body: new URLSearchParams({
+        ...form,
+        client_id: carrierKey("canadapost", "client_id"),
+        scope: "openid profile",
+      }),
     });
     return { status: response.status, body: body(response) };
   }

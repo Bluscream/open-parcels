@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
@@ -9,6 +10,7 @@ import {
   type PluginHttp,
   asObject,
   isObject,
+  ruleStatus,
   objects,
   readObject,
   text,
@@ -53,21 +55,14 @@ const configSchema = z.object({
 });
 type Config = z.infer<typeof configSchema>;
 
-/** The journey is a four-step ladder; negative steps are exceptions. */
-const STEPS: Readonly<Record<number, ParcelStatus>> = {
-  1: "registered",
-  2: "in_transit",
-  3: "out_for_delivery",
-  4: "delivered",
-};
-
-const PLAUSIBLE = /^[A-Z0-9-]{6,40}$/;
+const PLAUSIBLE = carrierPattern("dragonfly");
 
 function stepStatus(step: unknown): ParcelStatus | null {
   if (typeof step !== "number" || !Number.isInteger(step)) {
     return null;
   }
-  return step < 0 ? "problem" : (STEPS[step] ?? null);
+  // A four-step ladder; negative steps are exceptions (the shared table reads both).
+  return ruleStatus(CARRIER_ID, `step:${String(step)}`);
 }
 
 async function lookUp(http: PluginHttp, country: Country, code: string): Promise<Json | null> {

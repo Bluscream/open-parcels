@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   type ParcelSnapshot,
@@ -18,7 +19,7 @@ import {
   type Json,
 } from "./shared.js";
 
-const BARCODE_PATTERN = /^[A-Z0-9-]{6,40}$/i;
+const BARCODE_PATTERN = carrierPattern("paack");
 const POSTCODE_PATTERN = /^[A-Z0-9 -]{3,10}$/i;
 
 export function isPlausible(barcode: string, postalCode: string): boolean {

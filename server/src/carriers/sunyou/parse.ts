@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   asObject,
   isoTime,
   snapshot,
@@ -11,41 +12,8 @@ import {
 
 export const CARRIER_ID = "sunyou";
 
-/** The numeric event `status`. A failed delivery for "return" is the reason, not the return leg. */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  "101": "registered",
-  "102": "registered",
-  "105": "in_transit",
-  "106": "in_transit",
-  "200": "in_transit",
-  "201": "in_transit",
-  "205": "in_transit",
-  "206": "in_transit",
-  "20622": "in_transit",
-  "2061": "in_transit",
-  "2062": "in_transit",
-  "2064": "in_transit",
-  "2067": "in_transit",
-  "2068": "out_for_delivery",
-  "207": "at_pickup_point",
-  "2071": "out_for_delivery",
-  "2072": "out_for_delivery",
-  "208": "problem",
-  "20801": "problem",
-  "20802": "problem",
-  "20803": "problem",
-  "20806": "problem",
-  "20810": "problem",
-  "20899": "problem",
-  "209": "delivered",
-  "20903": "delivered",
-  "20906": "delivered",
-  "210": "returning",
-  "220": "problem",
-};
-
 function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATUS_MAP[code] ?? null);
+  return ruleStatus(CARRIER_ID, code);
 }
 
 /**

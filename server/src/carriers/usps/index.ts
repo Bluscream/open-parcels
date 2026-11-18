@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  carrierPattern,
+  ruleStatus,
   defineCarrier,
   snapshot,
   type ParcelSnapshot,
@@ -17,42 +19,18 @@ const CARRIER_ID = "usps";
 type Status = NonNullable<ParcelSnapshot["status"]>;
 
 /**
- * Prefixes of the `statusCategory` / `status` / `eventType` texts, checked in order. Belongs in
- * the shared rules once a USPS table exists there.
+ * A `statusCategory` / `status` / `eventType` text, by the shared table's prefixes (checked in
+ * order).
  */
-const PREFIXES: readonly (readonly [string, Status])[] = [
-  ["pre-shipment", "registered"],
-  ["shipping label created", "registered"],
-  ["label created", "registered"],
-  ["accepted", "in_transit"],
-  ["usps in possession", "in_transit"],
-  ["in transit", "in_transit"],
-  ["arrived", "in_transit"],
-  ["departed", "in_transit"],
-  ["processed", "in_transit"],
-  ["preparing for delivery", "in_transit"],
-  ["out for delivery", "out_for_delivery"],
-  ["available for pickup", "at_pickup_point"],
-  ["ready for pickup", "at_pickup_point"],
-  ["held at post office", "at_pickup_point"],
-  ["delivered", "delivered"],
-  ["return to sender", "returning"],
-  ["returning", "returning"],
-  ["alert", "problem"],
-  ["delivery exception", "problem"],
-  ["undeliverable", "problem"],
-  ["forwarded", "problem"],
-];
-
 export function mapUsps(value: string | null): Status | null {
   if (value === null) {
     return null;
   }
   const folded = value.trim().toLowerCase();
-  return PREFIXES.find(([prefix]) => folded.startsWith(prefix))?.[1] ?? null;
+  return ruleStatus(CARRIER_ID, folded);
 }
 
-const BARCODE_PATTERN = /^[A-Z0-9]{10,40}$/i;
+const BARCODE_PATTERN = carrierPattern("usps");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;

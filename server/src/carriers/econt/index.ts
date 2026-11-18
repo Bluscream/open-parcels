@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
@@ -9,6 +10,7 @@ import {
   type SnapshotEvent,
   type PluginHttp,
   isObject,
+  ruleStatus,
   num,
   readObject,
   text,
@@ -17,9 +19,7 @@ import {
   localDay,
   newestFirst,
   expectStatus,
-  lookUpStatus,
   unknownReporter,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "econt";
@@ -28,34 +28,7 @@ const ZONE = "Europe/Sofia";
 /** Codes per request; Econt answers a batch in one go, but a small batch keeps a failure small. */
 const BATCH = 10;
 
-/** The headline status, in English where Econt translates it. */
-const STATUSES: StatusTable = {
-  Delivered: "delivered",
-  "Arrival-Departure from HUB": "in_transit",
-  "Анулирана преди изпращане": "problem",
-  "Awaiting delivery to Econt": "registered",
-  "In delivery office": "in_transit",
-};
-
-/** History entries name where the parcel went. */
-const DESTINATIONS: StatusTable = {
-  client: "delivered",
-  prepared: "registered",
-  canceled: "problem",
-  office: "in_transit",
-  courier_direction: "in_transit",
-  courier: "in_transit",
-  in_delivery_office: "in_transit",
-  arrival_departure_from_hub: "in_transit",
-  in_delivery_courier: "out_for_delivery",
-  return: "returning",
-  is_returning_to_sender: "returning",
-  returned_to_sender: "returning",
-  destroy: "problem",
-  failed_delivery: "problem",
-};
-
-const PLAUSIBLE = /^\d{6,20}$/;
+const PLAUSIBLE = carrierPattern("econt");
 
 /**
  * One batch lookup. Every answer must name a requested code exactly once; an error element
@@ -107,7 +80,7 @@ function history(raw: Json, report: (key: string) => void): SnapshotEvent[] {
     const type = text(event["destinationType"]);
     const rawStatus =
       text(event["destinationDetailsEn"]) ?? text(event["destinationDetails"]) ?? type;
-    const status = lookUpStatus(DESTINATIONS, type);
+    const status = type === null ? null : ruleStatus(CARRIER_ID, `destination:${type}`);
     if (type !== null && status === null) {
       report(`destination:${type}`);
     }
@@ -126,7 +99,9 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     epochStrings: true,
   });
   const delivered = deliveredAt !== null || rawStatus === "Delivered";
-  const mapped = delivered ? "delivered" : lookUpStatus(STATUSES, rawStatus);
+  // The headline status, in English where Econt translates it.
+  const headline = rawStatus === null ? null : ruleStatus(CARRIER_ID, `status:${rawStatus}`);
+  const mapped = delivered ? "delivered" : headline;
   if (rawStatus !== null && mapped === null) {
     report(rawStatus);
   }

@@ -1,61 +1,17 @@
 import {
-  loadRules,
-  mapStatus,
   asArray,
   asObject,
+  rulesStatus,
   text,
   type Json,
   type ParcelStatus,
-  type StatusTable,
 } from "../../plugin/api.js";
 import type { Moment } from "./time.js";
 
 /** The shared table knows Amazon's codes by this id; it is also the parcel's carrier. */
 export const AMAZON_ID = "amazon";
-
-/**
- * Tracker codes the shared Amazon table does not list yet, keyed on the code reduced to A-Z0-9.
- * Candidates for the rules repository.
- */
-export const TRACKER_STATUS: StatusTable = {
-  CREATIONCONFIRMED: "registered",
-  PICKUPDONE: "in_transit",
-  RECEIVED: "in_transit",
-  DEPARTED: "in_transit",
-  DELIVEREDTODOORSTEP: "delivered",
-};
-
-/**
- * Codes never seen on the wire, matched by wording. Return and failure words are tried before
- * DELIVERED, which many of them contain. A match here is a guess and is reported.
- */
-const INFERRED: readonly (readonly [readonly string[], ParcelStatus])[] = [
-  [["RETURN"], "returning"],
-  [
-    [
-      "NOTDELIVERED",
-      "UNDELIVER",
-      "ATTEMPT",
-      "FAIL",
-      "EXCEPTION",
-      "DAMAGE",
-      "LOST",
-      "CANCEL",
-      "REFUS",
-    ],
-    "problem",
-  ],
-  [
-    ["READYFORPICKUP", "READYFORCOLLECTION", "AWAITINGPICKUP", "AWAITINGCOLLECTION"],
-    "at_pickup_point",
-  ],
-  [["CUSTOMS"], "in_transit"],
-  [["OUTFORDELIVERY"], "out_for_delivery"],
-  [["DELIVERED"], "delivered"],
-];
-
-/** Summary words about the schedule, not the parcel's whereabouts: they decide nothing. */
-const SCHEDULE_FLAGS = ["DELAYED"];
+/** The shared table of wording guesses for codes the amazon table does not know. */
+const GUESSES_ID = "amazon_shipping";
 
 /** A Departed scan this soon after OutForDelivery at the same place is the van leaving. */
 const VAN_LEAVING_MS = 60 * 60 * 1000;
@@ -69,22 +25,25 @@ const snake = (code: string): string =>
     .replace(/[^A-Za-z0-9]+/g, "_")
     .toUpperCase();
 
-/** Maps one code; `report` hears codes that only matched by wording or did not match at all. */
+/**
+ * Maps one code; `report` hears codes that only matched by wording or did not match at all.
+ * Wording guesses are matched against the code reduced to A-Z0-9; schedule words such as
+ * DELAYED map to unknown there and decide nothing.
+ */
 export function classify(code: string | null, report: (code: string) => void): ParcelStatus | null {
   if (code === null || key(code) === "") {
     return null;
   }
-  const shared = mapStatus(loadRules(), AMAZON_ID, { code: snake(code) });
-  const exact = shared?.status ?? TRACKER_STATUS[key(code)];
-  if (exact !== undefined) {
-    return exact;
+  const exact = rulesStatus(AMAZON_ID, { code: snake(code) });
+  if (exact !== null) {
+    return exact.status;
   }
-  if (SCHEDULE_FLAGS.some((flag) => key(code).includes(flag))) {
+  const guess = rulesStatus(GUESSES_ID, { text: key(code) });
+  if (guess?.status === "unknown") {
     return null;
   }
   report(code);
-  const inferred = INFERRED.find(([words]) => words.some((word) => key(code).includes(word)));
-  return inferred?.[1] ?? null;
+  return guess?.status ?? null;
 }
 
 export interface TrackerEvent {

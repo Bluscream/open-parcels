@@ -1,6 +1,7 @@
 import {
   isoTime as kitIsoTime,
   num as kitNum,
+  ruleStatus,
   text as kitText,
   type ParcelStatus,
 } from "../../plugin/api.js";
@@ -37,36 +38,11 @@ export function normalizeKey(key: unknown): string | null {
 }
 
 /**
- * Local map until the shared rules carry an Austrian Post table: the carrier's complete tracking
- * state vocabulary. `DELIVERY_INTERUPTED` is the carrier's own spelling. `UNKNOWN` is left out on
- * purpose: seeing it means the vocabulary moved, so it should be reported.
+ * A tracking state from the shared table (the carrier's complete vocabulary). `UNKNOWN` is left
+ * out on purpose: seeing it means the vocabulary moved, so it should be reported.
  */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  PENDING_INFORMATION: "registered",
-  PARCEL_STAMP: "registered",
-  AVISO: "registered",
-  ALLES_POST: "registered",
-  DELIVERY_HAND_OVER: "in_transit",
-  IN_DISTRIBUTION: "in_transit",
-  CUSTOMS_CLEARANCE: "in_transit",
-  DELIVERY_IN_CUSTOMS: "in_transit",
-  IN_DELIVERY: "out_for_delivery",
-  NOTIFIED: "at_pickup_point",
-  READY_FOR_PICK_UP: "at_pickup_point",
-  READY_FOR_PICK_UP_STATION: "at_pickup_point",
-  READY_FOR_PICK_UP_POINT: "at_pickup_point",
-  READY_FOR_PICK_UP_BOX: "at_pickup_point",
-  DELIVERED: "delivered",
-  // Left at the agreed safe place; the carrier itself counts it as delivered.
-  DELIVERY_PARKED: "delivered",
-  DELIVERY_IN_RETURN: "returning",
-  DELIVERY_DELAYED: "problem",
-  DELIVERY_INTERUPTED: "problem",
-  NOT_REACHABLE: "problem",
-};
-
 export function mapStatus(key: string | null): ParcelStatus | null {
-  return key === null ? null : (STATUS_MAP[key] ?? null);
+  return ruleStatus(CARRIER_ID, key);
 }
 
 export function publicUrl(barcode: string): string {

@@ -1,4 +1,11 @@
-import { isTimeZone, parseArrival, wallTimeAt, zonedIso, type Rules } from "../../plugin/api.js";
+import {
+  isTimeZone,
+  parseArrival,
+  pastDayOffset,
+  wallTimeAt,
+  zonedIso,
+  type Rules,
+} from "../../plugin/api.js";
 import { foldText } from "./text.js";
 
 /** A calendar day in the page's zone. */
@@ -7,18 +14,6 @@ export interface Day {
   readonly month: number;
   readonly day: number;
 }
-
-/**
- * Words for "today" and "yesterday" on their own, as timeline headers and delivered lines use
- * them. The rules' locale tables only read relative days inside arrival phrases, so this minimal
- * en/de list stays here until the tables cover standalone past days.
- */
-const RELATIVE_PAST: Readonly<Record<string, number>> = {
-  today: 0,
-  heute: 0,
-  yesterday: -1,
-  gestern: -1,
-};
 
 export { isTimeZone };
 
@@ -72,7 +67,8 @@ export function pastDay(rules: Rules, text: string, now: Date, timeZone: string)
   const reference = today(now, timeZone);
   const words = foldText(text).split(/[\s,]+/);
   for (const word of words) {
-    const offset = RELATIVE_PAST[word];
+    // "Today", "gestern": the locales' standalone past days.
+    const offset = pastDayOffset(rules, word);
     if (offset !== undefined) {
       return shift(reference, offset);
     }

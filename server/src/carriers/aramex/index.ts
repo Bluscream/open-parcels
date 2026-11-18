@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   asArray,
   asObject,
@@ -8,6 +9,7 @@ import {
   isoTime,
   newestFirst,
   readObject,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -17,38 +19,16 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "aramex";
-const PLAUSIBLE = /^[A-Z0-9]{6,40}$/i;
+const PLAUSIBLE = carrierPattern("aramex");
 
 const COUNTRIES = {
   AU: { host: "www.aramex.com.au", zone: "Australia/Sydney" },
   NZ: { host: "www.aramex.co.nz", zone: "Pacific/Auckland" },
 } as const;
 type Country = keyof typeof COUNTRIES;
-
-/** Aramex AU/NZ scan codes. Better to map too little than wrongly; the rest are reported. */
-export const ARAMEX_STATUS: StatusTable = {
-  PP8: "registered",
-  PPP: "in_transit",
-  PP1: "in_transit",
-  PCY: "in_transit",
-  "078": "in_transit",
-  RIA: "in_transit",
-  B72: "in_transit",
-  S2M: "in_transit",
-  SYD: "in_transit",
-  TOO: "in_transit",
-  TRN: "in_transit",
-  ONB: "out_for_delivery",
-  R36: "delivered",
-  YES: "delivered",
-  U03: "problem",
-  UND: "problem",
-  RTS: "returning",
-};
 
 /** Display text without control characters or runs of whitespace, capped in length. */
 function clean(value: unknown): string | null {
@@ -113,19 +93,16 @@ export function aramexSnapshot(
     scans(result, zone).map((scan) => ({
       at: scan.at,
       rawStatus: scan.label ?? scan.code ?? "",
-      status: scan.code === null ? null : (ARAMEX_STATUS[scan.code] ?? null),
+      status: ruleStatus(CARRIER_ID, scan.code),
       location: null,
     })),
   );
   const codes = scans(result, zone).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   for (const code of new Set(codes.map((scan) => scan.code))) {
-    if (code !== null && ARAMEX_STATUS[code] === undefined) {
-      report(code);
-    }
+    ruleStatus(CARRIER_ID, code, report);
   }
   const newest = codes[0];
-  const newestCode = newest?.code ?? null;
-  const status = newestCode === null ? null : (ARAMEX_STATUS[newestCode] ?? null);
+  const status = ruleStatus(CARRIER_ID, newest?.code ?? null);
   const delivered = status === "delivered";
   const window = delivered ? { from: null, to: null } : etaWindow(result["DeliveryETADate"], zone);
   const label = text(result["LabelNumber"]) ?? barcode;

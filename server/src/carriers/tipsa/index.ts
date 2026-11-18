@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
+  ruleStatus,
   CaptchaError,
   defineCarrier,
   snapshot,
@@ -9,7 +10,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
-import { expectStatus } from "../../plugin/api.js";
+import { carrierPattern, expectStatus } from "../../plugin/api.js";
 import { foldWording } from "./page.js";
 import { refreshTarget } from "./html.js";
 import { madridTime, readPage, type TipsaPage } from "./page.js";
@@ -23,39 +24,18 @@ type Status = NonNullable<ParcelSnapshot["status"]>;
 
 /**
  * Status wordings, folded (upper case, no accents). A missort is in transit by decision: TIPSA
- * draws it as a normal step and such parcels go on to be delivered. Belongs in the shared rules
- * once a TIPSA table exists there.
+ * draws it as a normal step and such parcels go on to be delivered. From the shared table, which
+ * also matches wordings followed by an agency, hub, point or reason.
  */
-const WORDINGS: Readonly<Record<string, Status>> = {
-  "PENDIENTE DE ENTREGAR A TIPSA": "registered",
-  DOCUMENTADO: "registered",
-  TRANSITO: "in_transit",
-  "EN CAMINO": "in_transit",
-  "PENDIENTE DE LLEGADA": "in_transit",
-  "MAL CLASIFICADO": "in_transit",
-  "LEIDO EN DESTINO": "in_transit",
-  AUSENTE: "problem",
-  REPARTO: "out_for_delivery",
-  "EN REPARTO": "out_for_delivery",
-  ENTREGADO: "delivered",
-};
-/** Wordings followed by an agency, hub, point or reason. */
-const PREFIXES: readonly (readonly [string, Status])[] = [
-  ["LECTURA EN AGENCIA DESTINO", "in_transit"],
-  ["LECTURA EN HUB", "in_transit"],
-  ["DISPONIBLE", "at_pickup_point"],
-  ["INCIDENCIA", "problem"],
-];
-
 export function mapWording(value: string | null): Status | null {
   if (value === null) {
     return null;
   }
   const folded = foldWording(value);
-  return WORDINGS[folded] ?? PREFIXES.find(([prefix]) => folded.startsWith(prefix))?.[1] ?? null;
+  return ruleStatus(CARRIER_ID, folded);
 }
 
-const BARCODE_PATTERN = /^[A-Z0-9]{10,30}$/i;
+const BARCODE_PATTERN = carrierPattern("tipsa");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHORT_DATE = /^\d{2}\/\d{2}\/\d{2}$/;
 /** Markers unique to a bot-check interstitial (normal pages carry a harmless script too). */

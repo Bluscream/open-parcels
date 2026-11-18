@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   expectStatus,
   isObject,
@@ -24,7 +25,7 @@ const TRANSPORT_B_LANG: Readonly<Record<string, string>> = {
   ES: "es",
   NL: "nl",
 };
-const BARCODE_PATTERN = /^GF([A-Z]{2})[A-Z0-9]{4,40}$/;
+const BARCODE_PATTERN = carrierPattern("gofo");
 
 export function countryOf(barcode: string): string | null {
   return BARCODE_PATTERN.exec(barcode)?.[1] ?? null;

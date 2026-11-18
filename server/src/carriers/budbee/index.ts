@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   defineCarrier,
   snapshot,
@@ -11,48 +12,18 @@ import {
   isObject,
   isoTime,
   joinParts,
-  lookUpStatus,
   requestJson,
+  ruleStatus,
   unknownReporter,
   text,
   trackEach,
   type Json,
-  type ParcelStatus,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "budbee";
 const HOST = "tracking.budbee.com";
 const API = `https://${HOST}/api`;
-const PLAUSIBLE = /^[A-Z0-9-]{6,40}$/i;
-
-/** Door deliveries. "ReturnedToTerminal" is arrival at a terminal, forward progress. */
-const DELIVERY_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  NotStarted: "registered",
-  OnRouteCollection: "in_transit",
-  Collected: "in_transit",
-  CollectedShippingLabel: "in_transit",
-  CrossDocked: "in_transit",
-  OnRouteDelivery: "out_for_delivery",
-  Delivered: "delivered",
-  Miss: "problem",
-  Backordered: "problem",
-  ReturnedToTerminal: "in_transit",
-  ReturnedToMerchant: "returning",
-};
-
-/** Locker orders: "Delivered" means waiting in the locker; "PickedUp" is the hand-over. */
-const BOX_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  NotStarted: "registered",
-  Pending: "registered",
-  Collected: "in_transit",
-  CollectedShippingLabel: "in_transit",
-  DroppedOff: "in_transit",
-  Delivered: "at_pickup_point",
-  PickedUp: "delivered",
-  Undelivered: "problem",
-  ReturnedToTerminal: "in_transit",
-  ReturnedToMerchant: "returning",
-};
+const PLAUSIBLE = carrierPattern("budbee");
 
 const OUTGOING_TYPES = new Set(["RETURN", "ON_DEMAND_PICKUP"]);
 
@@ -165,8 +136,10 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
   const type = orderType(raw);
   const statusBlock = asObject(raw["status"]);
   const rawStatus = type === "DELIVERY" ? text(statusBlock["state"]) : text(raw["status"]);
-  const status = lookUpStatus(type === "BOX" ? BOX_STATUS : DELIVERY_STATUS, rawStatus, (c) => {
-    report(`${type}:${c}`);
+  // Locker orders read the same words differently; the shared table keeps them apart.
+  const table = type === "BOX" ? "box" : "delivery";
+  const status = ruleStatus(CARRIER_ID, rawStatus === null ? null : `${table}:${rawStatus}`, () => {
+    report(`${type}:${rawStatus ?? ""}`);
   });
   const delivered = status === "delivered";
   let plannedFrom: string | null = null;

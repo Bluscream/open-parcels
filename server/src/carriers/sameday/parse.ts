@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   asArray,
   asObject,
   isoTime,
@@ -20,42 +21,10 @@ const TIME = { naive: "runtime", epoch: "ms" } as const;
 
 /**
  * The numeric `statusStateId` of an AWB event. Returns, cancellations and failures map to the
- * nearest canonical value; postponements and redirects are still in transit.
+ * nearest canonical value; postponements and redirects are still in transit (shared table).
  */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  "1": "registered",
-  "2": "in_transit",
-  "3": "in_transit",
-  "4": "out_for_delivery",
-  "5": "delivered",
-  "6": "problem",
-  "7": "in_transit",
-  "8": "returning",
-  "9": "in_transit",
-  "10": "problem",
-  "11": "problem",
-  "12": "in_transit",
-  "13": "returning",
-  "14": "returning",
-  "15": "returning",
-  "16": "problem",
-  "17": "in_transit",
-  "18": "at_pickup_point",
-  "19": "in_transit",
-  "20": "at_pickup_point",
-  "21": "in_transit",
-  "22": "problem",
-  "23": "problem",
-  "24": "in_transit",
-  "25": "in_transit",
-  "26": "in_transit",
-  "27": "in_transit",
-  "29": "problem",
-  "30": "problem",
-};
-
 export function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATUS_MAP[code] ?? null);
+  return ruleStatus(CARRIER_ID, code);
 }
 
 const PUBLIC_PAGES: Readonly<Record<Country, string>> = {

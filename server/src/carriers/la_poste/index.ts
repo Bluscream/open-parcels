@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  carrierPattern,
+  carrierKey,
   defineCarrier,
   expectStatus,
   isObject,
@@ -14,7 +16,7 @@ import {
 import { CARRIER_ID, toSnapshot } from "./parse.js";
 
 const API_HOST = "www.laposte.fr";
-const BARCODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
+const BARCODE_PATTERN = carrierPattern("la_poste");
 
 /**
  * One keyless endpoint serves La Poste, Colissimo and Chronopost. It answers a one-element list
@@ -76,7 +78,7 @@ export const laposte = defineCarrier<Config, Secret>({
       "*": { intervalMs: 10_000, burst: 1 },
     },
     userAgent: {
-      value: "PostmanRuntime/7.49.1",
+      value: carrierKey(CARRIER_ID, "user_agent"),
       reason: "The tracking endpoint turns away unrecognised client User-Agents.",
     },
   },

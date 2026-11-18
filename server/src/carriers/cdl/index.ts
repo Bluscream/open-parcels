@@ -1,12 +1,13 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   defineCarrier,
   isObject,
-  lookUpStatus,
   parseLocal,
   readJson,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -15,7 +16,6 @@ import {
   unknownReporter,
   type Json,
   type ParcelSnapshot,
-  type ParcelStatus,
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
@@ -26,23 +26,11 @@ const HOST = "apps.cdldelivers.com";
 /** Scan times carry no offset; Eastern time is the service's home zone, not proven by the payload. */
 const ZONE = "America/New_York";
 /** The lookup also matches shippers' own references; only these shapes are ever sent. */
-const PLAUSIBLE = /^(?:CDL\d{11}|\d{9}-\d)$/;
+const PLAUSIBLE = carrierPattern("cdl");
 /** Responses inline proof-of-delivery photos, so allow a bit more than usual. */
 const MAX_BYTES = 4 * 1024 * 1024;
 
-/** Keyed on the case-folded scan wording; the service sends English text and no code. */
-const WORDING_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "label has been created": "registered",
-  "awaiting package from shipper": "registered",
-  "cdl origin scan": "in_transit",
-  "cdl transfer scan": "in_transit",
-  "package scanned at local delivery center": "in_transit",
-  "package out for delivery": "out_for_delivery",
-  "package scanned at delivery": "out_for_delivery",
-  "delivery complete": "delivered",
-  "delayed- wrong address": "problem",
-  "order under investigation": "problem",
-};
+/** The scan wording that completes a delivery; it decides the order within a minute. */
 const COMPLETION = "delivery complete";
 
 /** Upper-cases and gives a ten-digit order number its hyphen back. */
@@ -107,8 +95,9 @@ function scans(raw: Json): Scan[] {
 
 function toSnapshot(raw: Json, code: string, report: (c: string) => void): ParcelSnapshot {
   const ordered = scans(raw);
+  // The service sends English scan wording and no code; the shared table reads it case-folded.
   const map = (wording: string, rep?: (c: string) => void) =>
-    lookUpStatus(WORDING_STATUS, wording.toLowerCase(), rep);
+    ruleStatus(CARRIER_ID, wording.toLowerCase(), rep);
   const completion = ordered.findLast((scan) => scan.wording.toLowerCase() === COMPLETION);
   const newest = ordered.at(-1);
   if (newest !== undefined && completion === undefined) {

@@ -3,6 +3,7 @@ import {
   isoTime,
   num,
   objects,
+  ruleStatus,
   snapshot,
   text,
   type Json,
@@ -16,28 +17,12 @@ const STRINGS = { numbers: false } as const;
 const DECIMAL = { decimalComma: true } as const;
 const INSTANT = { naive: "utc", epoch: "ms" } as const;
 
-/*
- * PostNord's machine status, shared by shipments and their events. The shared rules have no
- * PostNord table yet; this table and the two event codes below belong there.
- */
-const STATUSES: Readonly<Record<string, ParcelStatus>> = {
-  CREATED: "registered",
-  INFORMED: "registered",
-  EN_ROUTE: "in_transit",
-  AVAILABLE_FOR_DELIVERY: "at_pickup_point",
-  DELIVERY: "out_for_delivery",
-  DELIVERED: "delivered",
-  DELIVERY_IMPOSSIBLE: "problem",
-  EXPECTED_DELAY: "problem",
-  RETURNED: "returning",
-  STOPPED: "problem",
-  DELAYED: "problem",
-  DELIVERY_REFUSED: "returning",
-};
 /** "Delivery in progress": the shipment still says EN_ROUTE. */
 const OUT_FOR_DELIVERY_EVENT = "113";
-/** Extended retention at the pickup point. */
-const RETENTION_EVENTS = new Set(["45", "z2F"]);
+
+/** The machine status ("status:") shared by shipments and their events, from the shared table. */
+const statusOf = (status: string | null): ParcelStatus | null =>
+  status === null ? null : ruleStatus(CARRIER_ID, `status:${status}`);
 /** Events with status OTHER say nothing new and inherit the stage before them. */
 const OTHER = "OTHER";
 
@@ -61,14 +46,10 @@ function eventCode(event: Json): string {
 }
 
 function eventStatus(event: Json): ParcelStatus | null {
+  // Event codes that say more than the status (delivery in progress, extended retention).
   const code = eventCode(event);
-  if (code === OUT_FOR_DELIVERY_EVENT) {
-    return "out_for_delivery";
-  }
-  if (RETENTION_EVENTS.has(code)) {
-    return "at_pickup_point";
-  }
-  return STATUSES[text(event["status"], STRINGS) ?? ""] ?? null;
+  const byCode = code === "" ? null : ruleStatus(CARRIER_ID, `event:${code}`);
+  return byCode ?? statusOf(text(event["status"], STRINGS));
 }
 
 /** History newest first; OTHER events carry the previous stage forward. */
@@ -136,7 +117,7 @@ export function shipmentSnapshot(
 ): ParcelSnapshot {
   const ordered = events(raw);
   const statusCode = text(raw["status"], STRINGS);
-  let status = statusCode === null ? null : (STATUSES[statusCode] ?? null);
+  let status = statusOf(statusCode);
   if (statusCode !== null && status === null) {
     report(statusCode);
   }

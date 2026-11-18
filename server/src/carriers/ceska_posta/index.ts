@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   dayWindow,
@@ -31,7 +32,7 @@ import {
 const CARRIER_ID = "ceska_posta";
 const HISTORY_HOST = "b2c.cpost.cz";
 const PACKAGE_HOST = "www.balikovna.cz";
-const PLAUSIBLE = /^[A-Z0-9]{8,30}$/i;
+const PLAUSIBLE = carrierPattern("ceska_posta");
 /** Codes per history request, as the endpoint expects. */
 const BATCH_SIZE = 10;
 const NOT_FOUND = new Set(["-3", "-4"]);

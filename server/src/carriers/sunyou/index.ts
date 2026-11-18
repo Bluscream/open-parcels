@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
   TransientError,
@@ -12,7 +13,7 @@ import {
 import { CARRIER_ID, orderSnapshot } from "./parse.js";
 
 const HOST = "www.sypost.net";
-const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
+const CODE_PATTERN = carrierPattern("sunyou");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;

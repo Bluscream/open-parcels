@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   UnexpectedResponseError,
   type ParcelSnapshot,
@@ -6,6 +7,7 @@ import {
   expectStatus,
   isObject,
   readObject,
+  rulesStatus,
   text,
   zonedIso,
   type Json,
@@ -17,21 +19,11 @@ export const CARRIER_ID = "magyar_posta";
 export const TRACKING_HOST = "posta.hu";
 const TIME_ZONE = "Europe/Budapest";
 
-/** Scan categories ("bands") the carrier numbers 1 to 5. */
-const CATEGORY_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "1": "registered",
-  "2": "in_transit",
-  "3": "in_transit",
-  "4": "out_for_delivery",
-  "5": "delivered",
-};
+/** Scan categories ("bands") the carrier numbers 1 to 5; the shared table maps them. */
 const DELIVERY_CATEGORY = "4";
 const DELIVERED_CATEGORY = "5";
-/** Band 4 detail codes: waiting at a counter, or on the courier's round. */
-const PICKUP_DETAILS = new Set(["KLHKT"]);
-const COURIER_DETAILS = new Set(["IKRKI", "KIJKO"]);
 
-export const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+export const BARCODE_PATTERN = carrierPattern("magyar_posta");
 
 export type Report = (kind: string, key: string) => void;
 
@@ -84,22 +76,20 @@ function mapRow(row: Json, report: Report): ParcelStatus | null {
   if (category === null) {
     return null;
   }
-  if (category === DELIVERY_CATEGORY) {
-    const detail = text(row["tranzakcioAzon"]) ?? "";
-    if (PICKUP_DETAILS.has(detail)) {
-      return "at_pickup_point";
-    }
-    if (!COURIER_DETAILS.has(detail)) {
-      // Defaults to the courier reading, but an unknown hold must get a mapping soon.
-      report("delivery_detail", detail === "" ? "(empty)" : detail);
-    }
+  // The band, and in the delivery band the detail code (a counter or the courier's round).
+  const detail = text(row["tranzakcioAzon"]) ?? "";
+  const mapped = rulesStatus(CARRIER_ID, {
+    fields: { category, ...(detail === "" ? {} : { detail }) },
+  });
+  if (category === DELIVERY_CATEGORY && mapped?.confirmed === false) {
+    // Defaults to the courier reading, but an unknown hold must get a mapping soon.
+    report("delivery_detail", detail === "" ? "(empty)" : detail);
   }
-  const status = CATEGORY_STATUS[category];
-  if (status === undefined) {
+  if (mapped === null) {
     report("category", category);
     return null;
   }
-  return status;
+  return mapped.status;
 }
 
 /** The epoch milliseconds are unambiguous; the local date and time pair is the fallback. */

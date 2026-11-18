@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  carrierKey,
   isObject,
   num,
   SignInRejectedError,
@@ -20,9 +21,9 @@ const DECIMAL = { decimalComma: true } as const;
  * The password never reaches us, and no captcha is ever touched here.
  */
 export const LOGIN_HOST = "login.postnl.nl";
-const TENANT = "101112a0-4a0f-4bbb-8176-2f1b2d370d7c";
-const BASE = `https://${LOGIN_HOST}/${TENANT}/login`;
-const CLIENT_ID = "bd9f1610-b56d-4e05-a09b-f696f05ddade";
+/** The login page's tenant and public client (PKCE, no secret), from the shared rules. */
+const base = (): string => `https://${LOGIN_HOST}/${carrierKey("postnl", "tenant_id")}/login`;
+const clientId = (): string => carrierKey("postnl", "client_id");
 const REDIRECT_URI = "https://www.postnl.nl/";
 const SCOPE = "openid poa-profiles-api offline_access";
 const DEFAULT_LIFETIME_S = 300;
@@ -33,9 +34,9 @@ const signInStateSchema = z.object({ verifier: z.string(), state: z.string() });
 export function startSignIn(): { url: string; state: unknown } {
   const verifier = randomBytes(48).toString("base64url");
   const state = randomBytes(24).toString("base64url");
-  const url = new URL(`${BASE}/authorize`);
+  const url = new URL(`${base()}/authorize`);
   url.search = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: clientId(),
     response_type: "code",
     scope: SCOPE,
     redirect_uri: REDIRECT_URI,
@@ -55,11 +56,11 @@ interface Tokens {
 
 /** One token request. A refused grant is a SignInRejectedError; anything else is transient. */
 async function postToken(http: PluginHttp, form: Record<string, string>): Promise<Tokens> {
-  const response = await http.request(new URL(`${BASE}/token`), {
+  const response = await http.request(new URL(`${base()}/token`), {
     method: "POST",
     redirect: "manual",
     headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: CLIENT_ID, ...form }),
+    body: new URLSearchParams({ client_id: clientId(), ...form }),
   });
   let payload: unknown;
   try {

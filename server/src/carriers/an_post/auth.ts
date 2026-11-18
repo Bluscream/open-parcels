@@ -1,6 +1,7 @@
 import {
   type PluginHttp,
   asObject,
+  carrierKey,
   readObject,
   SignInRejectedError,
   text,
@@ -11,7 +12,7 @@ import {
 
 export const IDENTITY_HOST = "identity.anpost.com";
 /** The public site key An Post's own web pages use for their identity service. Not a secret. */
-const SITE_KEY = "4_-hnpKBjR2UeyQkTv_-11Pw";
+const siteKey = (): string => carrierKey("an_post", "site_key");
 const OK = 0;
 const WRONG_CREDENTIALS = 403042;
 const SESSION_EXPIRED = 403007;
@@ -32,7 +33,7 @@ async function call(http: PluginHttp, method: string, form: Record<string, strin
   const response = await http.request(new URL(`https://${IDENTITY_HOST}/${method}`), {
     method: "POST",
     headers: { accept: "application/json" },
-    body: new URLSearchParams({ apiKey: SITE_KEY, format: "json", ...form }),
+    body: new URLSearchParams({ apiKey: siteKey(), format: "json", ...form }),
   });
   if (response.status >= 500) {
     throw new TransientError(`An Post's sign-in service answered HTTP ${response.status}.`);
@@ -43,7 +44,7 @@ async function call(http: PluginHttp, method: string, form: Record<string, strin
 /** A browser id the service hands out first; sign-in works without one, so it is best effort. */
 async function browserId(http: PluginHttp): Promise<string> {
   const url = new URL(`https://${IDENTITY_HOST}/accounts.webSdkBootstrap`);
-  url.searchParams.set("apiKey", SITE_KEY);
+  url.searchParams.set("apiKey", siteKey());
   url.searchParams.set("format", "json");
   const response = await http.request(url, { headers: { accept: "application/json" } });
   for (const cookie of response.headers.getSetCookie()) {

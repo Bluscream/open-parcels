@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   CookieJar,
   isObject,
   TransientError,
@@ -10,7 +11,7 @@ import {
 import { API_URL, PAGE_URL } from "./shared.js";
 
 /** Shipment numbers are digits; anything else is never sent. */
-const BARCODE_PATTERN = /^[0-9]{6,20}$/;
+const BARCODE_PATTERN = carrierPattern("mondial_relay");
 const POSTCODE_PATTERN = /^[A-Z0-9 -]{3,10}$/i;
 const TOKEN_PATTERN = /id="tracking"[^>]*\btoken="([^"]+:[^"]+)"/;
 

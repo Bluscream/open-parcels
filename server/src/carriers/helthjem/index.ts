@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
+  ruleStatus,
   expectStatus,
   isObject,
   isoTime as kitIsoTime,
@@ -24,7 +26,7 @@ import {
 const CARRIER_ID = "helthjem";
 const API_HOST = "services.helthjem.no";
 const SITE = "https://helthjem.no";
-const BARCODE_PATTERN = /^[A-Z0-9-]{6,40}$/i;
+const BARCODE_PATTERN = carrierPattern("helthjem");
 
 /** The tracking type returns null for an unknown reference, a clean not-found signal. */
 const QUERY = `query ParcelTracking($ref: String!) {
@@ -38,31 +40,16 @@ const QUERY = `query ParcelTracking($ref: String!) {
   }
 }`;
 
-/**
- * One enum serves the parcel and its events. Provisional: the vocabulary could not be listed, so
- * unknown values are reported rather than guessed. Candidates for the shared rules package.
- */
-const STATUS: Readonly<Record<string, ParcelStatus>> = {
-  REGISTERED: "registered",
-  PRE_TRANSIT: "registered",
-  BOOKED: "registered",
-  IN_TRANSIT: "in_transit",
-  COLLECTED: "in_transit",
-  AT_TERMINAL: "in_transit",
-  OUT_FOR_DELIVERY: "out_for_delivery",
-  DELIVERING: "out_for_delivery",
-  READY_FOR_PICKUP: "at_pickup_point",
-  DELIVERED: "delivered",
-  RETURNED: "returning",
-  DEVIATION: "problem",
-};
-
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 const isoTime = (value: unknown): string | null =>
   kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
+/**
+ * One enum serves the parcel and its events (the shared table). Provisional: the vocabulary
+ * could not be listed, so unknown values are reported rather than guessed.
+ */
 function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATUS[code] ?? null);
+  return ruleStatus(CARRIER_ID, code);
 }
 
 async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {

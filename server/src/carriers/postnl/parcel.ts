@@ -10,7 +10,7 @@ import {
   type ParcelStatus,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { META_CODES, observationStatus, phaseStatus } from "./status.js";
+import { isMetaCode, observationStatus, phaseStatus } from "./status.js";
 
 export const CARRIER_ID = "postnl";
 const STRINGS = { numbers: false } as const;
@@ -47,7 +47,7 @@ function walk(observations: readonly Json[]): Walked {
       stage = status;
       recognised = true;
       deliveredAt = status === "delivered" ? at : deliveredAt;
-    } else if (META_CODES.has(code)) {
+    } else if (isMetaCode(code)) {
       status = stage;
       recognised = true;
     } else if (code !== "") {

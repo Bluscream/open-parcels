@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   TransientError,
   type ParcelSnapshot,
@@ -8,7 +9,7 @@ import {
 import { CARRIER_ID, pageSnapshot } from "./parse.js";
 
 const HOST = "straightship.com";
-const CODE_PATTERN = /^[A-Z0-9]{6,30}$/i;
+const CODE_PATTERN = carrierPattern("straightship");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;

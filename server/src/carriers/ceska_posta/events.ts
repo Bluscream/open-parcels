@@ -4,6 +4,7 @@ import {
   isObject,
   newestFirst,
   parseLocal,
+  ruleStatus,
   text,
   type Json,
   type ParcelStatus,
@@ -11,30 +12,24 @@ import {
 } from "../../plugin/api.js";
 
 export const ZONE = "Europe/Prague";
+const CARRIER_ID = "ceska_posta";
 
 /**
- * A rank ladder, not a flat map: the status is the highest rank reached, because pickup-point
+ * A ladder, not the newest event: the status is the furthest one reached, because pickup-point
  * designation records can follow the final event.
  */
-const STATUS_RANK: Readonly<Record<string, readonly [number, ParcelStatus]>> = {
-  "-L": [10, "registered"],
-  "-M": [10, "registered"],
-  "21": [20, "in_transit"],
-  "-F": [20, "in_transit"],
-  "-I": [20, "in_transit"],
-  "-B": [30, "in_transit"],
-  "-K": [30, "in_transit"],
-  "5K": [30, "in_transit"],
-  "51": [40, "in_transit"],
-  "53": [50, "out_for_delivery"],
-  P2: [60, "at_pickup_point"],
-  "82": [60, "at_pickup_point"],
-  "91": [90, "delivered"],
-};
-
-/** Notification and designation records are not parcel states. */
-const NOT_STATES = new Set(["42", "43", "BG1", "BG4", "BG5"]);
+const LADDER: readonly ParcelStatus[] = [
+  "registered",
+  "in_transit",
+  "out_for_delivery",
+  "at_pickup_point",
+  "delivered",
+];
+/** Answers that mean "no such parcel", not events. */
 const NOT_FOUND = new Set(["-3", "-4"]);
+
+/** The shared table maps notification and designation records to `unknown`: not states. */
+const notAState = (id: string): boolean => ruleStatus(CARRIER_ID, id) === "unknown";
 
 export interface CpEvent {
   readonly id: string;
@@ -43,8 +38,11 @@ export interface CpEvent {
   readonly text: string | null;
 }
 
+/** The state's status and its place on the ladder; undefined for ids that do not map. */
 function rank(id: string): readonly [number, ParcelStatus] | undefined {
-  return Object.hasOwn(STATUS_RANK, id) ? STATUS_RANK[id] : undefined;
+  const status = ruleStatus(CARRIER_ID, id);
+  const place = status === null ? -1 : LADDER.indexOf(status);
+  return status === null || place < 0 ? undefined : [place, status];
 }
 
 /**
@@ -83,7 +81,7 @@ export function deriveStatus(
 ): ParcelStatus | null {
   let best: readonly [number, ParcelStatus] | null = null;
   for (const event of events) {
-    if (event.id === "" || NOT_STATES.has(event.id) || NOT_FOUND.has(event.id)) {
+    if (event.id === "" || notAState(event.id) || NOT_FOUND.has(event.id)) {
       continue;
     }
     const ranked = rank(event.id);
@@ -97,13 +95,13 @@ export function deriveStatus(
 }
 
 export function lastStatusText(events: readonly CpEvent[]): string | null {
-  return events.filter((e) => !NOT_STATES.has(e.id) && e.text !== null).at(-1)?.text ?? null;
+  return events.filter((e) => !notAState(e.id) && e.text !== null).at(-1)?.text ?? null;
 }
 
 export function buildHistory(events: readonly CpEvent[]): SnapshotEvent[] {
   const history: SnapshotEvent[] = [];
   for (const event of events) {
-    if (event.id === "" || NOT_STATES.has(event.id) || event.date === null) {
+    if (event.id === "" || notAState(event.id) || event.date === null) {
       continue;
     }
     const at = parseLocal(`${event.date.slice(0, 10)}T${event.time ?? "00:00"}`, ZONE);

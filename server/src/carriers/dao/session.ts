@@ -8,6 +8,7 @@ import {
   type PluginContext,
   type PluginHttp,
   asObject,
+  carrierKey,
   num,
   parseJsonBody,
   text,
@@ -17,10 +18,11 @@ export const AUTH_HOST = "auth.dao.as";
 export const API_HOST = "apiv2.dao.as";
 const REALM = `https://${AUTH_HOST}/realms/consumers/protocol/openid-connect`;
 /**
- * DAO's app signs in as a public client: no secret, PKCE only, and a redirect to the app's own
- * scheme. The user signs in in their own browser and pastes that final address back.
+ * DAO's app signs in as a public client (its id is in the shared rules): no secret, PKCE only,
+ * and a redirect to the app's own scheme. The user signs in in their own browser and pastes
+ * that final address back.
  */
-const CLIENT_ID = "dao-app";
+const clientId = (): string => carrierKey("dao", "client_id");
 const REDIRECT_URI = "daoapp://auth-callback";
 const DEFAULT_LIFETIME_S = 300;
 const MARGIN_MS = 120_000;
@@ -37,7 +39,7 @@ export function startSignIn(): { url: string; state: unknown } {
   const state = base64Url(randomBytes(24));
   const url = new URL(`${REALM}/auth`);
   url.search = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: clientId(),
     response_type: "code",
     redirect_uri: REDIRECT_URI,
     scope: "openid profile email",
@@ -60,7 +62,7 @@ async function postToken(http: PluginHttp, form: Record<string, string>): Promis
   const response = await http.request(new URL(`${REALM}/token`), {
     method: "POST",
     headers: { accept: "application/json" },
-    body: new URLSearchParams({ client_id: CLIENT_ID, ...form }),
+    body: new URLSearchParams({ client_id: clientId(), ...form }),
   });
   // A non-JSON answer is never a refusal: it reads as an empty object and is handled below.
   const body: Record<string, unknown> = asObject(parseJsonBody(response.body));

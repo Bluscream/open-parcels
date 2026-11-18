@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import {
+  carrierPattern,
   snapshot,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type SnapshotEvent,
   expectStatus,
+  rulesStatus,
   objects,
   readObject,
   text,
@@ -18,33 +20,7 @@ export const CARRIER_ID = "matkahuolto";
 export const TRACKING_HOST = "wwwservice.matkahuolto.fi";
 const TIME_ZONE = "Europe/Helsinki";
 
-/**
- * The carrier sends a free English sentence per event, with no status code. Sentences are matched
- * on stable fragments, first match wins. Some sentences name a pickup shop and its address, so a
- * generic label is shown instead of the carrier's own words.
- */
-const PATTERNS: readonly (readonly [string, ParcelStatus, string])[] = [
-  ["returned it to the sender", "returning", "Returned to sender"],
-  ["the consignment has been delivered", "delivered", "Delivered"],
-  ["available for pickup", "at_pickup_point", "Available for pickup"],
-  ["sent the recipient a message about the arrival", "at_pickup_point", "Arrival notice sent"],
-  ["forget to pick up your parcel", "at_pickup_point", "Available for pickup"],
-  ["pick up point has changed", "in_transit", "Redirected to a new pickup point"],
-  [
-    "collected the consignment from the parcel pick-up point",
-    "in_transit",
-    "Collected from a drop-off point",
-  ],
-  ["deliver the consignment to the pickup point", "in_transit", "On its way to a pickup point"],
-  ["ready to continue its journey", "in_transit", "Ready to continue its journey"],
-  ["is on its way", "in_transit", "On its way"],
-  ["has been sorted", "in_transit", "Sorted"],
-  ["waiting for the consignment from the sender", "registered", "Awaiting handover from sender"],
-  ["ready for delivery at the parcel pick-up point", "registered", "Waiting at a drop-off point"],
-  ["consignment is being processed", "registered", "Being processed"],
-];
-
-export const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
+export const BARCODE_PATTERN = carrierPattern("matkahuolto");
 
 export type Report = (kind: string, key: string) => void;
 
@@ -79,13 +55,13 @@ function match(description: string | null, report: Report): Matched {
   if (description === null) {
     return { status: null, label: null };
   }
-  const lowered = description.toLowerCase();
-  const found = PATTERNS.find(([needle]) => lowered.includes(needle));
-  if (found === undefined) {
+  // Stable sentence fragments, first match wins; `label` replaces the carrier's own words.
+  const found = rulesStatus(CARRIER_ID, { text: description.toLowerCase() });
+  if (found === null) {
     report("description", createHash("sha256").update(description).digest("hex").slice(0, 16));
     return { status: null, label: null };
   }
-  return { status: found[1], label: found[2] };
+  return { status: found.status, label: found.label ?? null };
 }
 
 /** `date` is DD.MM.YYYY and `time` HH:MM, Finnish wall-clock time. */

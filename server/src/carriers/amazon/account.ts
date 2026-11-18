@@ -187,10 +187,10 @@ function deliveredLongAgo(
   return day !== null && ordinal(reference) - ordinal(day) > DELIVERED_LOOKBACK_DAYS * 86_400_000;
 }
 
-function groupTiles(tiles: readonly OrderTile[]): Map<string, OrderTile[]> {
+function groupTiles(rules: Rules, tiles: readonly OrderTile[]): Map<string, OrderTile[]> {
   const groups = new Map<string, OrderTile[]>();
   for (const tile of tiles) {
-    if (isSkipped(tile.statusText)) {
+    if (isSkipped(rules, tile.statusText)) {
       continue;
     }
     const key = shipmentKey(tile);
@@ -248,7 +248,7 @@ async function collect(
     return { snapshots: [], complete: false };
   }
   const now = context.clock.now();
-  const groups = groupTiles(tiles);
+  const groups = groupTiles(rules, tiles);
   session.shipments = Object.fromEntries(
     Object.entries(session.shipments).filter(([key]) => groups.has(key)),
   );

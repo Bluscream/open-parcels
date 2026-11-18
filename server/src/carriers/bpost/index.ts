@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   asArray,
   asObject,
@@ -22,7 +23,7 @@ import { stepStatus } from "./status.js";
 const CARRIER_ID = "bpost";
 const HOST = "track.bpost.cloud";
 const ZONE = "Europe/Brussels";
-const PLAUSIBLE = /^[A-Z0-9]{8,40}$/i;
+const PLAUSIBLE = carrierPattern("bpost");
 const LANGUAGES = ["en", "nl", "fr"] as const;
 type Language = (typeof LANGUAGES)[number];
 

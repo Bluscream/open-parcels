@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
   readJson,
@@ -16,7 +17,7 @@ import { CARRIER_ID, resultSnapshot, STRINGS } from "./parse.js";
 const HOST = "api.posta.sk";
 /** The documented cap on codes per request. */
 const BATCH_SIZE = 100;
-const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
+const CODE_PATTERN = carrierPattern("slovenska_posta");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;

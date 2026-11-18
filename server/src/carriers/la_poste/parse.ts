@@ -1,5 +1,6 @@
 import {
   asObject,
+  rulesStatus,
   isObject,
   isoTime as kitIsoTime,
   snapshot,
@@ -12,57 +13,19 @@ import {
 
 export const CARRIER_ID = "la_poste";
 
-/** Colissimo event groups and current-state codes. Candidates for the shared rules package. */
-const COLISSIMO: Readonly<Record<string, ParcelStatus>> = {
-  EXPANN: "registered",
-  EDRDEP: "in_transit",
-  EDRINT: "in_transit",
-  ACHNAT: "in_transit",
-  ACHORI: "in_transit",
-  ACHERI: "in_transit",
-  ACHDOU: "in_transit",
-  DISINTAS: "in_transit",
-  DISARR: "in_transit",
-  DISTOU: "in_transit",
-  DISIRST: "in_transit",
-  AARIDOU: "in_transit",
-  AARENDDOU: "in_transit",
-  AARIREF: "in_transit",
-  ACHIECA: "problem",
-  AARAREF: "problem",
-  AARABECH: "problem",
-  DISIECHEC: "problem",
-  DESLIVD: "delivered",
-  DESOBS: "delivered",
-  DESLIVHD: "delivered",
-  DESMDREXP: "returning",
-  DISINS: "at_pickup_point",
-};
-
-/** Chronopost event codes. Candidates for the shared rules package. */
-const CHRONOPOST: Readonly<Record<string, ParcelStatus>> = {
-  PC1: "in_transit",
-  ET1: "in_transit",
-  EP1: "in_transit",
-  MD2: "in_transit",
-  DR1: "in_transit",
-  MD1: "out_for_delivery",
-  AG1: "at_pickup_point",
-  RE1: "returning",
-  DI1: "delivered",
-};
-
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 const isoTime = (value: unknown): string | null =>
   kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
-/** An unknown product has no vocabulary: every code is reported rather than guessed. */
+/**
+ * A code in the product's vocabulary ("colissimo:" or "chronopost:" in the shared table). An
+ * unknown product has no vocabulary: every code is reported rather than guessed.
+ */
 function mapCode(product: string, code: string | null): ParcelStatus | null {
-  if (code === null) {
+  if (code === null || (product !== "colissimo" && product !== "chronopost")) {
     return null;
   }
-  const table = product === "colissimo" ? COLISSIMO : product === "chronopost" ? CHRONOPOST : {};
-  return table[code] ?? null;
+  return rulesStatus(CARRIER_ID, { code: `${product}:${code}` })?.status ?? null;
 }
 
 function eventCode(product: string, event: Json): string | null {

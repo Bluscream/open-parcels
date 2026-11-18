@@ -1,5 +1,7 @@
 import {
+  carrierPattern,
   expectStatus,
+  rulesStatus,
   snapshot,
   text,
   UnexpectedResponseError,
@@ -15,26 +17,6 @@ export const CARRIER_ID = "hrvatska_posta";
 export const TRACKING_HOST = "posiljka.posta.hr";
 const HOME_ZONE = "Europe/Zagreb";
 const REDIRECTED_TO_LOCKER = "Pošiljka preusmjerena u paketomat";
-
-/** Keyed on the Croatian wording, whitespace collapsed; the English page merges two scans. */
-const WORDING_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "Pošiljatelj je unio podatke, pošiljka još nije predana Hrvatskoj pošti": "registered",
-  "Pošiljka je zaprimljena": "registered",
-  "Pošiljka je prispjela": "in_transit",
-  "Pošiljka je u pripremi za otpremu": "in_transit",
-  "Pošiljka je otpremljena": "in_transit",
-  "Pošiljka je otpremljena prema unutrašnjem prometu": "in_transit",
-  [REDIRECTED_TO_LOCKER]: "in_transit",
-  "Dostava na adresu je u tijeku": "out_for_delivery",
-  "Pokušaj dostave pošiljke": "problem",
-  "Pošiljka nije uručena": "problem",
-  "Pošiljku možete preuzeti u poštanskom uredu": "at_pickup_point",
-  "Pošiljka predana u paketomat": "at_pickup_point",
-  "Pošiljka je uručena": "delivered",
-  "Pošiljka je uručena primatelju": "delivered",
-  "Pošiljka se vraća pošiljatelju": "returning",
-  "Pošiljka je uručena pošiljatelju": "returning",
-};
 
 /** Scans relayed from abroad lead with a UPU office code; single-zone countries only. */
 const COUNTRY_ZONES: Readonly<Record<string, string>> = {
@@ -76,7 +58,7 @@ const COUNTRY_ZONES: Readonly<Record<string, string>> = {
   TW: "Asia/Taipei",
 };
 
-export const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+export const BARCODE_PATTERN = carrierPattern("hrvatska_posta");
 
 export type Report = (kind: string, key: string) => void;
 
@@ -157,7 +139,8 @@ function walkRows(rows: readonly ScanRow[], report: Report): Walked[] {
   let moving = false;
   let previous: ParcelStatus | null = null;
   for (const { row, at } of dated) {
-    const mapped = WORDING_STATUS[row.wording] ?? null;
+    // Keyed on the Croatian wording, whitespace collapsed (the English page merges two scans).
+    const mapped = rulesStatus("hrvatska_posta", { code: row.wording })?.status ?? null;
     if (mapped === null) {
       report("wording", row.wording);
     }

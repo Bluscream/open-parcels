@@ -17,7 +17,7 @@ import {
   PICKUP_POINT_MODE,
   STEP_AVAILABLE,
   STEP_DELIVERED,
-  STEP_MAP,
+  stepStatus as tableStep,
 } from "./shared.js";
 
 /** Mondial Relay's fields are strings; a number in one is not taken as text. */
@@ -56,7 +56,7 @@ function reachedSteps(expedition: Json, report: Reporter): Step[] {
 
 /** Status of a step, with "ready to collect" downgraded when the parcel is not for a relay point. */
 function stepStatus(number: number, pickup: boolean): ParcelStatus | null {
-  const status = STEP_MAP[number] ?? null;
+  const status = tableStep(number);
   return status === "at_pickup_point" && !pickup ? "in_transit" : status;
 }
 
@@ -140,7 +140,7 @@ export function trackingSnapshot(
 ): ParcelSnapshot {
   const reached = reachedSteps(expedition, report);
   for (const step of reached) {
-    if (STEP_MAP[step.number] === undefined) {
+    if (tableStep(step.number) === null) {
       report.step(step.key);
     }
   }
@@ -149,7 +149,7 @@ export function trackingSnapshot(
   if (!pickup) {
     report.deliveryMode(mode ?? "none");
   }
-  const current = reached.find((step) => STEP_MAP[step.number] !== undefined);
+  const current = reached.find((step) => tableStep(step.number) !== null);
   const status = current === undefined ? null : stepStatus(current.number, pickup);
   const delivered = status === "delivered";
   const window = plannedWindow(expedition);

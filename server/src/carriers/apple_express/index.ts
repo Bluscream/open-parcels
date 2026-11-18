@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   asArray,
   asObject,
@@ -9,6 +10,7 @@ import {
   isTimeZone,
   newestFirst,
   readObject,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -19,35 +21,15 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "apple_express";
 const API_HOST = "trackapi.appleexpress.com";
-const PLAUSIBLE = /^[A-Z0-9-]{4,40}$/i;
+const PLAUSIBLE = carrierPattern("apple_express");
 /** Its times carry no offset; it delivers in Ontario and Quebec, so Eastern time by default. */
 const DEFAULT_ZONE = "America/Toronto";
 /** The estimate names the end of a six-hour delivery window. */
 const WINDOW_MS = 6 * 60 * 60 * 1000;
-
-export const APPLE_EXPRESS_STATUS: StatusTable = {
-  "Order Created": "registered",
-  "Order Request Received": "registered",
-  "Waiting for Parcel": "registered",
-  "Pending Delivery Notification Sent": "registered",
-  "Delivery Notification Sent": "registered",
-  "Package Picked Up": "in_transit",
-  "Picked Up": "in_transit",
-  "Received at Local Sort Facility": "in_transit",
-  "Parcel Received, Out for Delivery Soon": "in_transit",
-  "Returned for Next Attempt": "in_transit",
-  "Second Attempt Planned": "in_transit",
-  "Out for Delivery": "out_for_delivery",
-  Delivered: "delivered",
-  "Exception - No Answer": "problem",
-  "Exception - No Suite or Unit Number": "problem",
-  "FSA Not Serviced": "problem",
-};
 
 const MONTHS = [
   "january",
@@ -121,22 +103,20 @@ export function appleExpressSnapshot(
 ): ParcelSnapshot {
   const order = asObject(raw["orderDetails"]);
   const current = text(order["currentStatus"]);
-  const status = current === null ? null : (APPLE_EXPRESS_STATUS[current] ?? null);
+  const status = ruleStatus(CARRIER_ID, current);
   const history: SnapshotEvent[] = [];
   const unmapped = new Set<string>();
   for (const entry of asArray(raw["statusDetails"])) {
     const event = asObject(entry);
     const code = text(event["status"]);
     const at = isoTime(event["generatedAt"], { naive: { zone } });
-    if (code !== null && APPLE_EXPRESS_STATUS[code] === undefined) {
-      unmapped.add(code);
-    }
+    const mapped = ruleStatus(CARRIER_ID, code, (key) => unmapped.add(key));
     const rawStatus = text(event["statusDescriptionOverride"]) ?? code;
     if (at !== null && rawStatus !== null) {
       history.push({
         at,
         rawStatus,
-        status: code === null ? null : (APPLE_EXPRESS_STATUS[code] ?? null),
+        status: mapped,
         location: null,
       });
     }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
@@ -9,8 +10,8 @@ import {
   asObject,
   expectStatus,
   isObject,
+  ruleStatus,
   isoTime as kitIsoTime,
-  lookUpStatus,
   newestFirst,
   objects,
   readObject,
@@ -20,7 +21,6 @@ import {
   type Json,
   type ParcelStatus as Status,
   type PluginHttp,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "delhivery";
@@ -37,37 +37,8 @@ const SITE_HEADERS = {
   referer: "https://www.delhivery.com/",
 };
 
-/**
- * `hqStatus` is the finer field; the `trackingStates` ladder labels fill in when it is missing.
- * Keys are matched exactly: the carrier mixes title case with upper-case codes on purpose.
- */
-const STATUSES: StatusTable = {
-  Manifested: "registered",
-  Pending: "registered",
-  Scheduled: "registered",
-  "Picked Up": "in_transit",
-  Collected: "in_transit",
-  "In Transit": "in_transit",
-  Dispatched: "out_for_delivery",
-  Delivered: "delivered",
-  RTO: "returning",
-  DTO: "returning",
-  LOST: "problem",
-  Closed: "problem",
-  "On the Way": "in_transit",
-  "Out for Delivery": "out_for_delivery",
-  Returned: "returning",
-  Cancelled: "problem",
-  Lost: "problem",
-  PICKUP: "in_transit",
-  "IN TRANSIT": "in_transit",
-  "OUT FOR DELIVERY": "out_for_delivery",
-  DELIVERED: "delivered",
-  CANCELLED: "problem",
-};
-
 /** Delhivery waybills are digits; anything else is never sent. */
-const PLAUSIBLE = /^\d{8,20}$/;
+const PLAUSIBLE = carrierPattern("delhivery");
 
 async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   const url = new URL(`https://${HOST}/v3/unified-tracking-new`);
@@ -116,7 +87,7 @@ function history(raw: Json): SnapshotEvent[] {
         events.push({
           at,
           rawStatus,
-          status: lookUpStatus(STATUSES, label),
+          status: ruleStatus(CARRIER_ID, label),
           location: text(scan["cityLocation"]) ?? text(scan["scannedLocation"]),
         });
       }
@@ -127,7 +98,8 @@ function history(raw: Json): SnapshotEvent[] {
 
 function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
   const rawStatus = text(raw["hqStatus"]) ?? ladderLabel(raw);
-  const status: Status | null = lookUpStatus(STATUSES, rawStatus);
+  // `hqStatus` first; the `trackingStates` ladder labels fill in when it is missing.
+  const status: Status | null = ruleStatus(CARRIER_ID, rawStatus);
   if (rawStatus !== null && status === null) {
     report(rawStatus);
   }

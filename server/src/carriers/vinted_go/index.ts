@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
+  carrierPattern,
+  ruleStatus,
   defineCarrier,
   snapshot,
   UnexpectedResponseError,
@@ -26,47 +28,7 @@ const API_HOST = "carrier.vintedgo.com";
 
 type Status = NonNullable<ParcelSnapshot["status"]>;
 
-/**
- * Event `group` values, which do not depend on the language. A return leg reuses the plain groups,
- * so both directions map the same. Belongs in the shared rules once a Vinted Go table exists.
- */
-const GROUPS: Readonly<Record<string, Status>> = {
-  created: "registered",
-  tracking_code_created: "registered",
-  shipped: "in_transit",
-  hand_over: "in_transit",
-  in_depot: "in_transit",
-  left_depot: "in_transit",
-  in_transit: "in_transit",
-  redirected: "in_transit",
-  left_our_network: "in_transit",
-  in_delivery: "out_for_delivery",
-  available_for_pickup: "at_pickup_point",
-  ready_for_pickup: "at_pickup_point",
-  ready_for_collection_at_merchant: "at_pickup_point",
-  delivered: "delivered",
-  concluded: "delivered",
-  disposed: "problem",
-  empty_locker_found: "problem",
-  lost: "problem",
-  pickup_failed: "problem",
-  cancelled: "problem",
-  pickup_cancelled: "problem",
-  return: "returning",
-  // The return is concluded: the parcel is back with the sender.
-  returned: "delivered",
-  return_return: "returning",
-  return_to_sender: "returning",
-  return_in_transit: "returning",
-  return_ready_for_pickup: "at_pickup_point",
-  return_delivered: "delivered",
-  return_lost: "problem",
-  return_disposed: "problem",
-  return_empty_locker_found: "problem",
-  return_cancelled: "problem",
-};
-
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+const BARCODE_PATTERN = carrierPattern("vinted_go");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;
@@ -92,7 +54,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json[] | null>
 }
 
 function mapGroup(group: string | null): Status | null {
-  return group === null ? null : (GROUPS[group] ?? null);
+  return ruleStatus(CARRIER_ID, group);
 }
 
 function history(events: readonly Json[]): SnapshotEvent[] {

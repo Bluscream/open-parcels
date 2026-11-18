@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -18,7 +19,7 @@ import {
   type Json,
 } from "./shared.js";
 
-const BARCODE_PATTERN = /^Z?[A-Z0-9]{8,30}$/i;
+const BARCODE_PATTERN = carrierPattern("packeta");
 
 export function isPlausibleBarcode(barcode: string): boolean {
   return BARCODE_PATTERN.test(barcode);

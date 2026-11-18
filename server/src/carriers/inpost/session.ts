@@ -1,21 +1,22 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  carrierKey,
   isObject,
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
   type PluginContext,
 } from "../../plugin/api.js";
-import { SIGN_IN_HOST, text, type Market } from "./shared.js";
+import { CARRIER_ID, SIGN_IN_HOST, text, type Market } from "./shared.js";
 
 type Http = PluginContext<unknown, unknown>["http"];
 
 export const AUTHORIZE_URL = `https://${SIGN_IN_HOST}/oauth2/authorize`;
 export const TOKEN_URL = `https://${SIGN_IN_HOST}/oauth2/token`;
 export const REDIRECT_URI = `https://${SIGN_IN_HOST}/callback`;
-/** The public client of InPost's own sign-in; PKCE, no client secret. */
-export const CLIENT_ID = "inpost-mobile";
+/** The public client of InPost's own sign-in (in the shared rules); PKCE, no client secret. */
+export const clientId = (): string => carrierKey(CARRIER_ID, "client_id");
 
 const signInStateSchema = z.object({
   verifier: z.string(),
@@ -50,7 +51,7 @@ export function startSignIn(market: Market, language?: string): { url: string; s
   const url = new URL(AUTHORIZE_URL);
   const params: Record<string, string> = {
     response_type: "code",
-    client_id: CLIENT_ID,
+    client_id: clientId(),
     redirect_uri: REDIRECT_URI,
     scope: "openid",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
@@ -94,7 +95,7 @@ async function postToken(http: Http, form: Record<string, string>): Promise<Toke
   const response = await http.request(new URL(TOKEN_URL), {
     method: "POST",
     headers: { accept: "application/json" },
-    body: new URLSearchParams({ client_id: CLIENT_ID, ...form }),
+    body: new URLSearchParams({ client_id: clientId(), ...form }),
   });
   if (response.status === 400 || response.status === 401) {
     throw new SignInRejectedError(`InPost refused the sign-in (HTTP ${response.status}).`);

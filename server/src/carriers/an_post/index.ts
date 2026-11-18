@@ -5,6 +5,7 @@ import {
   isObject,
   isoTime,
   readObject,
+  ruleStatus,
   SignInRejectedError,
   snapshot,
   text,
@@ -13,7 +14,6 @@ import {
   type FetchResult,
   type Json,
   type ParcelSnapshot,
-  type ParcelStatus,
   type PluginContext,
 } from "../../plugin/api.js";
 import { IDENTITY_HOST, idToken } from "./auth.js";
@@ -22,18 +22,6 @@ const CARRIER_ID = "an_post";
 const API_HOST = "apim-anpost-mydeliveries.anpost.com";
 /** An Post's times carry no offset; they are Irish time. */
 const ZONE = "Europe/Dublin";
-
-/** `lastTrackingEventCategoryId`, An Post's own coarse stage. There is no pickup stage. */
-export const AN_POST_CATEGORY: Readonly<Record<number, ParcelStatus>> = {
-  0: "in_transit",
-  1: "in_transit", // customs, with nothing owed
-  2: "registered", // item received
-  3: "in_transit", // sorting
-  4: "delivered",
-  5: "problem", // delivery attempted
-  6: "returning",
-  7: "registered", // information received
-};
 
 /** Codes that open a locker or prove delivery; never stored. */
 const WITHHELD = new Set(["deliveryPin", "parcelLockerPin"]);
@@ -44,7 +32,9 @@ export function anPostSnapshot(item: Json, report: (key: string) => void): Parce
     return null;
   }
   const category = item["lastTrackingEventCategoryId"];
-  const status = typeof category === "number" ? (AN_POST_CATEGORY[category] ?? null) : null;
+  // `lastTrackingEventCategoryId`, An Post's own coarse stage, from the shared table.
+  const status =
+    typeof category === "number" ? ruleStatus(CARRIER_ID, `category:${category}`) : null;
   if (typeof category === "number" && status === null) {
     report(String(category));
   }

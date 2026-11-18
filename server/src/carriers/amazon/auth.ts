@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  carrierKey,
   type CookieJar,
   SignInRejectedError,
   TransientError,
@@ -24,27 +25,30 @@ import type { Storefront } from "./storefronts.js";
  * thing to look at.
  */
 const APP_NAME = "open-parcels";
-const APP_VERSION = "2.2.556530.0";
 /** Shown in the user's device list. */
 const DEVICE_NAME = "open-parcels";
-const DEVICE_TYPE = "A2IVLV5VM2W81";
-const DEVICE_ID_SUFFIX = "23413249564c5635564d32573831";
 const LANDING_URL = "https://www.amazon.com/ap/maplanding";
 const GLOBAL_API_HOST = "api.amazon.com";
 const CODE_PARAM = "openid.oa2.authorization_code";
 
-const TOKEN_FIELDS = {
-  app_name: APP_NAME,
-  app_version: APP_VERSION,
-  "di.sdk.version": "6.12.4",
-  package_name: "com.amazon.echo",
-  "di.hw.version": "iPhone",
-  platform: "iOS",
-  "di.os.name": "iOS",
-  "di.os.version": "16.6",
-  current_version: "6.12.4",
-  previous_version: "6.12.4",
-} as const;
+/** The app's fixed public identifiers (versions, device type, ids) live in the shared rules. */
+const appKey = (name: string): string => carrierKey("amazon", name);
+
+function tokenFields(): Readonly<Record<string, string>> {
+  const sdkVersion = appKey("sdk_version");
+  return {
+    app_name: APP_NAME,
+    app_version: appKey("app_version"),
+    "di.sdk.version": sdkVersion,
+    package_name: appKey("package_name"),
+    "di.hw.version": "iPhone",
+    platform: "iOS",
+    "di.os.name": "iOS",
+    "di.os.version": appKey("os_version"),
+    current_version: sdkVersion,
+    previous_version: sdkVersion,
+  };
+}
 
 export const signInStateSchema = z.object({
   deviceSerial: z.string().regex(/^[0-9A-F]{32}$/),
@@ -68,7 +72,7 @@ export function newVerifier(): string {
 }
 
 function deviceId(serial: string): string {
-  return Buffer.from(serial, "utf8").toString("hex") + DEVICE_ID_SUFFIX;
+  return Buffer.from(serial, "utf8").toString("hex") + appKey("device_id_suffix");
 }
 
 function codeChallenge(verifier: string): string {
@@ -79,9 +83,9 @@ function codeChallenge(verifier: string): string {
 export function signInUrl(storefront: Storefront, serial: string, verifier: string): string {
   const query = new URLSearchParams({
     "openid.return_to": LANDING_URL,
-    "openid.assoc_handle": "amzn_dp_project_dee_ios",
+    "openid.assoc_handle": appKey("assoc_handle"),
     "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
-    pageId: "amzn_dp_project_dee_ios",
+    pageId: appKey("assoc_handle"),
     accountStatusPolicy: "P1",
     "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select",
     "openid.mode": "checkid_setup",
@@ -157,10 +161,10 @@ export async function registerDevice(
     cookies: { website_cookies: [], domain: `.${storefront.domain}` },
     registration_data: {
       domain: "Device",
-      app_version: APP_VERSION,
-      device_type: DEVICE_TYPE,
+      app_version: appKey("app_version"),
+      device_type: appKey("device_type"),
       device_name: `%FIRST_NAME%'s%DUPE_STRATEGY_1ST%${DEVICE_NAME}`,
-      os_version: "16.6",
+      os_version: appKey("os_version"),
       device_serial: state.deviceSerial,
       device_model: "iPhone",
       app_name: APP_NAME,
@@ -235,7 +239,7 @@ export async function mintCookies(
   jar: CookieJar,
 ): Promise<void> {
   const form = new URLSearchParams({
-    ...TOKEN_FIELDS,
+    ...tokenFields(),
     domain: `.${storefront.domain}`,
     source_token: refreshToken,
     requested_token_type: "auth_cookies",

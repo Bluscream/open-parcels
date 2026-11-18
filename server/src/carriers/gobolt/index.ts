@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
+  ruleStatus,
   expectStatus,
   isoTime as kitIsoTime,
   newestFirst,
@@ -22,25 +24,15 @@ import {
 const CARRIER_ID = "gobolt";
 const API_HOST = "api.secondcloset.com";
 const API_PATH = "/logistics/api/v1/bolt_shipping_labels/search";
-const BARCODE_PATTERN = /^[A-Z0-9-]{6,40}$/i;
-
-/** Label status names. Candidates for the shared rules package. */
-const STATUS: Readonly<Record<string, ParcelStatus>> = {
-  label_created: "registered",
-  label_scanned: "in_transit",
-  label_received_at_destination: "in_transit",
-  label_out_for_delivery: "out_for_delivery",
-  label_delivered: "delivered",
-  label_failed: "problem",
-  label_returned_to_warehouse: "returning",
-};
+const BARCODE_PATTERN = carrierPattern("gobolt");
 
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 const isoTime = (value: unknown): string | null =>
   kitIsoTime(value, { naive: "runtime", epoch: "ms" });
 
+/** A label status name, from the shared table. */
 function mapName(name: string | null): ParcelStatus | null {
-  return name === null ? null : (STATUS[name] ?? null);
+  return ruleStatus(CARRIER_ID, name);
 }
 
 /** Null when the carrier answers 404 "Tracking number not found"; any other 404 is unexpected. */

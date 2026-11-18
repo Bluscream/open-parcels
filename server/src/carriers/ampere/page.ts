@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   isoTime,
   newestFirst,
   snapshot,
@@ -6,24 +7,11 @@ import {
   type Json,
   type ParcelSnapshot,
   type SnapshotEvent,
-  type StatusTable,
   unescapeHtml,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "ampere";
 const ZONE = "Europe/Amsterdam";
-
-/**
- * Both wordings the page uses: the banner and the history log phrase the "sorted" stage
- * differently, so both are listed.
- */
-export const AMPERE_STATUS: StatusTable = {
-  "Pakket is aangemeld maar nog niet ontvangen door Ampère": "registered",
-  "Pakket is klaar voor bezorging": "in_transit",
-  "Pakket is gesorteerd": "in_transit",
-  "Bezorger is onderweg": "out_for_delivery",
-  "Pakket is bezorgd": "delivered",
-};
 
 const MONTHS = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 /** "Wo 12 aug 21:16": weekday, day, month, time. No year. */
@@ -83,16 +71,16 @@ export function ampereSnapshot(input: PageInput, report: (text: string) => void)
     ...statuses,
     ...(statuses.length === 0 && banner !== null ? [banner] : []),
   ]) {
-    if (AMPERE_STATUS[value] === undefined) {
+    if (ruleStatus(CARRIER_ID, value) === null) {
       report(value);
     }
   }
-  const status = current === null ? null : (AMPERE_STATUS[current] ?? null);
+  const status = ruleStatus(CARRIER_ID, current);
   const history: SnapshotEvent[] = [];
   statuses.forEach((rawStatus, index) => {
     const at = historyTime(times[index] ?? "", input.now);
     if (at !== null) {
-      history.push({ at, rawStatus, status: AMPERE_STATUS[rawStatus] ?? null, location: null });
+      history.push({ at, rawStatus, status: ruleStatus(CARRIER_ID, rawStatus), location: null });
     }
   });
   const delivered = status === "delivered";

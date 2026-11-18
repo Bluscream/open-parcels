@@ -1,14 +1,15 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   defineCarrier,
   isObject,
-  lookUpStatus,
   newestFirst,
   num,
   parseLocal,
   requestJson,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -16,7 +17,6 @@ import {
   unknownReporter,
   type Json,
   type ParcelSnapshot,
-  type ParcelStatus,
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
@@ -25,43 +25,7 @@ import {
 const CARRIER_ID = "correos";
 const HOST = "localizador.correos.es";
 const ZONE = "Europe/Madrid";
-const PLAUSIBLE = /^[A-Z0-9]{8,30}$/i;
-
-/** Event codes (`codEvento`); the same codes appear on the latest event and in the history. */
-const EVENT_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  A010000V: "registered",
-  A090000V: "registered",
-  X010000V: "registered",
-  P040000V: "in_transit",
-  G01L010V: "in_transit",
-  P101110V: "in_transit",
-  P101120V: "in_transit",
-  P100000V: "in_transit",
-  P090000V: "in_transit",
-  P110000V: "in_transit",
-  H01I360V: "in_transit",
-  X020000V: "in_transit",
-  X040000V: "in_transit",
-  X060000V: "in_transit",
-  X070000V: "in_transit",
-  X110100V: "in_transit",
-  H020000V: "out_for_delivery",
-  X080000V: "out_for_delivery",
-  L010000V: "at_pickup_point",
-  H01I350V: "at_pickup_point",
-  X380000V: "at_pickup_point",
-  X390000V: "at_pickup_point",
-  I010000V: "delivered",
-  I01H210V: "delivered",
-  X120000V: "delivered",
-  H010930R: "problem",
-  M01E020R: "problem",
-  H06P010V: "problem",
-  X090100R: "problem",
-  X090060R: "problem",
-  X130000R: "problem",
-  O140000V: "returning",
-};
+const PLAUSIBLE = carrierPattern("correos");
 
 /**
  * The endpoint answers a one-element list (sometimes a bare object). Every real answer carries
@@ -101,7 +65,7 @@ function toSnapshot(raw: Json, code: string, report: (c: string) => void): Parce
   const events = asArray(raw["eventos"]).filter(isObject);
   const latest = events.at(-1);
   const latestCode = latest === undefined ? null : text(latest["codEvento"]);
-  const status = lookUpStatus(EVENT_STATUS, latestCode, report);
+  const status = ruleStatus(CARRIER_ID, latestCode, report);
   const delivered = status === "delivered";
   const history: SnapshotEvent[] = events.flatMap((event) => {
     const at = eventTime(event);
@@ -109,7 +73,7 @@ function toSnapshot(raw: Json, code: string, report: (c: string) => void): Parce
     const rawStatus = text(event["desTextoResumen"]) ?? eventCode;
     return at === null || rawStatus === null
       ? []
-      : [{ at, rawStatus, status: lookUpStatus(EVENT_STATUS, eventCode), location: null }];
+      : [{ at, rawStatus, status: ruleStatus(CARRIER_ID, eventCode), location: null }];
   });
   const grams = num(raw["peso"], { decimalComma: true });
   const barcode = text(raw["codEnvio"]) ?? code;

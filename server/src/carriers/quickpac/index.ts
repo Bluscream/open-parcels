@@ -1,10 +1,12 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   isoTime,
   newestFirst,
   objects,
   readObject,
+  ruleFieldsStatus,
   snapshot,
   text,
   trackEach,
@@ -22,36 +24,19 @@ export const CARRIER_ID = "quickpac";
 const ZONE = "Europe/Zurich";
 const HOST = "parcelsearch.quickpac.ch";
 const BASE = `https://${HOST}/api/ParcelSearch`;
-const BARCODE = /^[A-Z0-9]{8,40}$/i;
+const BARCODE = carrierPattern("quickpac");
 
 /**
  * Quickpac's numeric codes, grouped the way its own tracking page picks an icon. Codes outside
- * these groups (3xxx and 4xxx included) are the page's "info" catch-all and stay unmapped. The
- * shared rules have no table for Quickpac yet; this belongs there.
+ * these groups (3xxx and 4xxx included) are the page's "info" catch-all and stay unmapped.
  */
 export function codeStatus(code: number | null): ParcelStatus | null {
   if (code === null) {
     return null;
   }
-  const exact: Readonly<Record<number, ParcelStatus>> = {
-    1000: "registered",
-    2600: "at_pickup_point",
-    2301: "in_transit",
-    2601: "in_transit",
-    2604: "in_transit",
-  };
-  const groups: Readonly<Record<number, ParcelStatus>> = {
-    21: "delivered",
-    24: "returning",
-    22: "in_transit",
-    25: "in_transit",
-    12: "in_transit",
-    14: "in_transit",
-    15: "in_transit",
-    18: "out_for_delivery",
-    19: "out_for_delivery",
-  };
-  return exact[code] ?? groups[Math.floor(code / 100)] ?? null;
+  // A few exact codes first, then the code's hundreds group (both in the shared table).
+  const fields = { code: String(code), group: String(Math.floor(code / 100)) };
+  return ruleFieldsStatus(CARRIER_ID, fields);
 }
 
 const configSchema = z.object({});

@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -18,7 +19,7 @@ import {
 } from "./shared.js";
 
 /** NZ Post codes are letters and digits; anything else is never sent. */
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+const BARCODE_PATTERN = carrierPattern("nz_post");
 
 export function isPlausibleBarcode(barcode: string): boolean {
   return BARCODE_PATTERN.test(barcode);

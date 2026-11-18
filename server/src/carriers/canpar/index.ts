@@ -1,15 +1,16 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   dayWindow,
   defineCarrier,
   isObject,
   joinParts,
-  lookUpStatus,
   newestFirst,
   parseLocal,
   requestJson,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -17,7 +18,6 @@ import {
   unknownReporter,
   type Json,
   type ParcelSnapshot,
-  type ParcelStatus,
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
@@ -25,41 +25,12 @@ import {
 
 const CARRIER_ID = "canpar";
 const HOST = "canship.canpar.com";
-const PLAUSIBLE = /^[A-Z0-9]{8,40}$/i;
+const PLAUSIBLE = carrierPattern("canpar");
 /**
  * Canpar's event clock has no offset, and the `time_shift` field is not one either. Eastern time
  * is the network's home zone; western events may be off by a few hours.
  */
 const ZONE = "America/Toronto";
-
-/** Event codes. "NL" is a failed attempt (address not found), not a country. */
-const EVENT_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  PIC: "in_transit",
-  ARR: "in_transit",
-  SRT: "in_transit",
-  DPT: "in_transit",
-  INO: "in_transit",
-  COA: "in_transit",
-  XC: "in_transit",
-  WXX: "in_transit",
-  WC: "out_for_delivery",
-  DRP: "at_pickup_point",
-  DEL: "delivered",
-  NSR: "delivered",
-  NH: "problem",
-  HLD: "problem",
-  MIS: "problem",
-  NL: "problem",
-  RTN: "returning",
-};
-
-/** The summary number, used only when there are no events yet. */
-const SUMMARY_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "1": "in_transit",
-  "2": "delivered",
-  "4": "out_for_delivery",
-  "6": "registered",
-};
 
 /** Only status and timing keys are kept; the payload carries addresses and signatures. */
 function safeRaw(raw: Json): Json {
@@ -117,7 +88,7 @@ function history(raw: Json): SnapshotEvent[] {
     const code = text(event["code"]);
     const rawStatus = text(event["code_description_en"]) ?? code;
     if (at !== null && rawStatus !== null) {
-      events.push({ at, rawStatus, status: lookUpStatus(EVENT_STATUS, code), location: null });
+      events.push({ at, rawStatus, status: ruleStatus(CARRIER_ID, code), location: null });
     }
   }
   return newestFirst(events);
@@ -127,12 +98,12 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
   // Events arrive newest first.
   const newest = asObject(asArray(raw["events"])[0]);
   const eventCode = text(newest["code"]);
+  // The event code; the summary number only when there are no events yet.
+  const summary = text(raw["status"]);
   const status =
     eventCode !== null
-      ? lookUpStatus(EVENT_STATUS, eventCode, report)
-      : lookUpStatus(SUMMARY_STATUS, text(raw["status"]), (c) => {
-          report(`summary:${c}`);
-        });
+      ? ruleStatus(CARRIER_ID, eventCode, report)
+      : ruleStatus(CARRIER_ID, summary === null ? null : `summary:${summary}`, report);
   // Delivered only when the flag and the newest event agree.
   const delivered = raw["delivered"] === true && status === "delivered";
   const address = asObject(newest["address"]);

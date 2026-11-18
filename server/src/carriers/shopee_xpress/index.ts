@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
   isObject,
@@ -14,7 +15,7 @@ import {
 } from "../../plugin/api.js";
 import { CARRIER_ID, MARKET_IDS, MARKETS, orderSnapshot, type Market } from "./parse.js";
 
-const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
+const CODE_PATTERN = carrierPattern("shopee_xpress");
 
 const configSchema = z.looseObject({
   /** The market the parcels were sent in; a code only resolves on its own market's host. */

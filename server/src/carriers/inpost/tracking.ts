@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   asArray as asList,
   asObject,
   expectStatus,
@@ -20,10 +21,9 @@ import {
   TRACKING_HOST,
   type TrackingCountry,
 } from "./shared.js";
-import { TRACKING_STATUSES } from "./status.js";
 
 /** InPost numbers are digits, sometimes with letters on cross-border parcels. */
-export const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+export const BARCODE_PATTERN = carrierPattern("inpost");
 
 /**
  * Looks one code up on the keyless public tracking. Null when InPost does not know it: HTTP 404,
@@ -58,7 +58,7 @@ function detailEvents(raw: Json, report: (code: string) => void): SnapshotEvent[
     if (at === null || rawStatus === null) {
       continue;
     }
-    const status = lookUpCode(TRACKING_STATUSES, code, report);
+    const status = lookUpCode("tracking", code, report);
     events.push({ at, rawStatus, status, location: null });
   }
   return newestFirst(events);
@@ -72,7 +72,7 @@ export function trackingSnapshot(
   report: (code: string) => void,
 ): ParcelSnapshot {
   const code = text(raw["status"]);
-  const status = lookUpCode(TRACKING_STATUSES, code, report);
+  const status = lookUpCode("tracking", code, report);
   const history = detailEvents(raw, report);
   const delivered = status === "delivered";
   const number = text(raw["trackingNumber"]) ?? barcode;

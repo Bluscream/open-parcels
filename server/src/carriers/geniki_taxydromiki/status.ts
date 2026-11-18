@@ -1,4 +1,4 @@
-import { isoTime, type ParcelStatus } from "../../plugin/api.js";
+import { isoTime, ruleStatus, type ParcelStatus } from "../../plugin/api.js";
 
 export interface Checkpoint {
   readonly code: string | null;
@@ -6,25 +6,6 @@ export interface Checkpoint {
   readonly at: string | null;
   readonly location: string | null;
 }
-
-/** Scan codes. Candidates for the shared rules package. */
-const STATUS: Readonly<Record<string, ParcelStatus>> = {
-  C_NW: "registered",
-  C_SC: "registered",
-  C_W3: "in_transit",
-  C_KK: "in_transit",
-  C_K8: "in_transit",
-  C_H1: "in_transit",
-  C_H2: "in_transit",
-  C_A1: "in_transit",
-  C_L1: "in_transit",
-  C_A3: "out_for_delivery",
-  C_W2: "delivered",
-  C_P1: "delivered",
-  C_S2: "delivered",
-  C_EA_DP: "problem",
-  C_EA_KS: "problem",
-};
 
 /** A scan that withdraws an earlier one: the pair cancels out. */
 const RETRACTS: Readonly<Record<string, string>> = { C_L2: "C_L1", C_E2: "C_E1", C_K9: "C_K8" };
@@ -38,8 +19,9 @@ export const CONTROL_CODES: ReadonlySet<string> = new Set([
   ...UNDO_DELIVERY,
 ]);
 
+/** A scan code, from the shared table. */
 export function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATUS[code] ?? null);
+  return ruleStatus("geniki_taxydromiki", code);
 }
 
 /** The newest mapped scan that is not cancelled by a later one. Checkpoints are oldest first. */

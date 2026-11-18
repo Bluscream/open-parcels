@@ -1,11 +1,11 @@
 import {
+  ruleStatus,
   asObject,
   isoTime,
   snapshot,
   text,
   type Json,
   type ParcelSnapshot,
-  type ParcelStatus,
   type SnapshotEvent,
 } from "../../plugin/api.js";
 
@@ -13,18 +13,6 @@ import {
 const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
 
 export const CARRIER_ID = "swiss_post";
-
-/** The shipment's `globalStatus`. The event codes run to thousands and stay unmapped. */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  REGISTERED: "registered",
-  CUSTOMS: "in_transit",
-  TO_BE_DELIVERED: "in_transit",
-  IN_DELIVERY: "out_for_delivery",
-  DELIVERED: "delivered",
-  MISSED_DELIVERY: "problem",
-  NOT_DELIVERED: "problem",
-  RETURNED: "returning",
-};
 
 const DIRECTIONS = ["*", "INLAND", "IMPORT", "EXPORT"] as const;
 
@@ -98,7 +86,7 @@ export function shipmentSnapshot(
   report: (code: string) => void,
 ): ParcelSnapshot {
   const code = text(raw["globalStatus"]);
-  const status = code === null ? null : (STATUS_MAP[code] ?? null);
+  const status = ruleStatus(CARRIER_ID, code);
   if (code !== null && status === null) {
     report(code);
   }

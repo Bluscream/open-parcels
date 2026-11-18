@@ -1,5 +1,7 @@
 import {
+  carrierPattern,
   expectStatus,
+  rulesStatus,
   snapshot,
   text,
   unescapeHtml,
@@ -18,12 +20,7 @@ const SOAP_ACTION = `${SOAP_NAMESPACE}TracePackgeWithSequence`;
 /** Times carry no offset; the carrier works in Eastern Canada. */
 const TIME_ZONE = "America/Toronto";
 
-/** Only the delivered code has been seen and confirmed; everything else is reported. */
-const CODE_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  DELIV: "delivered",
-};
-
-export const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
+export const BARCODE_PATTERN = carrierPattern("ics_courier");
 
 export type Report = (kind: string, key: string) => void;
 export type IcsRecord = Readonly<Record<string, string>>;
@@ -172,7 +169,8 @@ export function trackingSnapshot(
   const reported = new Set<string>();
   const mapCode = (code: string | undefined): ParcelStatus | null => {
     const key = code === undefined || code === "" ? "(empty)" : code;
-    const status = CODE_STATUS[key] ?? null;
+    // Only the delivered code has been seen and confirmed; everything else is reported.
+    const status = rulesStatus("ics_courier", { code: key })?.status ?? null;
     if (status === null && !reported.has(key)) {
       reported.add(key);
       report("status_code", key);

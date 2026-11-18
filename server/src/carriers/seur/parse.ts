@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   asObject,
   isoTime,
   snapshot,
@@ -17,23 +18,8 @@ export const STRINGS = { numbers: false } as const;
 /** SEUR dates are read as the runtime's `Date` reads them; numbers are not timestamps. */
 const TIME = { naive: "runtime" } as const;
 
-/** SEUR situation codes seen on real parcels. Anything else is reported, never guessed. */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  SX010: "registered",
-  SX001: "in_transit",
-  LI567: "in_transit",
-  LO001: "in_transit",
-  SW189: "in_transit",
-  // Announced for the shop, not collectable yet.
-  LI569: "in_transit",
-  LI574: "at_pickup_point",
-  LC003: "out_for_delivery",
-  LL003: "delivered",
-  LL010: "delivered",
-};
-
 function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATUS_MAP[code] ?? null);
+  return ruleStatus("seur", code);
 }
 
 function partyName(party: unknown): string | null {

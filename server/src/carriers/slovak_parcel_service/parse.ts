@@ -2,6 +2,7 @@ import {
   asObject,
   isoTime,
   newestFirst,
+  ruleStatus,
   snapshot,
   text,
   type Json,
@@ -24,37 +25,22 @@ export function slovakTime(value: unknown): string | null {
   }
   return /[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? isoTime(value, { naive: "runtime" }) : null;
 }
-/** `statusCode` is preferred; the numeric `status` is the fallback. */
-const EVENT_MAP: Readonly<Record<string, ParcelStatus>> = {
-  DDEF: "registered",
-  INIT: "registered",
-  TOUR: "out_for_delivery",
-  DELY: "delivered",
-  PICK: "in_transit",
-  RETC: "in_transit",
-  "8": "registered",
-  "10": "registered",
-  "30": "out_for_delivery",
-  "40": "delivered",
-  "44": "in_transit",
-  "50": "in_transit",
-};
+/** A code's status; the shared table maps codes that describe no movement to `unknown`. */
+function codeStatus(code: string | null): ParcelStatus | null {
+  const status = ruleStatus(CARRIER_ID, code);
+  return status === "unknown" ? null : status;
+}
 
 /** Known codes that describe no movement (delivery instructions given on the web). */
-const NO_MOVEMENT = new Set(["DDSP", "38"]);
+const noMovement = (code: string): boolean => ruleStatus(CARRIER_ID, code) === "unknown";
 
 function eventKey(event: Json): string | null {
   return text(event["statusCode"]) ?? text(event["status"]);
 }
 
+/** `statusCode` is preferred; the numeric `status` is the fallback. */
 function mapEvent(event: Json): ParcelStatus | null {
-  const named = text(event["statusCode"]);
-  const numeric = text(event["status"]);
-  return (
-    (named === null ? undefined : EVENT_MAP[named]) ??
-    (numeric === null ? undefined : EVENT_MAP[numeric]) ??
-    null
-  );
+  return codeStatus(text(event["statusCode"])) ?? codeStatus(text(event["status"]));
 }
 
 /** Turns one track-and-trace result into a snapshot; `report` receives unmapped codes. */
@@ -66,7 +52,7 @@ export function shipmentSnapshot(raw: Json, report: (code: string) => void): Par
   const current = states.find((state) => text(state["statusCode"]) === lastScan) ?? states[0];
   const eventStatus = current === undefined ? null : mapEvent(current);
   const key = current === undefined ? null : eventKey(current);
-  if (eventStatus === null && key !== null && !NO_MOVEMENT.has(key)) {
+  if (eventStatus === null && key !== null && !noMovement(key)) {
     report(key);
   }
   const status = text(raw["shipmentStatus"]) === "delivered" ? "delivered" : eventStatus;

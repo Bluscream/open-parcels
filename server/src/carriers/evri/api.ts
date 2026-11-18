@@ -7,6 +7,7 @@ import {
   type SessionStore,
   type PluginHttp,
   asObject,
+  carrierKey,
   isObject,
   objects,
   readJson,
@@ -16,10 +17,11 @@ import {
 
 export const HOST = "tracking.platform-apis.evri.com";
 /**
- * The key Evri's public tracking website sends with every request. It identifies the website,
- * not a user; a refusal of it is Evri's change to make, never a reason to ask the user anything.
+ * The key Evri's public tracking website sends with every request (in the shared rules). It
+ * identifies the website, not a user; a refusal of it is Evri's change to make, never a reason
+ * to ask the user anything.
  */
-const WEBSITE_KEY = "0DExZiK9in2ihGce7cDPrnpQ4s4nIpWG";
+const websiteKey = (): string => carrierKey("evri", "website_key");
 /** Most parcel ids remembered per source; the oldest are dropped first. */
 const MAX_REMEMBERED = 200;
 
@@ -27,7 +29,7 @@ const rememberedSchema = z.record(z.string(), z.string());
 
 async function get(http: PluginHttp, logger: PluginLogger, url: URL): Promise<HttpResponse> {
   const response = await http.request(url, {
-    headers: { accept: "application/json", apikey: WEBSITE_KEY },
+    headers: { accept: "application/json", apikey: websiteKey() },
   });
   if (response.status === 401 || response.status === 403) {
     const edge =

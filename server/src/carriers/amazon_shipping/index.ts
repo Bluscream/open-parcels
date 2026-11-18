@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   defineCarrier,
@@ -21,7 +22,7 @@ import { parseMoment } from "./time.js";
  * carrier, so a shop order and its tracked parcel become one.
  */
 const PLUGIN_ID = "amazon_shipping";
-const PLAUSIBLE = /^[A-Z0-9]{8,40}$/i;
+const PLAUSIBLE = carrierPattern("amazon_shipping");
 
 function sender(raw: Json, summary: Json): string | null {
   // The brand the parcel was ordered from, not the fulfilment house shipping on its behalf.

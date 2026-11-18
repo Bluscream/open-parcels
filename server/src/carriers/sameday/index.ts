@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
   readJson,
@@ -13,7 +14,7 @@ import {
 import { awbSnapshot, CARRIER_ID, COUNTRIES, type Country } from "./parse.js";
 
 /** AWB numbers are digits, sometimes with a letter prefix; anything else is never sent. */
-const AWB_PATTERN = /^[A-Z0-9]{6,30}$/i;
+const AWB_PATTERN = carrierPattern("sameday");
 
 const configSchema = z.looseObject({
   /** Which national host to ask: Romania, Hungary or Bulgaria. Default Romania. */

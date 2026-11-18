@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   TransientError,
@@ -9,66 +10,30 @@ import {
   type PluginContext,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { expectStatus, isObject, isoTime, readJson, text, type Json } from "../../plugin/api.js";
+import {
+  carrierKey,
+  expectStatus,
+  isObject,
+  isoTime,
+  readJson,
+  ruleStatus,
+  text,
+  type Json,
+} from "../../plugin/api.js";
 
 const CARRIER_ID = "ukrposhta";
 const API_HOST = "www.ukrposhta.ua";
 /** Event dates carry no offset; they are read as Kyiv wall-clock time. */
 const ZONE = "Europe/Kyiv";
 /** The public bearer the carrier's own tracking widget sends; it identifies no user. */
-const PUBLIC_BEARER = "c3e02b53-3b1d-386e-b676-141ffa054c57";
+const publicBearer = (): string => carrierKey(CARRIER_ID, "public_bearer");
 
 type Status = NonNullable<ParcelSnapshot["status"]>;
-
-/**
- * Numeric event codes. Belongs in the shared rules once an Ukrposhta table exists there. `24300`
- * (held at the inward office of exchange) is left out on purpose: it sits inside normal customs
- * runs, so it falls back to the previous mapped event.
- */
-const CODES: Readonly<Record<string, Status>> = {
-  ...Object.fromEntries(["10100", "10601", "17100"].map((code) => [code, "registered"])),
-  ...Object.fromEntries(
-    [
-      "20700",
-      "20800",
-      "21500",
-      "21600",
-      "27200",
-      "77600",
-      "70800",
-      "60700",
-      "67300",
-      "90800",
-      "97700",
-      "2201",
-      "4006",
-      "4021",
-      "4024",
-      "4074",
-      "80700",
-      "82700",
-      "89000",
-      "80800",
-      "82800",
-      "89100",
-      "27900",
-    ].map((code) => [code, "in_transit"]),
-  ),
-  "29500": "out_for_delivery",
-  "21400": "at_pickup_point",
-  "21700": "at_pickup_point",
-  "31100": "problem",
-  "31300": "problem",
-  "31400": "problem",
-  "31200": "returning",
-  "41000": "delivered",
-  "48000": "delivered",
-};
 
 /** A refused parcel's way back reuses the forward codes; everything from here on is the return. */
 const RETURN_OPENING_CODE = "31200";
 const RETURN_LABEL_PREFIX = "Return: ";
-const BARCODE_PATTERN = /^[A-Z0-9]{8,20}$/i;
+const BARCODE_PATTERN = carrierPattern("ukrposhta");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;
@@ -81,7 +46,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json[] | null>
   url.searchParams.set("barcode", barcode);
   url.searchParams.set("lang", "en");
   const response = await http.request(url, {
-    headers: { accept: "application/json", authorization: `Bearer ${PUBLIC_BEARER}` },
+    headers: { accept: "application/json", authorization: `Bearer ${publicBearer()}` },
   });
   if (response.status === 401 || response.status === 403) {
     // The public bearer was refused: nothing the user can fix, and retrying will not help soon.
@@ -117,7 +82,7 @@ export function classify(events: readonly Json[]): Classified[] {
       ? "returning"
       : code === null
         ? null
-        : (CODES[code] ?? null);
+        : ruleStatus(CARRIER_ID, code);
     return { event, code, status };
   });
 }

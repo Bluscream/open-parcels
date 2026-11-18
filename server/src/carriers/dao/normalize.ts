@@ -1,17 +1,16 @@
 import {
   asObject,
   isoTime as kitIsoTime,
-  lookUpStatus,
   newestFirst,
   num,
   objects,
+  ruleFieldsStatus,
   snapshot,
   text,
   type Json,
   type ParcelSnapshot,
   type ParcelStatus as Status,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "dao";
@@ -21,25 +20,9 @@ const ZONE = "Europe/Copenhagen";
 const isoTime = (value: unknown, zone: string): string | null =>
   kitIsoTime(value, { naive: { zone }, epoch: "auto", epochStrings: true });
 
-/** The closed `statusType` list. `STATUS_INFO` is informational and maps to nothing. */
-const TYPES: StatusTable = {
-  STATUS_PROCESSING: "registered",
-  STATUS_IN_TRANSIT: "in_transit",
-  STATUS_RETURN: "returning",
-  STATUS_ALERT: "problem",
-};
-const KNOWN_TYPES = new Set([...Object.keys(TYPES), "STATUS_OK", "STATUS_INFO"]);
-
-/** Status codes that decide the status whatever type carries them (drop-off, on the way). */
-const CODE_OVERRIDES: Readonly<Record<number, Status>> = {
-  11: "in_transit",
-  23: "in_transit",
-  25: "in_transit",
-  26: "in_transit",
-};
-/** Under `STATUS_OK`: ready for pickup, handed over. */
-const OK_CODES: Readonly<Record<number, Status>> = { 32: "at_pickup_point", 51: "delivered" };
-const KNOWN_CODES = new Set([1, 11, 12, 23, 25, 26, 32, 51]);
+/** A value the shared table knows, mapped or known to carry no status. */
+const isKnown = (fields: Readonly<Record<string, string>>): boolean =>
+  ruleFieldsStatus(CARRIER_ID, fields) !== null;
 
 export interface Reports {
   readonly type: (key: string) => void;
@@ -47,8 +30,9 @@ export interface Reports {
 }
 
 /**
- * Maps a status. `STATUS_OK` means the parcel arrived: at a pickup point when it has one, else
- * delivered, unless a known code says which.
+ * Maps a status: the type and code pair, and whether the parcel has a pickup point, through the
+ * shared table (`STATUS_OK` means the parcel arrived: at a pickup point when it has one, else
+ * delivered, unless a known code says which). Known values without a status give null.
  */
 export function mapStatus(
   type: string | null,
@@ -58,15 +42,12 @@ export function mapStatus(
   if (type === null) {
     return null;
   }
-  const override = code === null ? undefined : CODE_OVERRIDES[code];
-  if (override !== undefined) {
-    return override;
-  }
-  if (type === "STATUS_OK") {
-    const known = code === null ? undefined : OK_CODES[code];
-    return known ?? (hasPickupPoint ? "at_pickup_point" : "delivered");
-  }
-  return lookUpStatus(TYPES, type);
+  const status = ruleFieldsStatus(CARRIER_ID, {
+    statusType: type,
+    ...(code === null ? {} : { statusCode: String(code) }),
+    pickupPoint: hasPickupPoint ? "yes" : "no",
+  });
+  return status === "unknown" ? null : status;
 }
 
 function readStatus(
@@ -76,10 +57,10 @@ function readStatus(
   const status = asObject(block);
   const type = text(status["statusType"]);
   const code = num(status["statusCode"]);
-  if (type !== null && !KNOWN_TYPES.has(type)) {
+  if (type !== null && !isKnown({ statusType: type })) {
     reports.type(type);
   }
-  if (code !== null && !KNOWN_CODES.has(code)) {
+  if (code !== null && !isKnown({ statusCode: String(code) })) {
     reports.code(String(code));
   }
   return { type, code };

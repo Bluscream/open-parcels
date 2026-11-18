@@ -1,7 +1,7 @@
 import {
   asObject,
   isoTime,
-  lookUpStatus,
+  ruleStatus,
   text as kitText,
   type ParcelStatus,
 } from "../../plugin/api.js";
@@ -21,18 +21,9 @@ export function localized(value: unknown, language: "english" | "german"): strin
 }
 
 /**
- * Planzer has no status codes, so the German text is the key: the English one renders
- * "Zugestellt" as "Shipped", which would file a delivered parcel as dispatched. Only observed
- * texts are listed. Not in the shared rules package yet, so kept here.
+ * Planzer has no status codes, so the German text is the shared table's key: the English one
+ * renders "Zugestellt" as "Shipped", which would file a delivered parcel as dispatched.
  */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  "sendung zugestellt": "delivered",
-  erfasst: "registered",
-  übergeben: "in_transit",
-  "in zustellung": "out_for_delivery",
-  zugestellt: "delivered",
-};
-
 function textKey(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -42,7 +33,7 @@ export function mapText(german: string | null, report: (key: string) => void): P
   if (german === null) {
     return null;
   }
-  return lookUpStatus(STATUS_MAP, textKey(german), report);
+  return ruleStatus(CARRIER_ID, textKey(german), report);
 }
 
 /** Reads a wall-clock time without offset as Zurich time, keeping milliseconds; null otherwise. */

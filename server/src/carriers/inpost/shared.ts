@@ -1,6 +1,6 @@
 import {
   isoTime as kitIsoTime,
-  lookUpStatus,
+  rulesStatus,
   text as anyText,
   type ParcelStatus,
 } from "../../plugin/api.js";
@@ -36,16 +36,28 @@ export const text = (value: unknown): string | null => anyText(value, { numbers:
 /** ISO 8601 for a string or epoch-millisecond timestamp; null when it does not parse. */
 export const isoTime = (value: unknown): string | null =>
   kitIsoTime(value, { naive: "runtime", epoch: "ms" });
-/** Looks a code up case-insensitively; `report` receives codes the table does not know. */
+/**
+ * The shared table's InPost vocabularies: the Polish account inbox (`inbox`, its coarse
+ * `inbox-group`), the Italian inbox (`group`) and the public cross-border codes (`tracking`).
+ */
+export type Vocabulary = "inbox" | "inbox-group" | "group" | "tracking";
+
+/**
+ * Looks a code up case-insensitively in one vocabulary; `report` receives codes it does not
+ * know. Codes known to say nothing about the parcel (payment events) give null unreported.
+ */
 export function lookUpCode(
-  table: Readonly<Record<string, ParcelStatus>>,
+  vocabulary: Vocabulary,
   code: string | null,
-  report: (code: string) => void,
-  ignored: ReadonlySet<string> = new Set(),
+  report?: (code: string) => void,
 ): ParcelStatus | null {
-  return lookUpStatus(table, code?.toLowerCase() ?? null, (key) => {
-    if (!ignored.has(key)) {
-      report(code ?? key);
-    }
-  });
+  if (code === null) {
+    return null;
+  }
+  const mapped = rulesStatus(CARRIER_ID, { code: `${vocabulary}:${code.toLowerCase()}` });
+  if (mapped === null) {
+    report?.(code);
+    return null;
+  }
+  return mapped.status === "unknown" ? null : mapped.status;
 }

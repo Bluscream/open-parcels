@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
   isObject,
@@ -26,7 +27,7 @@ const PORTAL = new URL("https://emonitoring.poczta-polska.pl/");
 export const API_HOST = "uss.poczta-polska.pl";
 /** The only endpoint the widget key is ever sent to; the portal must advertise exactly this. */
 const API_BASE = `https://${API_HOST}/uss/v2.0/tracking`;
-const BARCODE = /^[A-Z0-9]{8,40}$/i;
+const BARCODE = carrierPattern("poczta_polska");
 
 /** Poczta Polska's fields are strings; a number in one is not taken as text. */
 const text = (value: unknown): string | null => kitText(value, { numbers: false });

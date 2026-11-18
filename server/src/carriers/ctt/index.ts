@@ -1,12 +1,14 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
+  carrierKey,
   defineCarrier,
   isObject,
   isoTime,
-  lookUpStatus,
   newestFirst,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -21,24 +23,11 @@ import { EXPRESS_HOST, expressSnapshot, isExpressCode, lookUpExpress } from "./e
 import { lookUpPortal, PORTAL_HOST } from "./portal.js";
 
 const CARRIER_ID = "ctt";
-const PLAUSIBLE = /^[A-Z0-9]{8,30}$/i;
+const PLAUSIBLE = carrierPattern("ctt");
 
-/**
- * CTT `StateId`s, keyed on the stable integer, never on the display literal. Six more states
- * exist in the app's own code, but their ids were never seen and are not guessed.
- */
-const STATE_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  "1": "registered",
-  "2": "in_transit",
-  "5": "returning",
-  "7": "out_for_delivery",
-  "8": "in_transit",
-  "10": "in_transit",
-  "11": "in_transit",
-  "12": "delivered",
-  "13": "problem",
-  "14": "at_pickup_point",
-};
+/** A portal `StateId` (the stable integer, never the display literal) from the shared table. */
+const stateStatus = (id: string | null, report?: () => void): ParcelStatus | null =>
+  id === null ? null : ruleStatus(CARRIER_ID, `state:${id}`, report);
 
 /** The platform writes "no date" as 1 January 1900. */
 function cttTime(value: unknown): string | null {
@@ -55,11 +44,10 @@ function cttTime(value: unknown): string | null {
 function portalSnapshot(raw: Json, code: string, report: (c: string) => void): ParcelSnapshot {
   const events = asArray(asObject(raw["Events"])["List"]).filter(isObject);
   const newest = events[0];
-  const status = lookUpStatus(
-    STATE_STATUS,
-    newest === undefined ? null : text(newest["StateId"]),
-    report,
-  );
+  const newestId = newest === undefined ? null : text(newest["StateId"]);
+  const status = stateStatus(newestId, () => {
+    report(newestId ?? "");
+  });
   const firstWith = (id: string) => events.find((event) => text(event["StateId"]) === id);
   const history: SnapshotEvent[] = events.flatMap((event) => {
     const at = cttTime(event["DateTime"]);
@@ -70,7 +58,7 @@ function portalSnapshot(raw: Json, code: string, report: (c: string) => void): P
           {
             at,
             rawStatus,
-            status: lookUpStatus(STATE_STATUS, text(event["StateId"])),
+            status: stateStatus(text(event["StateId"])),
             location: text(event["Local"]),
           },
         ];
@@ -130,8 +118,7 @@ export const ctt = defineCarrier<Config, Secret>({
       "*": { intervalMs: 10_000, burst: 1 },
     },
     userAgent: {
-      value:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+      value: carrierKey(CARRIER_ID, "browser_user_agent"),
       reason:
         "The CTT tracking hosts sit behind a firewall that rejects non-browser clients (error 1010).",
     },

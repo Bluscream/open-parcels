@@ -1,5 +1,6 @@
 import type { ParcelStatus } from "../../plugin/api.js";
 import {
+  ruleStatus,
   cleanText,
   snapshot,
   UnexpectedResponseError,
@@ -10,19 +11,6 @@ import { readPage, type Cell } from "./html.js";
 
 export const CARRIER_ID = "straightship";
 
-/** Status sentences after their location suffix and contact address are removed. */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  "Package information is created in the system": "registered",
-  "Package Received with Origin Scan warehouse": "in_transit",
-  "Package is received at a Straightship station": "in_transit",
-  "Package is in transit to a Straightship station": "in_transit",
-  Loading: "in_transit",
-  "Package will be delivered before 9:00pm": "out_for_delivery",
-  "An attempt was made to deliver your package-unable to leave package at safe location (please e-mail <address> to make arrangement)":
-    "problem",
-  Delivered: "delivered",
-};
-
 /** Drops the "(City, ST)" suffix and the contact address, which may be personal. */
 export function normalise(sentence: string): string {
   return cleanText(sentence)
@@ -31,7 +19,7 @@ export function normalise(sentence: string): string {
 }
 
 function mapSentence(sentence: string | null): ParcelStatus | null {
-  return sentence === null || sentence === "" ? null : (STATUS_MAP[normalise(sentence)] ?? null);
+  return sentence === null || sentence === "" ? null : ruleStatus(CARRIER_ID, normalise(sentence));
 }
 
 /** The carrier states its times are UTC: `YYYY-MM-DD HH:MM:SS`. */

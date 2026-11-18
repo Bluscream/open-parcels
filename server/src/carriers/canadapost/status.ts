@@ -1,80 +1,22 @@
-import { lookUpStatus, text, type Json, type ParcelStatus } from "../../plugin/api.js";
+import { ruleStatus, text, type Json, type ParcelStatus } from "../../plugin/api.js";
 
-/** The parcel-level `status` string. Variants like `InTransit-xyz` fall back to their family. */
-const STATUS: Readonly<Record<string, ParcelStatus>> = {
-  HalfAccepted: "registered",
-  FullAccepted: "in_transit",
-  InTransit: "in_transit",
-  InTransitAlert: "problem",
-  FullProgress: "out_for_delivery",
-  FullProgressAlert: "problem",
-  HalfDelivered: "problem",
-  ReadyPickup: "at_pickup_point",
-  Available_for_pickup_by: "at_pickup_point",
-  Delivered: "delivered",
-};
+const CARRIER_ID = "canadapost";
 
-/** An event code outranks its type: one type covers several outcomes. */
-const EVENT_CODE: Readonly<Record<string, ParcelStatus>> = {
-  "3000": "registered",
-  "1466": "delivered",
-  "0174": "out_for_delivery",
-  "0500": "out_for_delivery",
-  "1701": "at_pickup_point",
-  "0156": "at_pickup_point",
-  "2407": "at_pickup_point",
-  "1419": "returning",
-  "1481": "returning",
-  "2600": "returning",
-  "1303": "returning",
-  "3001": "returning",
-  "3002": "returning",
-  "1100": "problem",
-};
-
-const IN_TRANSIT_TYPES = [
-  "ARRIVALINCANADA",
-  "CONTAINER",
-  "INCOMING",
-  "INDUCTION",
-  "INFOTID",
-  "REVIEWCOMPLETE",
-  "VEHICLEINFO",
-  "PRRECEIVED",
-  "INFOCONT",
-  "DISPATCH",
-  "TOCUST",
-  "FROMCUST",
-  "INFO",
-  "TORETAIL",
-] as const;
-
-/** Event types, upper-cased. A failed attempt counts as a problem for a household. */
-const EVENT_TYPE: Readonly<Record<string, ParcelStatus>> = {
-  ...Object.fromEntries(IN_TRANSIT_TYPES.map((type) => [type, "in_transit" as const])),
-  OUT: "out_for_delivery",
-  ATTEMPTED: "problem",
-  DETENTION: "problem",
-  FORREVIEW: "problem",
-  RTSLABELPROC: "returning",
-  DELIVERED: "delivered",
-  SIGNATURE: "delivered",
-};
+/** Looks `value` up in one of the shared table's vocabularies (`status:`, `cd:`, `type:`). */
+const lookUp = (vocabulary: string, value: string | null): ParcelStatus | null =>
+  value === null ? null : ruleStatus(CARRIER_ID, `${vocabulary}:${value}`);
 
 export const DELIVERED_EVENT_CODE = "1466";
 
+/** The parcel-level `status` string; variants like `InTransit-xyz` fall back to their family. */
 export function mapParcelStatus(value: string | null): ParcelStatus | null {
-  if (value === null) {
-    return null;
-  }
-  return lookUpStatus(STATUS, value) ?? lookUpStatus(STATUS, value.split("-")[0] ?? value);
+  return lookUp("status", value);
 }
 
+/** An event code outranks its type: one type covers several outcomes. */
 export function mapEvent(event: Json): ParcelStatus | null {
-  const code = text(event["cd"]);
   return (
-    lookUpStatus(EVENT_CODE, code) ??
-    lookUpStatus(EVENT_TYPE, text(event["type"])?.toUpperCase() ?? null)
+    lookUp("cd", text(event["cd"])) ?? lookUp("type", text(event["type"])?.toUpperCase() ?? null)
   );
 }
 

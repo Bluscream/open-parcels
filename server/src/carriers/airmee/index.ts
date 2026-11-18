@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   asArray,
   defineCarrier,
@@ -7,6 +8,7 @@ import {
   isObject,
   newestFirst,
   readObject,
+  ruleStatus,
   SignInRejectedError,
   snapshot,
   text,
@@ -18,53 +20,26 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "airmee";
 const HOST = "api.airmee.com";
 const ORIGIN = "https://tracking.airmee.com";
 /** The tracked "code" is the opaque token from the recipient's tracking link. */
-const PLAUSIBLE = /^[A-Za-z0-9_-]{6,120}$/;
-
-/** The courier status enum each timeline event carries. Read from the app's own list. */
-export const AIRMEE_STATUS: StatusTable = {
-  REGISTERED: "registered",
-  WAITING: "registered",
-  UNASSIGNED: "registered",
-  SCAN: "registered",
-  ASSIGNED: "in_transit",
-  ON_WAY_TO_PICKUP: "in_transit",
-  PICKUP_CONFIRMED: "in_transit",
-  ON_WAY_TO_DROPOFF: "out_for_delivery",
-  READY_FOR_CUSTOMER_PICKUP: "at_pickup_point",
-  DROPOFF_CONFIRMED: "delivered",
-  POST_DROPOFF_CONFIRMED: "delivered",
-  POSTPONED_UNREACHABLE_CUSTOMER: "problem",
-  POSTPONED_OTHER: "problem",
-  CANCELLED: "problem",
-};
-
-/** Used only when the enum is missing and the tracker sends its display text instead. */
-const FORMATTED_STATUS: StatusTable = {
-  delivered: "delivered",
-  "out for delivery": "out_for_delivery",
-  "picked up": "in_transit",
-  unassigned: "registered",
-  scanned: "registered",
-  failed: "problem",
-  returned: "returning",
-};
+const PLAUSIBLE = carrierPattern("airmee");
 
 /** `EDIT` records that the order was amended: a known value, but not a stage. */
 const NOT_A_STAGE = "EDIT";
 
-/** The stage a value names; undefined for `EDIT` and for values we cannot map. */
+/**
+ * The stage a value names: the courier status enum, or the display text the tracker sends when
+ * the enum is missing (both in the shared table). Undefined for `EDIT` and unmapped values.
+ */
 function stageOf(value: string): ParcelStatus | undefined {
   if (value.toUpperCase() === NOT_A_STAGE) {
     return undefined;
   }
-  return AIRMEE_STATUS[value.toUpperCase()] ?? FORMATTED_STATUS[value.toLowerCase()];
+  return ruleStatus(CARRIER_ID, value) ?? undefined;
 }
 
 async function lookUp(http: PluginHttp, hash: string, token: string): Promise<Json | null> {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   TransientError,
   UnexpectedResponseError,
@@ -12,7 +13,7 @@ import { flightEvents } from "./flight.js";
 import { CARRIER_ID, eventsSnapshot, type Json } from "./parse.js";
 
 const HOST = "tracking.speedx.io";
-const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
+const CODE_PATTERN = carrierPattern("speedx");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;

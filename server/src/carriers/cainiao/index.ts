@@ -1,13 +1,14 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
   asObject,
   defineCarrier,
   isObject,
   isoTime as kitIsoTime,
-  lookUpStatus,
   newestFirst,
   requestJson,
+  ruleStatus,
   snapshot,
   text,
   UnexpectedResponseError,
@@ -18,11 +19,10 @@ import {
   type PluginHttp,
   type SnapshotEvent,
 } from "../../plugin/api.js";
-import { ACTION_STATUS } from "./status.js";
 
 const CARRIER_ID = "cainiao";
 const HOST = "global.cainiao.com";
-const PLAUSIBLE = /^[A-Z0-9]{8,40}$/i;
+const PLAUSIBLE = carrierPattern("cainiao");
 /** Codes per request; the endpoint documents no limit, so stay small. */
 export const BATCH_SIZE = 10;
 
@@ -30,8 +30,9 @@ export const BATCH_SIZE = 10;
 const isoTime = (value: unknown): string | null =>
   kitIsoTime(value, { naive: "utc", epoch: "ms", keepFraction: true });
 
+/** Cainiao action codes, from the shared table. */
 function mapAction(code: string | null, report?: (c: string) => void) {
-  return lookUpStatus(ACTION_STATUS, code?.toUpperCase() ?? null, report);
+  return ruleStatus(CARRIER_ID, code?.toUpperCase() ?? null, report);
 }
 
 /** One batch; returns the entries keyed by tracking number. Unknown numbers are left out. */

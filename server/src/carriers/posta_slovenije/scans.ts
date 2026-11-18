@@ -1,6 +1,8 @@
 import {
   isoTime,
   objects,
+  ruleStatus,
+  rulesStatus,
   snapshot,
   type Json,
   type ParcelSnapshot,
@@ -11,26 +13,18 @@ import { text } from "./shared.js";
 export const CARRIER_ID = "posta_slovenije";
 type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
 
-/*
- * Pošta Slovenije scan codes. The shared rules have no table for this carrier yet; this one
- * belongs there. `V` (not delivered) and the delivery codes depend on the scans around them and
- * are handled in `rowStatuses`.
+/**
+ * A scan code from the shared table. `V` (not delivered) and the delivery scans depend on the
+ * scans around them and are refined in `rowStatuses`.
  */
-const CODES: Readonly<Record<string, ParcelStatus>> = {
-  NAJ: "registered",
-  S: "in_transit",
-  EMC: "in_transit",
-  N: "out_for_delivery",
-  VLPAKP: "out_for_delivery",
-  IZR: "at_pickup_point",
-  PVI: "at_pickup_point",
-  VDO: "problem",
-  POTPKTM: "problem",
-  VRP: "returning",
-};
-const PICKUP_CODES = new Set(["IZR", "PVI"]);
-const DELIVERY_CODES = new Set(["VL", "VR"]);
-const RETURN_WORDING = /returned to (the )?sender/i;
+const codeStatus = (code: string): ParcelStatus | null => ruleStatus(CARRIER_ID, code);
+const isDelivery = (code: string): boolean => codeStatus(code) === "delivered";
+const isPickup = (code: string): boolean => codeStatus(code) === "at_pickup_point";
+
+/** Whether a `V` scan's English action sends the parcel back (the table reads the wording). */
+const sendsBack = (row: Json): boolean =>
+  rulesStatus(CARRIER_ID, { text: text(row["nondeliveryActionEN"]) ?? "", fields: { scan: "V" } })
+    ?.status === "returning";
 
 interface Row {
   readonly at: string;
@@ -58,13 +52,11 @@ function rowStatuses(rows: readonly Row[]): (ParcelStatus | null)[] {
   let returning = false;
   return rows.map(({ row, code }) => {
     if (code === "V") {
-      returning = RETURN_WORDING.test(text(row["nondeliveryActionEN"]) ?? "");
-      return returning ? "returning" : "problem";
+      returning = sendsBack(row);
+      return returning ? "returning" : codeStatus(code);
     }
-    if (DELIVERY_CODES.has(code)) {
-      return returning ? "returning" : "delivered";
-    }
-    return CODES[code] ?? null;
+    const status = codeStatus(code);
+    return returning && status === "delivered" ? "returning" : status;
   });
 }
 
@@ -110,12 +102,12 @@ export function scanSnapshot(input: ScanInput, report: (code: string) => void): 
   const status = [...statuses].reverse().find((value) => value !== null) ?? null;
   const delivered = status === "delivered";
   const reversed = [...rows].reverse();
-  const lastDelivery = reversed.find((entry) => DELIVERY_CODES.has(entry.code));
-  const lastOther = reversed.find((entry) => !DELIVERY_CODES.has(entry.code));
+  const lastDelivery = reversed.find((entry) => isDelivery(entry.code));
+  const lastOther = reversed.find((entry) => !isDelivery(entry.code));
   let point: string | null = null;
   if (status === "at_pickup_point") {
-    point = pickupPoint(reversed.find((entry) => PICKUP_CODES.has(entry.code))?.row);
-  } else if (delivered && lastOther !== undefined && PICKUP_CODES.has(lastOther.code)) {
+    point = pickupPoint(reversed.find((entry) => isPickup(entry.code))?.row);
+  } else if (delivered && lastOther !== undefined && isPickup(lastOther.code)) {
     point = pickupPoint(lastOther.row);
   }
   return snapshot({

@@ -1,11 +1,12 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   isObject,
   isoTime as kitIsoTime,
-  lookUpStatus,
   newestFirst,
   requestJson,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -24,40 +25,17 @@ const isoTime = (value: unknown): string | null =>
 
 const CARRIER_ID = "colisweb";
 const HOST = "www.colisweb.com";
-const PLAUSIBLE = /^[A-Z0-9-]{6,40}$/i;
+const PLAUSIBLE = carrierPattern("colisweb");
 
-/** `step` values, lower-cased with `_` and `-` removed. */
-const STEP_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  idle: "registered",
-  confirmed: "registered",
-  courseaccepted: "registered",
-  pickedup: "in_transit",
-  packagewithdrawn: "in_transit",
-  packagewithdrawalpbok: "in_transit",
-  outfordelivery: "out_for_delivery",
-  deliveryinprogress: "out_for_delivery",
-  delivered: "delivered",
-  deliverypbok: "delivered",
-  pickupfailed: "problem",
-  packagewithdrawalfailed: "problem",
-  deliveryfailed: "problem",
-  nondeliverable: "problem",
-  canceled: "problem",
-  cancelled: "problem",
-  deliverycanceled: "problem",
-  deliverycancelled: "problem",
-  packagereturned: "returning",
-  deliveryreturned: "returning",
-  packagereturnfailed: "returning",
-  deliveryreturnfailed: "returning",
-};
-
-/** The reply has no event list, only these milestone timestamps, oldest stage first. */
-const MILESTONES: readonly (readonly [string, ParcelStatus])[] = [
-  ["deliveryConfirmationDate", "registered"],
-  ["pickedUpDate", "in_transit"],
-  ["deliveredDate", "delivered"],
-];
+/**
+ * The reply has no event list, only these milestone timestamps, oldest stage first. The stage
+ * each marks is the shared table's "milestone:<field>".
+ */
+const MILESTONES: readonly (readonly [string, ParcelStatus | null])[] = [
+  "deliveryConfirmationDate",
+  "pickedUpDate",
+  "deliveredDate",
+].map((field) => [field, ruleStatus(CARRIER_ID, `milestone:${field}`)] as const);
 
 async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   const body = await requestJson(http, new URL(`https://${HOST}/api/search`), "Colisweb tracking", {
@@ -77,10 +55,11 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
 
 function toSnapshot(raw: Json, code: string, report: (c: string) => void): ParcelSnapshot {
   const step = text(raw["step"]);
+  // `step` values are looked up lower-cased with `_` and `-` removed.
   const key = step?.toLowerCase().replace(/[-_]/g, "") ?? null;
   // A step that does not map falls back to the newest milestone that is set.
   const status =
-    lookUpStatus(STEP_STATUS, key, () => {
+    ruleStatus(CARRIER_ID, key, () => {
       report(step ?? "");
     }) ??
     [...MILESTONES].reverse().find(([field]) => isoTime(raw[field]) !== null)?.[1] ??

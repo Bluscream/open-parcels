@@ -1,4 +1,5 @@
 import {
+  carrierKey,
   loadRules,
   type Rules,
   defineCarrier,
@@ -24,14 +25,6 @@ import { STOREFRONT_COUNTRIES, STOREFRONT_IDS, STOREFRONTS } from "./storefronts
 const configSchema = z.object({
   storefront: z.enum(STOREFRONT_IDS).describe("The Amazon storefront the account orders from."),
 });
-
-/**
- * Pages are read as a mobile browser: the order pages are the website, and with a library
- * User-Agent Amazon serves a robot check instead.
- */
-const BROWSER_USER_AGENT =
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 " +
-  "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
 /**
  * One request every five seconds per host, no bursts. A full run costs one orders page plus at
@@ -73,8 +66,9 @@ export function amazonCarrier(rules?: Rules): CarrierPlugin<AmazonConfig, Amazon
     },
     http: {
       limits: { "*": AMAZON_LIMIT },
+      // Pages are read as a mobile browser: the order pages are the website.
       userAgent: {
-        value: BROWSER_USER_AGENT,
+        value: carrierKey(AMAZON_ID, "browser_user_agent"),
         reason: "Amazon's order pages answer a library User-Agent with a robot check.",
       },
     },

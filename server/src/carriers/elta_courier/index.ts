@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   type ParcelSnapshot,
@@ -8,6 +9,7 @@ import {
   type PluginHttp,
   asObject,
   isObject,
+  ruleStatus,
   objects,
   readJson,
   text,
@@ -15,26 +17,15 @@ import {
   newestFirst,
   zonedIso,
   expectStatus,
-  lookUpStatus,
   trackEach,
   unknownReporter,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "elta_courier";
 const HOST = "www.elta-courier.gr";
 const ZONE = "Europe/Athens";
 
-/** ELTA Courier reports Greek sentences; each is matched exactly. */
-const STATUSES: StatusTable = {
-  "Δημιουργία ΣΥ.ΔΕ.ΤΑ.": "registered",
-  "Αποστολή βρίσκεται σε στάδιο μεταφοράς": "in_transit",
-  "Άφιξη σε": "in_transit",
-  "Σε διανομέα προς παράδοση": "out_for_delivery",
-  "Αποστολή παραδόθηκε": "delivered",
-};
-
-const PLAUSIBLE = /^[A-Z0-9]{8,30}$/;
+const PLAUSIBLE = carrierPattern("elta_courier");
 
 /**
  * Looks one code up. The answer is keyed by the code; a single entry under a differently
@@ -86,7 +77,7 @@ function history(events: readonly Json[]): SnapshotEvent[] {
       result.push({
         at,
         rawStatus,
-        status: lookUpStatus(STATUSES, rawStatus),
+        status: ruleStatus(CARRIER_ID, rawStatus),
         location: text(event["place"]),
       });
     }

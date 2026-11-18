@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   asArray,
   asObject,
   epochIso,
@@ -32,15 +33,7 @@ function epochSeconds(value: unknown): string | null {
   return typeof value === "number" && value > 0 ? epochIso(value, "s") : null;
 }
 
-/** The coarse `milestone_code` of a tracking record. 10 covers both legs of a return. */
-const MILESTONES: Readonly<Record<number, ParcelStatus>> = {
-  1: "registered",
-  5: "in_transit",
-  6: "out_for_delivery",
-  8: "delivered",
-  10: "returning",
-};
-
+/** The coarse `milestone_code` of a tracking record ("milestone:" in the shared table). */
 function milestone(record: Json): number | null {
   const code = record["milestone_code"];
   return typeof code === "number" ? code : null;
@@ -48,7 +41,7 @@ function milestone(record: Json): number | null {
 
 function mapRecord(record: Json): ParcelStatus | null {
   const code = milestone(record);
-  return code === null ? null : (MILESTONES[code] ?? null);
+  return code === null ? null : ruleStatus(CARRIER_ID, `milestone:${String(code)}`);
 }
 
 function describe(record: Json): string | null {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   type ParcelSnapshot,
@@ -48,7 +49,7 @@ const KNOWN_RESULTS = new Set([0, 1, 3, 9, 11, 14, 22, 25, 27, 32, 52, 73, 76, 7
 const ACTIVITY_TEXT_KEYS = ["Description", "ActivityDescription", "Text", "Name", "Status"];
 const ADDRESSEE_NAME_KEYS = ["Name1", "Company", "Name", "FullName", "CompanyName"];
 
-const PLAUSIBLE = /^[A-Z0-9-]{5,30}$/;
+const PLAUSIBLE = carrierPattern("dynalogic");
 
 /**
  * Dynalogic has no status field; the scenario (job type plus outcome), the active step of a

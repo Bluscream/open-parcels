@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
+  rulesStatus,
   snapshot,
   trackEach,
   TransientError,
@@ -18,49 +20,20 @@ const CARRIER_ID = "colis_prive";
 const HOST = "colisprive.com";
 const PAGE_URL = `https://${HOST}/moncolis/pages/detailColis.aspx`;
 const ZONE = "Europe/Paris";
-const PLAUSIBLE = /^[A-Z0-9]{8,30}$/i;
+const PLAUSIBLE = carrierPattern("colis_prive");
 type Lang = "fr" | "nl" | "en";
-
-/**
- * One keyword table per page language, ordered from the last stage to the first. A sentence is
- * only ever matched against the language it was requested in; the sentences are the carrier's
- * own, not translations of each other.
- */
-const KEYWORDS: Readonly<Record<Lang, readonly (readonly [string, ParcelStatus])[]>> = {
-  fr: [
-    ["livré en boîte aux lettres", "delivered"],
-    ["en cours de distribution", "out_for_delivery"],
-    ["arrivé sur notre agence régionale", "in_transit"],
-    ["pris en charge par colis privé", "in_transit"],
-    ["préparation par l'expéditeur", "registered"],
-  ],
-  nl: [
-    ["in de brievenbus bezorgd", "delivered"],
-    ["onderweg naar jou", "out_for_delivery"],
-    ["toegekomen bij onze regionale bezorgpartner", "in_transit"],
-    ["nationaal platform", "in_transit"],
-    ["klaargemaakt door de webshop", "registered"],
-  ],
-  en: [
-    ["delivered in letterbox", "delivered"],
-    ["being delivered by the driver", "out_for_delivery"],
-    ["arrived at our regional distribution office", "in_transit"],
-    ["well received by a colis privé branch", "in_transit"],
-    ["prepared by your webmerchant", "registered"],
-  ],
-};
 
 function fold(text: string): string {
   return text.replace(/[‘’ʼ]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/** The status and its stage rank (higher is later), or null. */
+/**
+ * The status and its stage rank (higher is later), or null. The shared table holds one sentence
+ * set per page language and only matches a sentence against the language it was requested in.
+ */
 function match(text: string, lang: Lang): { status: ParcelStatus; rank: number } | null {
-  const folded = fold(text);
-  const table = KEYWORDS[lang];
-  const index = table.findIndex(([keyword]) => folded.includes(keyword));
-  const hit = table[index];
-  return hit === undefined ? null : { status: hit[1], rank: table.length - index };
+  const hit = rulesStatus(CARRIER_ID, { text: fold(text), fields: { lang } });
+  return hit === null ? null : { status: hit.status, rank: hit.stage ?? 0 };
 }
 
 function rowTime(row: Row): string | null {

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { defineCarrier, type ParcelSnapshot, type PluginContext } from "../../plugin/api.js";
+import {
+  carrierKey,
+  defineCarrier,
+  type ParcelSnapshot,
+  type PluginContext,
+} from "../../plugin/api.js";
 import { CARRIER_ID, TRACKING_HOST } from "./shared.js";
 import { trackingSnapshot, type Reporter } from "./snapshot.js";
 import { isPlausibleBarcode, isPlausiblePostcode, TrackingRun } from "./tracking.js";
@@ -56,8 +61,7 @@ export const mondialRelay = defineCarrier<Config, Secret>({
       "*": { intervalMs: 10_000, burst: 1 },
     },
     userAgent: {
-      value:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      value: carrierKey(CARRIER_ID, "browser_user_agent"),
       reason: "The public tracking page refuses requests that do not look like a browser.",
     },
   },

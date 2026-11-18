@@ -4,6 +4,7 @@ import {
   newestFirst,
   num,
   objects,
+  ruleStatus,
   rulesTrackingUrl,
   snapshot,
   text,
@@ -17,29 +18,6 @@ import {
 export const CARRIER_ID = "gofo";
 /** Transport A answers in this zone's wall-clock time but always stamps a fixed -07:00. */
 export const WALL_CLOCK_ZONE = "America/Los_Angeles";
-
-/** Event process codes, shared by every country. Candidates for the shared rules package. */
-const PROCESS_CODES: Readonly<Record<string, ParcelStatus>> = {
-  "100": "registered",
-  "200": "in_transit",
-  "201": "in_transit",
-  "202": "in_transit",
-  "203": "in_transit",
-  "204": "problem",
-  "206": "problem",
-  "208": "out_for_delivery",
-  "411": "in_transit",
-  "412": "in_transit",
-  LS004: "at_pickup_point",
-  "205": "delivered",
-};
-
-/** The coarse item status, used only when the latest event has no mapped code. */
-const ITEM_STATUS: Readonly<Record<string, ParcelStatus>> = {
-  Processing: "registered",
-  Transit: "in_transit",
-  Delivered: "delivered",
-};
 
 /** Parses a timestamp; with `wallClock`, the stamped offset is dropped and the zone's applies. */
 export function isoTime(value: unknown, wallClock: boolean): string | null {
@@ -65,7 +43,7 @@ function events(raw: Json): Json[] {
 }
 
 function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (PROCESS_CODES[code] ?? null);
+  return code === null ? null : ruleStatus(CARRIER_ID, `process:${code}`);
 }
 
 function resolve(
@@ -82,7 +60,7 @@ function resolve(
     report(code);
   }
   const itemStatus = text(raw["status"]);
-  const fallback = itemStatus === null ? null : (ITEM_STATUS[itemStatus] ?? null);
+  const fallback = itemStatus === null ? null : ruleStatus(CARRIER_ID, `item:${itemStatus}`);
   if (itemStatus !== null && fallback === null) {
     report(`status:${itemStatus}`);
   }

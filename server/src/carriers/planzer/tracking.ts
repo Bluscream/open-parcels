@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -20,7 +21,7 @@ import {
   type Json,
 } from "./shared.js";
 
-const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
+const BARCODE_PATTERN = carrierPattern("planzer");
 /** `overallStatus.color` 3 is the app's "danger" severity. */
 const DANGER_COLOR = 3;
 

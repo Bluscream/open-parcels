@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   isoTime,
   objects,
@@ -23,7 +24,7 @@ export const CARRIER_ID = "poste_italiane";
 const ZONE = "Europe/Rome";
 const HOST = "www.poste.it";
 const API = new URL(`https://${HOST}/online/dovequando/DQ-REST/ricercasemplice`);
-const BARCODE = /^[A-Z0-9]{8,40}$/i;
+const BARCODE = carrierPattern("poste_italiane");
 
 const configSchema = z.object({});
 const secretSchema = z.null();

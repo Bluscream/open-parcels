@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   cleanText,
   readTables,
   rulesTrackingUrl,
@@ -13,24 +14,12 @@ import {
 
 export const CARRIER_ID = "speedee";
 
-const EXACT: Readonly<Record<string, ParcelStatus>> = {
-  delivered: "delivered",
-  "arrival scan": "in_transit",
-  "in transit": "in_transit",
-  "** missort scans **": "problem",
-};
-/** These carry a per-scan tail (`OUT FOR DELIVERY (…)`, `UNLOAD SCAN: …`). */
-const PREFIXES: readonly (readonly [string, ParcelStatus])[] = [
-  ["out for delivery", "out_for_delivery"],
-  ["unload scan", "in_transit"],
-];
-
 export function classify(value: string | null): ParcelStatus | null {
   const key = cleanText(value ?? "").toLowerCase();
   if (key === "") {
     return null;
   }
-  return EXACT[key] ?? PREFIXES.find(([prefix]) => key.startsWith(prefix))?.[1] ?? null;
+  return ruleStatus(CARRIER_ID, key);
 }
 
 /** The text without its per-scan tail, which may name a place. */

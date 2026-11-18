@@ -1,4 +1,5 @@
 import {
+  ruleStatus,
   isTimeZone,
   snapshot,
   text,
@@ -15,40 +16,9 @@ import type { Json } from "../../plugin/api.js";
 export type { Json };
 
 /**
- * Categories first, then numeric event codes. `unknown` marks codes we have seen but that say
- * nothing about where the parcel is (an intercept, an internal hold).
+ * The category first, then the numeric event code. The shared table maps codes seen that say
+ * nothing about where the parcel is (an intercept, an internal hold) to `unknown`.
  */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  PICKUP: "registered",
-  ORIGIN_HANDLING: "in_transit",
-  LAST_MILE_ENROUTE: "in_transit",
-  LAST_MILE_DELIVERED: "delivered",
-  LAST_MILE_ATTEMPTED: "problem",
-  LAST_MILE_UNDELIVERED: "problem",
-  LAST_MILE_INTERCEPT: "unknown",
-  "50001": "registered",
-  "50002": "in_transit",
-  "52001": "in_transit",
-  "52002": "in_transit",
-  "57101": "in_transit",
-  "57102": "in_transit",
-  "57104": "in_transit",
-  "57110": "in_transit",
-  "57112": "in_transit",
-  "57113": "in_transit",
-  "57201": "delivered",
-  "57406": "unknown",
-  "57409": "in_transit",
-  "57413": "problem",
-  "57504": "problem",
-  "57607": "problem",
-  "57609": "problem",
-  "57614": "problem",
-  "57645": "problem",
-  // A disposal after failed attempts is a dead end, not a return.
-  "59116": "problem",
-};
-
 function eventKey(event: Json): string | null {
   return text(event["category"]) ?? text(event["eventCode"]);
 }
@@ -62,7 +32,7 @@ function mapEvent(event: Json): ParcelStatus | null {
   if (key === "LAST_MILE_ENROUTE" && description.includes("out for delivery")) {
     return "out_for_delivery";
   }
-  return STATUS_MAP[key] ?? null;
+  return ruleStatus(CARRIER_ID, key);
 }
 
 const WALL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;

@@ -8,6 +8,7 @@ import {
   num,
   objects,
   readObject,
+  rulesStatus,
   snapshot,
   text,
   TransientError,
@@ -46,36 +47,20 @@ const QUERY = `query ConsumerSearchShipments($code: String!) {
   }
 }`;
 
-/*
- * Posti's `status.main` values and English event texts. The shared rules have no Posti table
- * yet; both belong there. Event texts mapped to null are notices that say nothing about where
- * the parcel is.
- */
-const MAIN: Readonly<Record<string, ParcelStatus>> = {
-  DELIVERED: "delivered",
-  RETURN_DELIVERED: "returning",
-};
-const EVENTS: Readonly<Record<string, ParcelStatus | null>> = {
-  "we have received information about an upcoming delivery from the sender": "registered",
-  "item has been registered": "registered",
-  "the item is in sorting": "in_transit",
-  "the item is in transport": "in_transit",
-  "item accepted from transport": "in_transit",
-  "item is in delivery transportation": "out_for_delivery",
-  "item has been released for delivery": "out_for_delivery",
-  "item is ready for a pick up": "at_pickup_point",
-  "the item has been delivered": "delivered",
-  "item has not been collected.returned to sender": "returning",
-  "the item has been returned to the sender": "returning",
-  "we sent the recipient an email about the item": null,
-  "we sent the recipient an omaposti notification about the item": null,
-  "we have tried to reach the recipient again by email": null,
-  "we have tried to reach the recipient again by sms": null,
-  "no digital signature was received": null,
-};
-
 const eventKey = (description: string): string =>
   cleanText(description).toLowerCase().replace(/\.$/, "");
+
+/**
+ * Posti's `status.main` values ("main:") and English event texts ("event:") from the shared
+ * table. Undefined: not in the table. Null: a notice that says nothing about where the parcel is.
+ */
+function lookUp(vocabulary: "main" | "event", key: string): ParcelStatus | null | undefined {
+  const mapped = rulesStatus(CARRIER_ID, { code: `${vocabulary}:${key}` });
+  if (mapped === null) {
+    return undefined;
+  }
+  return mapped.status === "unknown" ? null : mapped.status;
+}
 
 interface Tokens {
   readonly authorization: string;
@@ -173,7 +158,8 @@ function weightKg(measurements: Json): number | null {
 function pickupPoint(events: readonly Json[], point: Json): string | null {
   const ready = events.find(
     (event) =>
-      eventKey(text(event["eventDescription"], STRINGS) ?? "") === "item is ready for a pick up",
+      lookUp("event", eventKey(text(event["eventDescription"], STRINGS) ?? "")) ===
+      "at_pickup_point",
   );
   return ready === undefined
     ? text(asObject(point["address"])["publicName"], STRINGS)
@@ -203,19 +189,20 @@ export function trackingSnapshot(
       continue;
     }
     const key = eventKey(description);
-    if (!(key in EVENTS)) {
+    const mapped = lookUp("event", key);
+    if (mapped === undefined) {
       report("event_text", key);
     }
     entries.push({
       at,
-      status: EVENTS[key] ?? null,
+      status: mapped ?? null,
       rawStatus: description,
       location: text(event["city"], STRINGS),
     });
   }
   const history = newestFirst(entries);
   const main = text(asObject(raw["status"])["main"], STRINGS);
-  const mainStatus = main === null ? undefined : MAIN[main];
+  const mainStatus = main === null ? undefined : (lookUp("main", main) ?? undefined);
   if (main !== null && mainStatus === undefined) {
     report("status_code", main);
   }

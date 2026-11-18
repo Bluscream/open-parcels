@@ -9,6 +9,7 @@ import {
   isObject,
   isoTime,
   readJson,
+  ruleFieldsStatus,
   text,
   type Json,
   type ParcelStatus,
@@ -60,33 +61,25 @@ export async function fetchSweden(
 
 const codes = (event: Json) => [event["statusCode"], event["reasonCode"]] as const;
 
-/** The hand-over to the recipient, by the service's own rule. */
-function isHandover(event: Json, method: string | null): boolean {
-  const [status, reason] = codes(event);
-  if (status !== 21) {
-    return false;
-  }
-  return method !== null && HOME_METHODS.has(method)
-    ? reason === 0
-    : reason === 908 || reason === 13;
-}
-
+/**
+ * An event's status code and reason code (with whether the method is a home delivery) through
+ * the shared DHL table, which also knows the service's own hand-over rule.
+ */
 function mapEvent(event: Json, method: string | null): ParcelStatus | null {
   const [status, reason] = codes(event);
-  if (isHandover(event, method)) {
-    return "delivered";
+  if (typeof status !== "number") {
+    return null;
   }
-  if (status === 21 || (status === 20 && reason === 907)) {
-    return "at_pickup_point";
-  }
-  if (status === 24 && reason === 501) {
-    return "out_for_delivery";
-  }
-  if (status === 56 && reason === 909) {
-    return "returning";
-  }
-  return status === 1 || status === 20 || status === 24 ? "in_transit" : null;
+  return ruleFieldsStatus("dhl", {
+    swedenStatus: String(status),
+    ...(typeof reason === "number" ? { swedenReason: String(reason) } : {}),
+    ...(method === null ? {} : { delivery: HOME_METHODS.has(method) ? "home" : "servicepoint" }),
+  });
 }
+
+/** The hand-over to the recipient: the only event the table reads as delivered. */
+const isHandover = (event: Json, method: string | null): boolean =>
+  mapEvent(event, method) === "delivered";
 
 /** The shipment flags outrank the events, as on the service's own status card. */
 function overall(

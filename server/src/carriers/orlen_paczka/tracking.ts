@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -18,7 +19,7 @@ import {
   type Json,
 } from "./shared.js";
 
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+const BARCODE_PATTERN = carrierPattern("orlen_paczka");
 const PREFIX = "callback(";
 const SUFFIX = ");";
 /** Errors that do not mean "no such parcel": the code is kept, its status unknown. */

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
+  carrierPattern,
+  ruleStatus,
   defineCarrier,
   snapshot,
   type ParcelSnapshot,
@@ -24,19 +26,7 @@ const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
 const CARRIER_ID = "trunkrs";
 const API_HOST = "api.trunkrs.app";
 
-/**
- * Trunkrs `currentState.stateName` values seen on real parcels. Anything else is reported as
- * unknown rather than guessed. Belongs in the shared rules once a Trunkrs table exists there.
- */
-const STATES: Readonly<Record<string, NonNullable<ParcelSnapshot["status"]>>> = {
-  DATA_PROCESSED: "registered",
-  SHIPMENT_SORTED: "in_transit",
-  SHIPMENT_SORTED_AT_SUB_DEPOT: "in_transit",
-  SHIPMENT_ACCEPTED_BY_DRIVER: "out_for_delivery",
-  SHIPMENT_DELIVERED: "delivered",
-};
-
-const BARCODE_PATTERN = /^[A-Z0-9-]{6,30}$/i;
+const BARCODE_PATTERN = carrierPattern("trunkrs");
 
 const configSchema = z.looseObject({
   /** The receiver's postcode. Trunkrs only answers for a parcel number together with it. */
@@ -71,7 +61,7 @@ async function lookUp(http: PluginHttp, barcode: string, postcode: string): Prom
 }
 
 function mapState(state: string | null): NonNullable<ParcelSnapshot["status"]> | null {
-  return state === null ? null : (STATES[state] ?? null);
+  return ruleStatus(CARRIER_ID, state);
 }
 
 /** History from the delivery attempts; the audit log names drivers and is never read. */

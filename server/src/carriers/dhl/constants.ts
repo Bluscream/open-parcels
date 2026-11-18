@@ -1,5 +1,7 @@
 /** Endpoints and fixed values of the DHL back ends this plug-in talks to. */
 
+import { carrierKey } from "../../plugin/api.js";
+
 export const GATEWAY_URL = "https://api-gw.dhlparcel.nl/track-trace";
 /** Codes per gateway request; a long list is split rather than sent as one huge query. */
 export const GATEWAY_BATCH = 20;
@@ -14,7 +16,7 @@ export const DE_DISCOVERY_URL = `${DE_OIDC_ROOT}/.well-known/openid-configuratio
  */
 export const DE_AUTHORIZE_URL = `${DE_OIDC_ROOT}/authorize`;
 /** The DHL Paket app's public client; it authenticates with an empty Basic-auth secret. */
-export const DE_CLIENT_ID = "83471082-5c13-4fce-8dcb-19d2a3fca413";
+export const DE_CLIENT_ID = carrierKey("dhl", "de_client_id");
 export const DE_REDIRECT_URI = "dhllogin://de.deutschepost.dhl/login";
 export const DE_SCOPE = "openid offline_access";
 /** The claim that links a token to its account; without it the inbox is silently empty. */
@@ -41,15 +43,14 @@ export const DE_TOKEN_HEADERS: Readonly<Record<string, string>> = {
   accept: "application/json, text/plain, */*",
   "content-type": "application/x-www-form-urlencoded",
   origin: "https://login.dhl.de",
-  "user-agent": "DHLPaket_PROD/1367 CFNetwork/1240.0.4 Darwin/20.6.0",
+  "user-agent": carrierKey("dhl", "de_token_user_agent"),
   "accept-language": "de-de",
 };
 export const DE_TRACKING_URL = "https://www.dhl.de/int-verfolgen/data/search";
 export const DE_TRACKING_HEADERS: Readonly<Record<string, string>> = {
   accept: "application/json",
   "content-type": "application/json",
-  "user-agent":
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+  "user-agent": carrierKey("dhl", "de_tracking_user_agent"),
 };
 /** The ID token travels in this cookie, to www.dhl.de only. */
 export const DE_COOKIE_NAME = "dhli";

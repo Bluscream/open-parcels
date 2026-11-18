@@ -3,6 +3,7 @@ import {
   SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
+  carrierKey,
   isObject,
   num,
   type Clock,
@@ -16,7 +17,7 @@ import { AUTH_HOST, text } from "./shared.js";
  * client secret exists or is used; the user's own username and password are the credentials.
  */
 const TOKEN_URL = new URL(`https://${AUTH_HOST}/realms/mojaposta/protocol/openid-connect/token`);
-const CLIENT_ID = "mojaposta-ios";
+const clientId = (): string => carrierKey("posta_slovenije", "client_id");
 const SCOPE = "openid profile email offline_access";
 const DEFAULT_LIFETIME_S = 300;
 const MARGIN_MS = 60_000;
@@ -81,7 +82,7 @@ export async function passwordGrant(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const answer = await postToken(http, {
       grant_type: "password",
-      client_id: CLIENT_ID,
+      client_id: clientId(),
       username: credentials.username,
       password: credentials.password,
       scope,
@@ -116,7 +117,7 @@ async function refreshGrant(
 ): Promise<Tokens | null> {
   const answer = await postToken(http, {
     grant_type: "refresh_token",
-    client_id: CLIENT_ID,
+    client_id: clientId(),
     refresh_token: refreshToken,
   });
   if (answer.status === 200) {

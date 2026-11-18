@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   expectStatus,
   isObject,
@@ -24,7 +25,7 @@ const API_URL = `https://${API_HOST}/external_scripts/track-site.php`;
 const TIMEOUT_MS = 60_000;
 const RESULT_FOUND = 0;
 const RESULT_NOT_FOUND = 9;
-const BARCODE_PATTERN = /^[A-Z0-9]{6,30}$/i;
+const BARCODE_PATTERN = carrierPattern("geniki_taxydromiki");
 
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 

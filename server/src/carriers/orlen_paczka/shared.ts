@@ -1,4 +1,4 @@
-import { text as kitText, zonedIso, type ParcelStatus } from "../../plugin/api.js";
+import { rulesStatus, text as kitText, zonedIso, type ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "orlen_paczka";
 export const TRACKING_HOST = "nadaj.orlenpaczka.pl";
@@ -26,35 +26,19 @@ export function isoTime(value: unknown): string | null {
   );
 }
 
-/** ORLEN event codes. Kept local until the shared rules carry an ORLEN table. */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  "100": "in_transit",
-  "200": "registered",
-  "210": "registered",
-  "240": "in_transit",
-  "300": "in_transit",
-  "653": "in_transit",
-  "680": "out_for_delivery",
-  "1000": "delivered",
-};
-
-const PICKUP_LABEL = "czeka na odbiór w punkcie";
-const HANDOFF_LABELS = ["paczka w innym kraju", "przekazana do przewoźnika w innym kraju"];
-
 /**
- * Maps an event code. Code 690 covers both "ready for collection" and "handed to a carrier
- * abroad"; only the label tells them apart, and an unrecognised label stays unmapped.
+ * Maps an event code through the shared table. Code 690 covers both "ready for collection" and
+ * "handed to a carrier abroad"; only the label tells them apart (the table reads it with the
+ * code), and an unrecognised label stays unmapped.
  */
 export function mapCode(eventCode: string | null, label: string | null): ParcelStatus | null {
   if (eventCode === null) {
     return null;
   }
-  if (eventCode !== "690") {
-    return STATUS_MAP[eventCode] ?? null;
-  }
-  const lower = label?.toLowerCase() ?? "";
-  if (lower.includes(PICKUP_LABEL)) {
-    return "at_pickup_point";
-  }
-  return HANDOFF_LABELS.some((handoff) => lower.includes(handoff)) ? "in_transit" : null;
+  const mapped = rulesStatus(CARRIER_ID, {
+    code: eventCode,
+    text: label?.toLowerCase() ?? "",
+    fields: { event: eventCode },
+  });
+  return mapped?.status ?? null;
 }

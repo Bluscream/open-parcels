@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   TransientError,
   type ParcelSnapshot,
@@ -8,7 +9,7 @@ import {
 import { CARRIER_ID, pageSnapshot } from "./parse.js";
 
 const HOST = "packages.speedeedelivery.com";
-const CODE_PATTERN = /^[A-Z0-9]{8,30}$/i;
+const CODE_PATTERN = carrierPattern("speedee");
 const MAX_PAGE_BYTES = 2_000_000;
 
 const configSchema = z.looseObject({});

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   type ParcelSnapshot,
@@ -13,10 +14,9 @@ import {
   epoch,
   isoTime,
   newestFirst,
-  lookUpStatus,
+  ruleStatus,
   trackEach,
   unknownReporter,
-  type StatusTable,
   rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { FedExSession, HOST } from "./api.js";
@@ -28,28 +28,7 @@ const POUND_KG = 0.45359237;
 const secretSchema = z.object({ clientId: z.string().min(1), clientSecret: z.string().min(1) });
 type Secret = z.infer<typeof secretSchema>;
 
-/** FedEx status and scan event codes. */
-const CODES: StatusTable = {
-  OC: "registered",
-  DO: "registered",
-  IN: "registered",
-  PD: "problem",
-  CA: "problem",
-  DD: "problem",
-  SE: "problem",
-  CD: "problem",
-  DE: "problem",
-  ...Object.fromEntries(
-    ["IP", "DS", "US", "TR", "DR", "PM", "MD", "CH", "AC", "OX", "CP", "EA", "AE", "AO", "DY"]
-      .concat(["AR", "AF", "DP", "CC", "PU", "IT"])
-      .map((code) => [code, "in_transit"]),
-  ),
-  HP: "at_pickup_point",
-  OD: "out_for_delivery",
-  DL: "delivered",
-};
-
-const PLAUSIBLE = /^\d{10,22}$/;
+const PLAUSIBLE = carrierPattern("fedex");
 
 function place(location: unknown): string | null {
   const block = asObject(location);
@@ -69,7 +48,7 @@ function history(raw: Json): SnapshotEvent[] {
       events.push({
         at,
         rawStatus,
-        status: lookUpStatus(CODES, code),
+        status: ruleStatus(CARRIER_ID, code),
         location: place(event["scanLocation"]),
       });
     }
@@ -98,7 +77,7 @@ function deliveredAt(raw: Json): string | null {
 function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
   const latest = asObject(raw["latestStatusDetail"]);
   const code = text(latest["code"]) ?? text(latest["derivedCode"]);
-  const status = lookUpStatus(CODES, code);
+  const status = ruleStatus(CARRIER_ID, code);
   if (code !== null && status === null) {
     report(code);
   }

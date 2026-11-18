@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   asArray,
   asObject,
   isObject,
@@ -18,7 +19,7 @@ import { DELIVERED_EVENT_CODE, mapEvent, resolveStatus } from "./status.js";
 
 export const CARRIER_ID = "canadapost";
 export const TRACKING_HOST = "www.canadapost-postescanada.ca";
-export const PLAUSIBLE = /^[A-Z0-9]{10,40}$/i;
+export const PLAUSIBLE = carrierPattern("canadapost");
 
 /** The route answers 406 to a plain JSON Accept and wants the page's own empty Basic header. */
 const DETAIL_HEADERS = {

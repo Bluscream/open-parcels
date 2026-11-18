@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierKey,
   isObject,
   readJson,
   SignInRejectedError,
@@ -17,9 +18,9 @@ const BASE = `https://${ACCOUNT_HOST}/api/v12/`;
 /**
  * The mobile app's public client key. It identifies the app, not the user; a rotated key shows
  * up as an HTML refusal from the gateway and is treated as a transient failure, never as a
- * reason to sign in again.
+ * reason to sign in again. The value is in the shared rules.
  */
-const APP_KEY = "acefe97f-89fc-4f4e-9543-fc6b90f68928";
+const appKey = (): string => carrierKey("hermes", "app_key");
 
 export interface Credentials {
   readonly username: string;
@@ -51,7 +52,7 @@ export class HermesAccount {
 
   async #call(path: string, options: { body?: Json; token?: string }): Promise<HttpResponse> {
     const headers: Record<string, string> = {
-      "api-key": APP_KEY,
+      "api-key": appKey(),
       accept: "application/json",
       "accept-language": "de-de",
     };

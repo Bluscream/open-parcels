@@ -1,11 +1,16 @@
 import { z } from "zod";
-import { defineCarrier, type ParcelSnapshot, type PluginContext } from "../../plugin/api.js";
+import {
+  carrierPattern,
+  defineCarrier,
+  type ParcelSnapshot,
+  type PluginContext,
+} from "../../plugin/api.js";
 import { groupSnapshot, lookUpGroup } from "./group.js";
 import { lookUpNl, nlSnapshot } from "./nl.js";
 import { CARRIER_ID, COUNTRIES, GROUP_COUNTRIES, NL_HOST } from "./shared.js";
 
 /** GLS parcel numbers: digits, or short letter-and-digit references. Anything else is never sent. */
-const BARCODE_PATTERN = /^[A-Z0-9]{8,24}$/i;
+const BARCODE_PATTERN = carrierPattern("gls");
 
 export function isPlausibleBarcode(barcode: string): boolean {
   return BARCODE_PATTERN.test(barcode);

@@ -8,7 +8,6 @@ import {
   type SnapshotEvent,
 } from "../../plugin/api.js";
 import { CARRIER_ID, isoTime, lookUpCode, publicUrl, text } from "./shared.js";
-import { GROUP_STATUSES, INBOX_GROUPS, INBOX_STATUSES, PAYMENT_STATUSES } from "./status.js";
 
 type Report = (code: string) => void;
 
@@ -43,7 +42,7 @@ function inboxHistory(raw: Json, report: Report): SnapshotEvent[] {
     if (at === null || name === null) {
       continue;
     }
-    const status = lookUpCode(INBOX_STATUSES, name, report, PAYMENT_STATUSES);
+    const status = lookUpCode("inbox", name, report);
     events.push({ at, rawStatus: name, status, location: null });
   }
   return newestFirst(events);
@@ -61,9 +60,7 @@ export function plSnapshot(raw: Json, report: Report): ParcelSnapshot | null {
   }
   const rawStatus = text(raw["status"]);
   const group = text(raw["statusGroup"])?.toLowerCase() ?? null;
-  const status =
-    lookUpCode(INBOX_STATUSES, rawStatus, report, PAYMENT_STATUSES) ??
-    (group === null ? null : (INBOX_GROUPS[group] ?? null));
+  const status = lookUpCode("inbox", rawStatus, report) ?? lookUpCode("inbox-group", group);
   const delivered = status === "delivered";
   const operations = asObject(raw["operations"]);
   return snapshot({
@@ -107,7 +104,7 @@ export function itSnapshot(raw: Json, report: Report): ParcelSnapshot | null {
     history.push({
       at,
       rawStatus,
-      status: lookUpCode(GROUP_STATUSES, code, report),
+      status: lookUpCode("group", code, report),
       location: null,
     });
   }

@@ -1,5 +1,6 @@
 import {
   findCarrier,
+  ignoredStatus,
   mapStatus,
   resolveStatus,
   type RawStatus,
@@ -11,65 +12,34 @@ import {
 import { arrivalWindow, parseClock, pastDay, localIso, type Day } from "./dates.js";
 import { shipmentKey, type OrderTile, type TrackPage } from "./pages.js";
 import type { Storefront } from "./storefronts.js";
-import { foldText, maskDigits } from "./text.js";
+import { maskDigits } from "./text.js";
 
 export const AMAZON_ID = "amazon";
 
-/**
- * Order lines that never count as a parcel: cancelled, refunded or returned. The rules' status
- * table has no "skip" outcome yet, so this minimal en/de list stays here until it does.
- */
-const SKIP_PREFIXES = [
-  "cancelled",
-  "canceled",
-  "return complete",
-  "return started",
-  "refund",
-  "storniert",
-  "erstattet",
-  "rückgabe",
-  "zurückgesendet",
-] as const;
-
-export function isSkipped(statusText: string): boolean {
-  const folded = foldText(statusText);
-  return SKIP_PREFIXES.some((prefix) => folded.startsWith(prefix));
+/** Order lines that are no parcel (cancelled, refunded or returned): the table's ignore list. */
+export function isSkipped(rules: Rules, statusText: string): boolean {
+  return ignoredStatus(rules, AMAZON_ID, { text: statusText }) !== null;
 }
 
 export function readsAsStatus(rules: Rules, text: string): boolean {
-  return isSkipped(text) || mapStatus(rules, AMAZON_ID, { text }) !== null;
+  return isSkipped(rules, text) || mapStatus(rules, AMAZON_ID, { text }) !== null;
 }
 
-/**
- * Amazon's carrier codes for couriers that open-parcels tracks itself. A code missing here is
- * looked up in the rules' carrier registry by name; Amazon's own fleet never hands off.
- */
-const CARRIER_CODES: Readonly<Record<string, string>> = {
-  DHL_CONNECT: "dhl",
-  DHL_DE: "dhl",
-  DPD: "dpd",
-  DPD_DE: "dpd",
-  DPDDE: "dpd",
-  HERMES: "hermes",
-  HERMES_DE: "hermes",
-  GLS: "gls",
-  GLS_DE: "gls",
-  UPS: "ups",
-  ROYAL_MAIL: "royalmail",
-  USPS: "usps",
-};
+/** Amazon's own fleet never hands off. */
 const OWN_FLEET_RE = /^(?:AMZ|AMAZON|AMZL|SWA)/i;
 
 /** `PluginContext.reportUnknown`: keys and codes only, never personal data. */
 export type Reporter = (kind: string, key: string) => void;
 
-/** The carrier a code names, `amazon` for Amazon's own fleet, or null when it is not known. */
+/**
+ * The carrier a code names, `amazon` for Amazon's own fleet, or null when it is not known.
+ * Amazon's carrier codes (DHL_DE, DPD_DE, ROYAL_MAIL) are names or aliases in the registry.
+ */
 export function carrierFor(rules: Rules, code: string | null, report: Reporter): string | null {
   if (code === null || OWN_FLEET_RE.test(code)) {
     return AMAZON_ID;
   }
-  const known =
-    CARRIER_CODES[code.toUpperCase()] ?? findCarrier(rules, code.replaceAll("_", " "))?.id;
+  const known = findCarrier(rules, code.replaceAll("_", " "))?.id;
   if (known === undefined) {
     report("carrier_code", code);
     return null;

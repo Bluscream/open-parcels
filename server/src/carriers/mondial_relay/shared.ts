@@ -1,4 +1,4 @@
-import { isoTime, type ParcelStatus } from "../../plugin/api.js";
+import { isoTime, ruleStatus, type ParcelStatus } from "../../plugin/api.js";
 
 export const CARRIER_ID = "mondial_relay";
 /** The .be and .nl sites answer the same lookup; the .fr site refuses scripted clients. */
@@ -14,18 +14,12 @@ export const STEP_DELIVERED = 5;
 export const HISTORY_LIMIT = 20;
 
 /**
- * Tracking steps (`SuiviParEtapes` keys) to canonical statuses. Local until the shared rules
- * package has a table for this carrier. Step 3 spans days of hub sorting, so it is not "out for
- * delivery".
+ * A tracking step (`SuiviParEtapes` key) as a canonical status, from the shared table; null for
+ * a step it does not know. Step 3 spans days of hub sorting, so it is not "out for delivery".
  */
-export const STEP_MAP: Readonly<Record<number, ParcelStatus>> = {
-  1: "registered",
-  2: "in_transit",
-  3: "in_transit",
-  4: "at_pickup_point",
-  5: "delivered",
-};
-
+export function stepStatus(step: number): ParcelStatus | null {
+  return ruleStatus(CARRIER_ID, `step:${String(step)}`);
+}
 const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?/;
 
 /**

@@ -1,6 +1,6 @@
 import {
   isoTime,
-  lookUpStatus,
+  ruleStatus,
   text as kitText,
   type Json,
   type ParcelStatus,
@@ -14,29 +14,16 @@ export { asObject, isObject, newestFirst, type Json } from "../../plugin/api.js"
 /** PDN's fields are strings; a number in one is not taken as text. */
 export const text = (value: unknown): string | null => kitText(value, { numbers: false });
 /**
- * PDN Express event codes. Not in the shared rules package yet, so kept here; mapping too little
- * beats mapping wrongly. D845 comes from the tracking page's stage list, not from a seen scan.
+ * An event code from the shared table: null for customer-service notes and unknown codes;
+ * unknown codes go to `report`.
  */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  D800: "registered",
-  D830: "in_transit",
-  D840: "out_for_delivery",
-  D814: "problem",
-  D850: "problem",
-  D845: "at_pickup_point",
-  D860: "delivered",
-  D890: "returning",
-};
-
-/** Customer-service notes: they say nothing about where the parcel is and never set a status. */
-const NOTE_CODES: ReadonlySet<string> = new Set(["D810"]);
-
-/** The mapped status, null for notes and unknown codes; unknown codes go to `report`. */
 export function mapCode(code: string | null, report: (code: string) => void): ParcelStatus | null {
-  if (code === null || NOTE_CODES.has(code)) {
+  if (code === null) {
     return null;
   }
-  return lookUpStatus(STATUS_MAP, code, report);
+  // Customer-service notes map to unknown in the shared table: they never set a status.
+  const status = ruleStatus(CARRIER_ID, code, report);
+  return status === "unknown" ? null : status;
 }
 
 const OFFSET_PATTERN = /^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/;

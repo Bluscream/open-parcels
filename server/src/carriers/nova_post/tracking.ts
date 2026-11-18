@@ -1,7 +1,9 @@
 import {
+  carrierPattern,
   asObject,
   isObject,
   isoTime,
+  ruleStatus,
   snapshot,
   text,
   TransientError,
@@ -15,8 +17,6 @@ import {
   CARRIER_ID,
   HISTORY_LIMIT,
   publicUrl,
-  RECEIVED_CODES,
-  STATUS_MAP,
   TRACKING_HOST,
   UNDETERMINED_CODE,
 } from "./shared.js";
@@ -25,7 +25,7 @@ import {
 const novaTime = (value: unknown): string | null =>
   isoTime(value, { naive: "utc", keepFraction: true });
 /** Waybill numbers are digits; anything else is never sent. */
-const BARCODE_PATTERN = /^[0-9]{8,20}$/;
+const BARCODE_PATTERN = carrierPattern("nova_post");
 
 export function isPlausibleBarcode(barcode: string): boolean {
   return BARCODE_PATTERN.test(barcode);
@@ -62,14 +62,7 @@ function hops(raw: Json): Json[] {
 }
 
 function mapCode(code: string | null, report: (code: string) => void): ParcelSnapshot["status"] {
-  if (code === null) {
-    return null;
-  }
-  const mapped = STATUS_MAP[code];
-  if (mapped === undefined) {
-    report(code);
-    return null;
-  }
+  const mapped = ruleStatus(CARRIER_ID, code, report);
   return mapped === "unknown" ? null : mapped;
 }
 
@@ -95,7 +88,7 @@ function history(list: readonly Json[]): SnapshotEvent[] {
     if (at === null || rawStatus === null) {
       continue;
     }
-    const status = code === null ? null : (STATUS_MAP[code] ?? null);
+    const status = ruleStatus(CARRIER_ID, code);
     const location = text(hop["division_name"]);
     events.push({ at, status: status === "unknown" ? null : status, rawStatus, location });
   }
@@ -113,10 +106,11 @@ export function trackingSnapshot(
   const code = text(latest["code"]);
   const status = code === UNDETERMINED_CODE ? null : mapCode(code, report);
   const delivered = status === "delivered";
-  // No field names the hand-over time; the newest "Received" hop is the best candidate.
+  // No field names the hand-over time; the newest "Received" hop (the codes the shared table
+  // reads as delivered; the carrier's own "Delivered" means arrived at the branch) is the best one.
   const receivedHop = [...list]
     .reverse()
-    .find((hop) => RECEIVED_CODES.has(text(hop["code"]) ?? ""));
+    .find((hop) => ruleStatus(CARRIER_ID, text(hop["code"])) === "delivered");
   // A single point estimate, not a window: both ends carry it.
   const planned = delivered ? null : novaTime(raw["scheduled_delivery_date"]);
   return snapshot({

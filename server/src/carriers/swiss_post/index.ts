@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
   defineCarrier,
   RateLimitedError,
@@ -12,7 +13,7 @@ import {
 import { CARRIER_ID, shipmentSnapshot } from "./parse.js";
 import { HOST, LABEL, TrackerSession } from "./session.js";
 
-const CODE_PATTERN = /^[A-Z0-9.]{8,40}$/i;
+const CODE_PATTERN = carrierPattern("swiss_post");
 /** The wording table is the same for every parcel, about 130 KB; refreshed once a day. */
 const TEXTS_TTL_MS = 24 * 60 * 60 * 1000;
 

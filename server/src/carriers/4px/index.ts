@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   loadRules,
   trackingUrl,
   type PluginHttp,
@@ -17,40 +18,14 @@ import {
   type Json,
   type ParcelSnapshot,
   type PluginContext,
+  ruleStatus,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 import { z } from "zod";
 
 const CARRIER_ID = "4px";
 const HOST = "track.4px.com";
-const PLAUSIBLE = /^[A-Z0-9]{8,40}$/i;
-
-/** 4PX event codes (`tkCode`). Only codes seen on real parcels; anything else is reported. */
-export const FOURPX_STATUS: StatusTable = {
-  FPX_L_RPIF: "registered",
-  FPX_O_IR: "registered",
-  FPX_O_IRI: "registered",
-  FPX_C_SPLS: "in_transit",
-  FPX_C_AAF: "in_transit",
-  FPX_C_ADFF: "in_transit",
-  FPX_O_RR: "in_transit",
-  FPX_M_HA: "in_transit",
-  FPX_M_DFOA: "in_transit",
-  FPX_M_ATA: "in_transit",
-  FPX_M_CRSD: "in_transit",
-  FPX_M_IT: "in_transit",
-  FPX_F_ST: "in_transit",
-  FPX_I_RCUK: "in_transit",
-  FPX_D_AOPC: "in_transit",
-  FPX_D_APC: "in_transit",
-  FPX_D_AAD: "in_transit",
-  FPX_D_STPP: "in_transit",
-  FPX_D_HQ: "in_transit",
-  FPX_D_SD: "out_for_delivery",
-  FPX_D_FD: "problem",
-  FPX_S_OK: "delivered",
-};
+const PLAUSIBLE = carrierPattern("4px");
 
 /**
  * One code per request. A code 4PX does not know comes back as one item whose `serverCode` and
@@ -94,7 +69,7 @@ function history(tracks: readonly unknown[]): SnapshotEvent[] {
     events.push({
       at,
       rawStatus: text(track["tkDesc"]) ?? code,
-      status: FOURPX_STATUS[code] ?? null,
+      status: ruleStatus(CARRIER_ID, code),
       location: text(track["tkLocation"]),
     });
   }
@@ -110,12 +85,10 @@ export function fourPxSnapshot(
   // 4PX lists events newest first.
   const latest = asObject(tracks[0]);
   const code = text(latest["tkCode"]);
-  const status = code === null ? null : (FOURPX_STATUS[code] ?? null);
+  const status = ruleStatus(CARRIER_ID, code);
   for (const entry of tracks) {
     const eventCode = text(asObject(entry)["tkCode"]);
-    if (eventCode !== null && FOURPX_STATUS[eventCode] === undefined) {
-      report(eventCode);
-    }
+    ruleStatus(CARRIER_ID, eventCode, report);
   }
   const delivered = status === "delivered";
   const resolved = text(raw["serverCode"]) ?? barcode;

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asArray,
+  carrierKey,
   defineCarrier,
   isObject,
   readObject,
@@ -14,9 +16,8 @@ import { CARRIER_ID, shipmentSnapshot } from "./parcel.js";
 
 const HOST = "api2.postnord.com";
 const API = `https://${HOST}/rest/shipment/v5/trackandtrace/recipientview`;
-/** The tag PostNord's own tracking website sends; a public client name, not a secret. */
-const WEB_CLIENT = "web-ncp";
-const BARCODE = /^[A-Z0-9]{8,40}$/i;
+
+const BARCODE = carrierPattern("postnord");
 
 const configSchema = z.object({});
 const secretSchema = z.null();
@@ -35,7 +36,11 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     const url = new URL(API);
     url.search = new URLSearchParams({ id: barcode, locale: "en" }).toString();
     const response = await context.http.request(url, {
-      headers: { accept: "application/json", "x-bap-key": WEB_CLIENT },
+      headers: {
+        accept: "application/json",
+        // The tag PostNord's own tracking website sends; a public client name, not a secret.
+        "x-bap-key": carrierKey(CARRIER_ID, "web_client"),
+      },
     });
     if (response.status === 401 || response.status === 403) {
       throw new TransientError(`PostNord refused its web client tag (HTTP ${response.status}).`);

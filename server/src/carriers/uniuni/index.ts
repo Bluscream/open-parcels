@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
+  carrierPattern,
   defineCarrier,
   snapshot,
   TransientError,
@@ -11,7 +12,9 @@ import {
 } from "../../plugin/api.js";
 import {
   asObject,
+  carrierKey,
   isObject,
+  ruleStatus,
   isoTime,
   objects,
   readJson,
@@ -22,25 +25,11 @@ import {
 const CARRIER_ID = "uniuni";
 const API_HOST = "delivery-api.uniuni.ca";
 /** The key UniUni's own public tracking page sends; it identifies no user. */
-const PUBLIC_KEY = "SMq45nJhQuNR3WHsJA6N";
+const publicKey = (): string => carrierKey(CARRIER_ID, "public_key");
 
 type Status = NonNullable<ParcelSnapshot["status"]>;
 
-const group = (status: Status, codes: readonly number[]): [string, Status][] =>
-  codes.map((code) => [String(code), status]);
-
-/** Numeric `state` codes. Belongs in the shared rules once a UniUni table exists there. */
-const STATES: Readonly<Record<string, Status>> = Object.fromEntries([
-  ...group("registered", [190, 223]),
-  ...group("in_transit", [195, 199, 200, 204, 217, 218, 221, 225, 229, 255, 1910, 4010]),
-  ...group("out_for_delivery", [202, 220]),
-  ...group("delivered", [203, 216, 228]),
-  ...group("at_pickup_point", [214, 226]),
-  ...group("returning", [211, 215, 230, 233, 234]),
-  ...group("problem", [192, 198, 206, 207, 209, 212, 213, 219, 222, 224, 231, 232, 235, 1870]),
-]);
-
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+const BARCODE_PATTERN = carrierPattern("uniuni");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;
@@ -51,7 +40,7 @@ type Secret = z.infer<typeof secretSchema>;
 async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   const url = new URL(`https://${API_HOST}/cargo/trackinguniuninew`);
   url.searchParams.set("id", barcode);
-  url.searchParams.set("key", PUBLIC_KEY);
+  url.searchParams.set("key", publicKey());
   url.searchParams.set("source", "web");
   const response = await http.request(url, { headers: { accept: "application/json" } });
   if (response.status !== 200 && response.status !== 400) {
@@ -71,7 +60,7 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
 }
 
 function mapState(code: string | null): Status | null {
-  return code === null ? null : (STATES[code] ?? null);
+  return ruleStatus(CARRIER_ID, code);
 }
 
 /** `ts` is epoch seconds; some late events carry only the local time and the zone name. */

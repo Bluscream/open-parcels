@@ -1,4 +1,4 @@
-import { cleanText, type ParcelSnapshot } from "../../plugin/api.js";
+import { cleanText, rulesStatus, type ParcelSnapshot } from "../../plugin/api.js";
 
 /** Lower-cased, whitespace-collapsed text for matching the carrier's wording. */
 const fold = (value: string): string => cleanText(value).toLowerCase();
@@ -6,31 +6,11 @@ const fold = (value: string): string => cleanText(value).toLowerCase();
 export type ParcelStatus = NonNullable<ParcelSnapshot["status"]>;
 
 /*
- * Poste Italiane reports only Italian sentences, no codes. The shared rules have no table for
- * this carrier yet; these prefixes and sentences belong there and stay here until they move.
- * Matched on the start of the folded sentence, longest first, because dates and places follow.
+ * Poste Italiane reports only Italian sentences, no codes. The shared table knows short
+ * fragments sent as a whole event text, and longer sentences by their start, because dates and
+ * places follow.
  */
-const PREFIXES: readonly (readonly [string, ParcelStatus])[] = [
-  ["la spedizione è stata presa in carico", "registered"],
-  ["da un nostro operatore", "registered"],
-  ["a seguito di acquisto da poste.it", "registered"],
-  ["disponibile per il ritiro", "at_pickup_point"],
-  ["la spedizione è in transito", "in_transit"],
-  ["completata la fase di verifica per lo svincolo", "in_transit"],
-  ["consegna non andata a buon fine", "problem"],
-  ["sono in corso delle verifiche sulla spedizione", "problem"],
-  ["in restituzione al mittente", "returning"],
-  ["la spedizione è in consegna", "out_for_delivery"],
-  ["la spedizione è stata consegnata", "delivered"],
-];
-
-/** Short fragments Poste sends as a whole event text. */
-const EXACT: Readonly<Record<string, ParcelStatus>> = {
-  "all'estero": "in_transit",
-  "presso il paese estero in data": "in_transit",
-  "in data": "in_transit",
-  "con successo in data": "delivered",
-};
+const CARRIER_ID = "poste_italiane";
 
 /** Poste sometimes writes "è" as "e'"; both spellings are the same sentence. */
 export function normalise(sentence: string): string {
@@ -42,7 +22,8 @@ export function sentenceStatus(sentence: string | null): ParcelStatus | null {
     return null;
   }
   const folded = normalise(sentence);
-  return EXACT[folded] ?? PREFIXES.find(([prefix]) => folded.startsWith(prefix))?.[1] ?? null;
+  const mapped = rulesStatus(CARRIER_ID, { code: folded, text: folded, fields: { use: "status" } });
+  return mapped?.status ?? null;
 }
 
 /** Wording that puts the parcel at a place the recipient collects it from. */
@@ -51,11 +32,7 @@ export function isPickupSentence(sentence: string | null): boolean {
     return false;
   }
   const folded = normalise(sentence);
-  return [
-    "disponibile per il ritiro",
-    "la spedizione è stata presa in carico presso il punto poste",
-    "da un nostro operatore presso l'ufficio postale",
-  ].some((prefix) => folded.startsWith(prefix));
+  return rulesStatus(CARRIER_ID, { text: folded, fields: { use: "pickup" } }) !== null;
 }
 
 const MONTHS = [

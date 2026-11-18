@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -16,7 +17,7 @@ export const trackingApiUrl = (barcode: string): URL =>
   new URL(`https://${TRACKING_HOST}/rest/plc/de_DE/${encodeURIComponent(barcode)}`);
 
 /** DPD parcel numbers are 14 digits; anything else is not looked up on the public page. */
-const BARCODE = /^\d{14}$/;
+const BARCODE = carrierPattern("dpd");
 
 const contentSchema = z.object({ content: z.array(z.string()).optional() }).loose();
 const statusInfoSchema = z

@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -19,7 +20,7 @@ import {
   type Json,
 } from "./shared.js";
 
-const BARCODE_PATTERN = /^[A-Z0-9]{6,40}$/i;
+const BARCODE_PATTERN = carrierPattern("pdn_express");
 /** The only failure the service is known to use for a temporary backend problem. */
 const RETRYABLE_ERROR = "upstream";
 

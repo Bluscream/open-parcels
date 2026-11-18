@@ -1,6 +1,7 @@
 import {
   isoTime as kitIsoTime,
   num as kitNum,
+  ruleStatus,
   rulesTrackingUrl,
   text as kitText,
   type ParcelStatus,
@@ -21,27 +22,11 @@ export const num = (value: unknown): number | null => kitNum(value, { strings: f
 export const isoTime = (value: unknown): string | null =>
   kitIsoTime(value, { naive: "utc", keepFraction: true });
 /**
- * OnTrac event codes. Kept local until the shared rules carry an OnTrac table. NFRP ("delivered"
- * to another carrier) is deliberately absent: neither delivered nor in transit is certain.
+ * An OnTrac event code from the shared table. NFRP ("delivered" to another carrier) is
+ * deliberately absent: neither delivered nor in transit is certain.
  */
-const STATUS_MAP: Readonly<Record<string, ParcelStatus>> = {
-  EXRL: "registered",
-  INRL: "registered",
-  ORIG: "in_transit",
-  ARRD: "in_transit",
-  SFCT: "in_transit",
-  FCTF: "in_transit",
-  LOAD: "in_transit",
-  OFDL: "out_for_delivery",
-  DLVD: "delivered",
-  BCLD: "problem",
-  NDMI: "problem",
-  UTLV: "problem",
-  ONHD: "problem",
-};
-
 export function mapCode(code: string | null): ParcelStatus | null {
-  return code === null ? null : (STATUS_MAP[code] ?? null);
+  return ruleStatus(CARRIER_ID, code);
 }
 
 export function publicUrl(barcode: string): string {

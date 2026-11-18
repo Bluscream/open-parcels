@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   type PluginHttp,
   asArray,
   defineCarrier,
@@ -7,6 +8,7 @@ import {
   isoTime,
   newestFirst,
   readObject,
+  ruleStatus,
   snapshot,
   text,
   trackEach,
@@ -14,13 +16,13 @@ import {
   UnexpectedResponseError,
   type Json,
   type ParcelSnapshot,
+  type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
-  type StatusTable,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "box_now";
-const PLAUSIBLE = /^[A-Z0-9-]{6,40}$/i;
+const PLAUSIBLE = carrierPattern("box_now");
 
 const COUNTRIES = {
   gr: { tld: "gr", page: "https://boxnow.gr/homepage-gr?track=", zone: "Europe/Athens" },
@@ -31,21 +33,10 @@ const COUNTRIES = {
 type Country = keyof typeof COUNTRIES;
 const apiHost = (country: Country): string => `api-production.boxnow.${COUNTRIES[country].tld}`;
 
-/** The parcel's own `state` only ever carries the terminal outcomes. */
-export const BOXNOW_STATE: StatusTable = { delivered: "delivered", missing: "problem" };
-
-/**
- * Each event's `type`. `accepted-to-locker` is the sender dropping the parcel off; only
- * `final-destination` means it waits in the recipient's locker.
- */
-export const BOXNOW_EVENT: StatusTable = {
-  new: "registered",
-  "in-depot": "in_transit",
-  "accepted-to-locker": "in_transit",
-  "final-destination": "at_pickup_point",
-  delivered: "delivered",
-  missing: "problem",
-};
+/** The parcel's own `state` and each event's `type`, from the shared table. */
+const stateStatus = (state: string): ParcelStatus | null =>
+  ruleStatus(CARRIER_ID, `state:${state}`);
+const eventStatus = (type: string): ParcelStatus | null => ruleStatus(CARRIER_ID, `event:${type}`);
 
 /** One request per code. No matching parcel shows as a missing or empty `data` list. */
 async function lookUp(http: PluginHttp, country: Country, barcode: string): Promise<Json | null> {
@@ -90,9 +81,8 @@ export function boxNowSnapshot(
   const state = text(raw["state"]);
   const newestType = newest === undefined ? null : text(newest.event["type"]);
   const status =
-    (state === null ? undefined : BOXNOW_STATE[state]) ??
-    (newestType === null ? undefined : BOXNOW_EVENT[newestType]) ??
-    null;
+    (state === null ? null : stateStatus(state)) ??
+    (newestType === null ? null : eventStatus(newestType));
   if (state !== null && status === null) {
     report(`state:${state}`);
   }
@@ -101,14 +91,15 @@ export function boxNowSnapshot(
     if (type === null) {
       return [];
     }
-    if (BOXNOW_EVENT[type] === undefined) {
+    const mapped = eventStatus(type);
+    if (mapped === null) {
       report(`event:${type}`);
     }
     return [
       {
         at,
         rawStatus: type,
-        status: BOXNOW_EVENT[type] ?? null,
+        status: mapped,
         location: text(event["locationDisplayName"]),
       },
     ];

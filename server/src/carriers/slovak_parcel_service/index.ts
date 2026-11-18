@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
+  carrierPattern,
   asObject,
+  carrierKey,
   defineCarrier,
   isObject,
   readJson,
@@ -14,12 +16,12 @@ import {
 import { CARRIER_ID, shipmentSnapshot } from "./parse.js";
 
 const HOST = "rest.mysps.sk";
-const CODE_PATTERN = /^[A-Z0-9]{6,30}$/i;
+const CODE_PATTERN = carrierPattern("slovak_parcel_service");
 /**
  * The fixed transport key the public MySPS website sends from every visitor's browser. It is not
- * a user credential; when SPS rotates it, lookups fail with 401 and this needs updating.
+ * a user credential (it is in the shared rules); when SPS rotates it, lookups fail with 401.
  */
-const WEB_KEY = "6VS314WZ+YtFPrYqqV2EZAoxKJNIyr13JGKTWjlOy6jz5zWKr-C8ZnpCJ7ChvZfW";
+const webKey = (): string => carrierKey(CARRIER_ID, "web_key");
 
 const configSchema = z.looseObject({});
 type Config = z.infer<typeof configSchema>;
@@ -34,7 +36,7 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        "api-key": WEB_KEY,
+        "api-key": webKey(),
       },
       body: JSON.stringify({ shipmentNr: code }),
     },

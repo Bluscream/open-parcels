@@ -1,4 +1,5 @@
 import {
+  carrierPattern,
   asArray,
   asObject,
   expectStatus,
@@ -15,7 +16,7 @@ import {
 import { CARRIER_ID, isoTime, mapCode, publicUrl, text, TRACKING_HOST } from "./shared.js";
 
 /** Hermes parcel numbers are digits (sometimes letters for international ones); anything else is never sent. */
-const BARCODE_PATTERN = /^[A-Z0-9]{8,40}$/i;
+const BARCODE_PATTERN = carrierPattern("hermes");
 
 export function isPlausibleBarcode(barcode: string): boolean {
   return BARCODE_PATTERN.test(barcode);

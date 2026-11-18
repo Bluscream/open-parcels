@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  carrierPattern,
+  carrierKey,
   defineCarrier,
   SignInRejectedError,
   TransientError,
@@ -12,7 +14,7 @@ import { TokenKeeper } from "./auth.js";
 import { CARRIER_ID, scanSnapshot } from "./scans.js";
 import { API_BASE, API_HOST, AUTH_HOST, getJson, parcelOf, resultOf, text } from "./shared.js";
 
-const BARCODE = /^[A-Z0-9]{8,40}$/i;
+const BARCODE = carrierPattern("posta_slovenije");
 
 const configSchema = z.object({});
 /** Tracking sources need nothing; account sources store the MojaPošta username and password. */
@@ -94,7 +96,7 @@ export const postaSlovenije = defineCarrier<Config, Secret>({
       "*": { intervalMs: 10_000, burst: 1 },
     },
     userAgent: {
-      value: "MojaPosta/2.5.0 (android)",
+      value: carrierKey(CARRIER_ID, "user_agent"),
       reason:
         "The service guards its API by client and answers error.not.allowed to unknown ones; the app's User-Agent is the one it accepts.",
     },
