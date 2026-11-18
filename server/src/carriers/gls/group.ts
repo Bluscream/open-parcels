@@ -1,6 +1,7 @@
 import {
   asArray as asList,
   asObject,
+  carrierKey,
   isObject,
   parseJsonBody,
   snapshot,
@@ -23,8 +24,8 @@ import {
   type GroupCountry,
 } from "./shared.js";
 
-/** The web tracker's fixed client id; not a credential, nothing issues it per user. */
-const CALLER = "witt002";
+/** The web tracker's fixed client id (in the shared rules); nothing issues it per user. */
+const caller = (): string => carrierKey("gls", "group_caller");
 
 interface Reply {
   readonly status: number;
@@ -67,7 +68,7 @@ async function overview(
     url.search = new URLSearchParams({
       match: barcode,
       type,
-      caller: CALLER,
+      caller: caller(),
       millis: String(millis),
     }).toString();
     const { status, body } = await getJson(http, url);
@@ -101,7 +102,7 @@ export async function lookUpGroup(
 ): Promise<Json | null> {
   const url = base(country, `rstt028/${encodeURIComponent(barcode)}`);
   url.search = new URLSearchParams({
-    caller: CALLER,
+    caller: caller(),
     millis: String(millis),
     tuOwnerCode: "",
     postalCode: compactPostcode(postcode),

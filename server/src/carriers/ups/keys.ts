@@ -2,8 +2,10 @@
  * Fixed values for the UPS plug-in: hosts, request headers, User-Agent strings and the measured
  * request budget of the public tracking.
  *
- * TODO(rules-keys): move these to `carrierKey("ups", …)` from the plug-in rules once that exists.
+ * The browser identity (User-Agent and its client hint) is read from the shared rules.
  */
+
+import { carrierKey } from "../../plugin/api.js";
 
 export const PUBLIC_HOST = "webapis.ups.com";
 export const OFFICIAL_HOST = "onlinetools.ups.com";
@@ -36,12 +38,10 @@ export function publicTrackingUrl(code: string, locale: string): string {
 
 /**
  * The browser identity the public tracking is scored against. The guard checks that the client
- * hints below agree with this User-Agent; change the version in both places together or not at
- * all. If lookups start hanging, bumping this triplet is the first thing to try.
+ * hints below agree with this User-Agent; change the version in both rules keys together or not
+ * at all. If lookups start hanging, bumping this triplet is the first thing to try.
  */
-export const BROWSER_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
+export const BROWSER_USER_AGENT = carrierKey("ups", "browser_user_agent");
 
 /** Why the plug-in sends browser headers; shown in diagnostics. */
 export const BROWSER_HEADERS_REASON =
@@ -57,7 +57,7 @@ export const HONEST_USER_AGENT = "open-parcels/2 (+https://github.com/Bluscream/
  */
 const GUARD_HEADERS: Readonly<Record<string, string>> = {
   "accept-encoding": "gzip, deflate, br",
-  "sec-ch-ua": '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
+  "sec-ch-ua": carrierKey("ups", "browser_client_hint"),
   "sec-ch-ua-mobile": "?0",
   "sec-ch-ua-platform": '"macOS"',
   "user-agent": BROWSER_USER_AGENT,

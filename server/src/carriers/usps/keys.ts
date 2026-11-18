@@ -1,7 +1,8 @@
-// TODO(rules-keys): move to carrierKey("usps", …) in open-parcels-rules once it is on master.
-/** Fixed values of USPS's public Informed Delivery web client. Not secrets of any user. */
+import { carrierKey } from "../../plugin/api.js";
+
+/** USPS's public Informed Delivery web client; its client id comes from the shared rules. */
 export const INFORMED = {
   am: "https://verified.usps.com/am",
-  clientId: "nh0yDbmZncxiWXiGs630",
+  clientId: carrierKey("usps", "informed_client_id"),
   redirectUri: "https://informeddelivery.usps.com/portal/callback",
 } as const;
