@@ -3,7 +3,7 @@ import path from "node:path";
 import SQLite from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { secretAad } from "../../src/engine/sources.js";
-import { importLegacy } from "../../src/migrate/legacy.js";
+import { carrierId, importLegacy } from "../../src/migrate/legacy.js";
 import { createTestContext, type TestContext } from "../helpers.js";
 
 /** The schema of the pre-rewrite app (UUID variant), as it exists in deployed databases. */
@@ -125,6 +125,18 @@ function run(dryRun: boolean, legacyKeyHex: string | null = legacyKey.toString("
     dryRun,
   });
 }
+
+describe("legacy courier names", () => {
+  it("map to plug-in ids, rules ids first", () => {
+    expect(carrierId("DHL Express")).toBe("dhl");
+    expect(carrierId("Canada Post")).toBe("canadapost");
+    expect(carrierId("Poczta Polska")).toBe("poczta_polska");
+    expect(carrierId("BOX NOW")).toBe("box_now");
+    expect(carrierId("Swiss Post")).toBe("swiss_post");
+    expect(carrierId("Česká pošta")).toBe("ceska_posta");
+    expect(carrierId("  ")).toBe("unknown");
+  });
+});
 
 describe("legacy import", () => {
   it("reports everything in a dry run and writes nothing", async () => {

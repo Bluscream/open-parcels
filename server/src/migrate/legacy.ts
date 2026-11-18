@@ -1,10 +1,12 @@
 import { createDecipheriv } from "node:crypto";
 import SQLite from "better-sqlite3";
 import type { Kysely, Transaction } from "kysely";
+import { findCarrier, loadRules } from "open-parcels-rules";
 import { isoNow, type Clock } from "../clock.js";
 import type { SecretBox } from "../crypto/secrets.js";
 import type { Database } from "../db/schema.js";
 import type { ParcelStatus } from "../domain/parcel.js";
+import { BUILTIN_CARRIERS } from "../engine/builtin-carriers.js";
 import { secretAad } from "../engine/sources.js";
 import { MAIL_PLUGIN } from "../mail/types.js";
 
@@ -73,9 +75,38 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
-function carrierId(courier: unknown): string {
-  const name = text(courier)?.toLowerCase() ?? "unknown";
-  return name.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+/** Lower-case, accent-free, words joined by `_`: the shape of every plug-in id. */
+function snakeCase(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+let pluginsByName: ReadonlyMap<string, string> | undefined;
+
+/** Built-in plug-in ids by the snake_case of their display name, e.g. `box_now` for "BOX NOW". */
+function pluginIdByName(name: string): string | undefined {
+  pluginsByName ??= new Map(
+    BUILTIN_CARRIERS.map(({ info }) => [snakeCase(info.name), info.id] as const),
+  );
+  return pluginsByName.get(snakeCase(name));
+}
+
+/**
+ * The plug-in id for an old courier name such as "DHL", "Canada Post" or "Swiss Post": the
+ * shared rules' name or alias first, then a built-in plug-in's display name, else snake_case.
+ */
+export function carrierId(courier: unknown): string {
+  const name = text(courier);
+  if (name === null) {
+    return "unknown";
+  }
+  return (
+    findCarrier(loadRules(), name)?.id ?? pluginIdByName(name) ?? (snakeCase(name) || "unknown")
+  );
 }
 
 function decryptLegacy(encrypted: string, key: Buffer): string {
