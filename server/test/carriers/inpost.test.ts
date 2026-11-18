@@ -4,6 +4,7 @@ import { register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
 import type { FetchLike } from "../../src/plugin/http.js";
 import { fakeContext, fakeNetwork, json } from "./harness.js";
+import { pasted } from "./pasted.js";
 
 // Made-up codes and values only.
 const ACTIVE = "990000000000000000000001";
@@ -235,12 +236,12 @@ describe("inpost sign-in", () => {
       [TOKEN]: [{ status: 200, body: { access_token: "a.e30.b", refresh_token: "rt-1" } }],
     });
     const { base } = context(fetchImpl);
-    const started = await plugin.startSignIn({ market: "PL", language: "pl" }, base.clock);
+    const started = await pasted(plugin).start({ market: "PL", language: "pl" }, base.clock);
     const url = new URL(started.url);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("lang")).toBe("pl-PL");
     const state = url.searchParams.get("state") ?? "";
-    const secret = await plugin.finishSignIn(
+    const secret = await pasted(plugin).finish(
       base.http,
       base.clock,
       started.state,
@@ -253,9 +254,9 @@ describe("inpost sign-in", () => {
   it("refuses a callback from another host or sign-in", async () => {
     const { fetchImpl, calls } = fake({});
     const { base } = context(fetchImpl);
-    const started = await plugin.startSignIn({}, base.clock);
+    const started = await pasted(plugin).start({}, base.clock);
     await expect(
-      plugin.finishSignIn(
+      pasted(plugin).finish(
         base.http,
         base.clock,
         started.state,

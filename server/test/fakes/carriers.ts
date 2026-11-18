@@ -2,7 +2,10 @@ import { z } from "zod";
 import { register, type RegisteredPlugin } from "../../src/engine/registry.js";
 import {
   defineCarrier,
+  pastedRedirect,
+  SignInRejectedError,
   snapshot,
+  TransientError,
   type FetchResult,
   type LiveReading,
   type ParcelSnapshot,
@@ -78,8 +81,7 @@ export function fakeShop(world: FakeWorld): RegisteredPlugin {
       sourceKinds: ["shop"],
       configSchema: z.looseObject({}),
       secretSchema: z.object({ refreshToken: z.string() }).nullable(),
-      signIn: {
-        type: "pasted_redirect",
+      signIn: pastedRedirect<Record<string, unknown>, { refreshToken: string } | null>({
         start: () =>
           Promise.resolve({
             url: "https://shop.example.invalid/sign-in?state=s1",
@@ -92,7 +94,7 @@ export function fakeShop(world: FakeWorld): RegisteredPlugin {
           }
           return Promise.resolve({ refreshToken: `rt-${code}` });
         },
-      },
+      }),
       http: { limits: {} },
       async fetchAccount() {
         world.accountCalls.push(Date.now());
@@ -106,6 +108,136 @@ export function fakeShop(world: FakeWorld): RegisteredPlugin {
         }
         return Promise.resolve(next);
       },
+    }),
+  );
+}
+
+/** Scripted state of the fake verifying carrier: how often each part ran, and what happens next. */
+export class VerifyWorld {
+  starts = 0;
+  continues = 0;
+  polls = 0;
+  /** The poll that says "approved" (1-based); polls before it keep waiting. */
+  approveOnPoll = Number.POSITIVE_INFINITY;
+}
+
+const verifyStateSchema = z.object({ user: z.string(), method: z.string().optional() });
+const ACCEPTED_CODE = "123456";
+
+function codeTurn(world: VerifyWorld, user: string, code: string | undefined) {
+  if (code === "net") {
+    return Promise.reject(new TransientError("The fake carrier is unreachable."));
+  }
+  if (code !== ACCEPTED_CODE) {
+    return Promise.reject(new SignInRejectedError("Wrong code."));
+  }
+  return Promise.resolve({ secret: { token: `tok-${user}-${String(world.continues)}` } });
+}
+
+/**
+ * A carrier whose account sign-in walks through every step kind: a form, a method choice, then a
+ * texted code, an emailed link or an approval in an app. Variant "b" sources get a second flow.
+ */
+export function fakeVerify(world: VerifyWorld): RegisteredPlugin {
+  const configSchema = z.looseObject({ variant: z.enum(["a", "b"]).optional() });
+  return register(
+    defineCarrier<z.infer<typeof configSchema>, { token: string } | null>({
+      id: "fakeverify",
+      name: "Fake Verify",
+      countries: ["NL"],
+      sourceKinds: ["account", "tracking"],
+      configSchema,
+      secretSchema: z.object({ token: z.string() }).nullable(),
+      signIn: [
+        {
+          type: "interactive",
+          id: "verify",
+          label: "Sign in and verify",
+          kinds: ["account"],
+          start() {
+            world.starts += 1;
+            return Promise.resolve({
+              step: {
+                kind: "form",
+                fields: [
+                  { name: "username", label: "User", type: "text" },
+                  { name: "password", label: "Password", type: "password" },
+                ],
+              },
+              state: null,
+            });
+          },
+          continue(_context, rawState, input) {
+            world.continues += 1;
+            if (rawState === null) {
+              return Promise.resolve({
+                step: {
+                  kind: "choose_method",
+                  options: [
+                    { id: "sms", label: "Text message" },
+                    { id: "email", label: "Email" },
+                    { id: "app", label: "App" },
+                  ],
+                },
+                state: { user: input["username"] ?? "" },
+              });
+            }
+            const state = verifyStateSchema.parse(rawState);
+            if (state.method === undefined) {
+              const method = input["choice"] ?? "";
+              const step =
+                method === "sms"
+                  ? {
+                      kind: "otp_code" as const,
+                      channel: "sms" as const,
+                      destination: "+31 6 ** 01",
+                    }
+                  : method === "email"
+                    ? { kind: "email_link" as const, destination: "u***@example.invalid" }
+                    : {
+                        kind: "await_approval" as const,
+                        message: "Approve in the app.",
+                        pollIntervalSeconds: 5,
+                        timeoutSeconds: 60,
+                      };
+              return Promise.resolve({ step, state: { ...state, method } });
+            }
+            return codeTurn(world, state.user, input["code"]);
+          },
+          poll(_context, rawState) {
+            world.polls += 1;
+            const state = verifyStateSchema.parse(rawState);
+            if (world.polls >= world.approveOnPoll) {
+              return Promise.resolve({ secret: { token: `tok-${state.user}-app` } });
+            }
+            return Promise.resolve({
+              step: {
+                kind: "await_approval",
+                message: "Still waiting.",
+                pollIntervalSeconds: 5,
+                timeoutSeconds: 60,
+              },
+              state,
+            });
+          },
+        },
+        {
+          type: "interactive",
+          id: "variant_b",
+          label: "Variant B",
+          kinds: ["account"],
+          when: (config) => config.variant === "b",
+          start: () =>
+            Promise.resolve({
+              step: { kind: "open_url", url: "https://b.example.invalid/" },
+              state: 1,
+            }),
+          continue: () => Promise.resolve({ secret: { token: "tok-b" } }),
+        },
+        { type: "none", kinds: ["tracking"] },
+      ],
+      http: { limits: {} },
+      fetchAccount: () => Promise.resolve({ snapshots: [], complete: true }),
     }),
   );
 }

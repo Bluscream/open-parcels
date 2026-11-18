@@ -4,6 +4,7 @@ import { register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
 import { FakeClock } from "../helpers.js";
 import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
+import { pasted } from "./pasted.js";
 
 // Made-up tracking ids, tokens and names only.
 const ACTIVE = "00000000000000000001";
@@ -176,7 +177,7 @@ describe("DAO account", () => {
 
   it("signs in with PKCE and refuses an address from another sign-in", async () => {
     const clock = new FakeClock();
-    const { url, state } = await plugin.startSignIn({}, clock);
+    const { url, state } = await pasted(plugin).start({}, clock);
     const address = new URL(url);
     expect(address.searchParams.get("code_challenge_method")).toBe("S256");
     expect(address.searchParams.get("client_id")).toBe("dao-app");
@@ -184,9 +185,9 @@ describe("DAO account", () => {
     const { base } = fakeContext(dao.http, fetchImpl);
     const expected = address.searchParams.get("state") ?? "";
     await expect(
-      plugin.finishSignIn(base.http, clock, state, "daoapp://auth-callback?code=c&state=wrong"),
+      pasted(plugin).finish(base.http, clock, state, "daoapp://auth-callback?code=c&state=wrong"),
     ).rejects.toBeInstanceOf(SignInRejectedError);
-    const secret = await plugin.finishSignIn(
+    const secret = await pasted(plugin).finish(
       base.http,
       clock,
       state,

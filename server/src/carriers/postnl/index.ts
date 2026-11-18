@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   asObject,
   defineCarrier,
+  pastedRedirect,
   isObject,
   objects,
   readObject,
@@ -145,11 +146,10 @@ export const postnl = defineCarrier<Config, Secret>({
   sourceKinds: ["account"],
   configSchema,
   secretSchema,
-  signIn: {
-    type: "pasted_redirect",
+  signIn: pastedRedirect<Config, Secret>({
     start: () => Promise.resolve(startSignIn()),
     finish: (context, state, pasted) => finishSignIn(context.http, state, pasted),
-  },
+  }),
   http: {
     limits: {
       [API_HOST]: { intervalMs: 4_000, burst: 2 },

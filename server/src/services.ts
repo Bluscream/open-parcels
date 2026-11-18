@@ -13,6 +13,7 @@ import { LiveTracker } from "./engine/live.js";
 import { Reconciler } from "./engine/reconciler.js";
 import { PluginRegistry, type RegisteredPlugin } from "./engine/registry.js";
 import { SourceRunner } from "./engine/runner.js";
+import { SignInService } from "./engine/sign-in.js";
 import { Scheduler } from "./engine/scheduler.js";
 import { SourceService } from "./engine/sources.js";
 import { EventBus } from "./events/bus.js";
@@ -73,6 +74,7 @@ export interface Services {
   readonly scheduler: Scheduler;
   readonly live: LiveTracker;
   readonly calendar: CalendarService;
+  readonly signIn: SignInService;
   readonly parcels: ParcelService;
   readonly setup: SetupGate;
 }
@@ -262,6 +264,15 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     scheduler,
     live,
     calendar: new CalendarService(db, clock, deps.config.timeZone),
+    signIn: new SignInService({
+      db,
+      registry,
+      sources,
+      secrets: deps.secrets,
+      clock,
+      logger,
+      httpFor: (policy) => runner.httpFor(policy),
+    }),
     parcels,
     setup,
   };

@@ -50,8 +50,11 @@ export async function fetchGateway(
   return found;
 }
 
-/** The fine `status` wins over the coarse `category`; the category alone cannot say "pickup". */
-function mapEvent(deps: Deps, event: Json): SnapshotEvent["status"] {
+/**
+ * The fine `status` wins over the coarse `category`; the category alone cannot say "pickup".
+ * The Dutch account speaks the same vocabulary, so it maps through here too.
+ */
+export function mapEvent(deps: Deps, event: Json): SnapshotEvent["status"] {
   const status = asString(event["status"]);
   const category = asString(event["category"]);
   const fine = status === null ? null : rulesStatus("dhl", { code: status });

@@ -152,7 +152,11 @@ describe("migrations", () => {
   it("apply once and are idempotent", async () => {
     const { db } = openDatabase(path.join(tempDir(), "db.sqlite"));
     try {
-      expect(await migrateToLatest(db)).toEqual(["0001-initial", "0002-reconciler"]);
+      expect(await migrateToLatest(db)).toEqual([
+        "0001-initial",
+        "0002-reconciler",
+        "0003-sign-in-attempts",
+      ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {
       // Windows cannot delete an open database file; close it even when an assertion fails.

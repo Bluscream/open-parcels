@@ -1,13 +1,19 @@
 /** DHL-specific helpers on top of the carrier harness: made-up ID tokens and a DHL world. */
 import { dhl } from "../../src/carriers/dhl/index.js";
+import type { RegisteredPlugin } from "../../src/engine/registry.js";
 import type { FetchResult, PluginHttp } from "../../src/plugin/api.js";
 import { World as CarrierWorld, type Call, type Route } from "./harness.js";
 
 export { formOf, json, type Call, type Route } from "./harness.js";
 
-export type Secret = { refreshToken?: string; apiKey?: string } | null;
+export type Secret = {
+  refreshToken?: string;
+  apiKey?: string;
+  nl?: { email: string; password: string };
+} | null;
 
 type Context = Parameters<NonNullable<typeof dhl.track>>[0];
+type Config = Context["config"];
 
 /** A made-up ID token carrying the account claim (or not). */
 export function idToken(withAccountClaim = true, tag = "a"): string {
@@ -32,6 +38,15 @@ export class World {
 
   get http(): PluginHttp {
     return this.#world.base().http;
+  }
+
+  get plugin(): RegisteredPlugin {
+    return this.#world.plugin;
+  }
+
+  /** The underlying carrier world, for account sources with their own config. */
+  get carrierWorld(): CarrierWorld<Config, Context["secret"]> {
+    return this.#world;
   }
 
   get calls(): Call[] {

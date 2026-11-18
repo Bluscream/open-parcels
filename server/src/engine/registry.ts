@@ -6,6 +6,9 @@ import type {
   LiveTarget,
   PluginContext,
   PluginSourceKind,
+  SignInFlow,
+  SignInInput,
+  SignInTurn,
 } from "../plugin/api.js";
 import type { Clock } from "../clock.js";
 import type { HttpPolicy, PluginHttp } from "../plugin/http.js";
@@ -17,13 +20,37 @@ export class InvalidSourceConfigError extends Error {
 /** Everything a source needs to call a plug-in, before config and secret are validated. */
 export type BaseContext = Omit<PluginContext<unknown, unknown>, "config" | "secret">;
 
+export interface SignInFlowInfo {
+  readonly id: string;
+  readonly label: string;
+  readonly type: "none" | "credentials" | "api_key" | "interactive";
+  /** Source kinds the flow applies to; all of the plug-in's kinds when not restricted. */
+  readonly kinds: readonly PluginSourceKind[];
+  /** True when the flow only applies to some configurations. */
+  readonly conditional: boolean;
+}
+
+/** One call into an interactive flow: `start` (no state), `continue` (with input) or `poll`. */
+export interface SignInCall {
+  readonly action: "start" | "continue" | "poll";
+  readonly flowId: string;
+  readonly kind: PluginSourceKind;
+  readonly rawConfig: unknown;
+  readonly http: PluginHttp;
+  readonly clock: Clock;
+  readonly state?: unknown;
+  readonly input?: SignInInput;
+}
+
 /** Public description of a plug-in for the API and the UI. */
 export interface PluginInfo {
   readonly id: string;
   readonly name: string;
   readonly countries: readonly string[];
   readonly sourceKinds: readonly PluginSourceKind[];
+  /** Type of the default flow (`none`, `credentials`, `api_key` or `interactive`). */
   readonly signIn: string;
+  readonly signInFlows: readonly SignInFlowInfo[];
   readonly configSchema: z.ZodType;
   readonly secretSchema: z.ZodType;
   readonly browserUserAgentReason: string | null;
@@ -41,10 +68,10 @@ export interface RegisteredPlugin {
   readonly canTrack: boolean;
   readonly canReadLive: boolean;
   validateConfig(raw: unknown): void;
-  /** Pasted-redirect sign-in, step 1: the address the user opens in their own browser. */
-  startSignIn(rawConfig: unknown, clock: Clock): Promise<{ url: string; state: unknown }>;
-  /** Step 2: turns the pasted final address into the sign-in data to store. */
-  finishSignIn(http: PluginHttp, clock: Clock, state: unknown, pasted: string): Promise<unknown>;
+  /** The sign-in flows that apply to a source of this kind and configuration, default first. */
+  signInFlows(kind: PluginSourceKind, rawConfig: unknown): SignInFlowInfo[];
+  /** Runs one call of an interactive flow. A finished sign-in's secret is already validated. */
+  signInTurn(call: SignInCall): Promise<SignInTurn<unknown>>;
   readLive(
     base: BaseContext,
     rawConfig: unknown,
@@ -69,7 +96,77 @@ function parseWith<T>(schema: z.ZodType<T>, raw: unknown, what: string, pluginId
   return parsed.data;
 }
 
+function flowInfo<Config, Secret>(
+  plugin: CarrierPlugin<Config, Secret>,
+  flow: SignInFlow<Config, Secret>,
+): SignInFlowInfo {
+  return {
+    id: flow.id ?? flow.type,
+    label: flow.label ?? flow.type,
+    type: flow.type,
+    kinds: flow.kinds ?? plugin.sourceKinds,
+    conditional: flow.when !== undefined,
+  };
+}
+
+function flowsOf<Config, Secret>(
+  plugin: CarrierPlugin<Config, Secret>,
+): readonly SignInFlow<Config, Secret>[] {
+  const flows: readonly SignInFlow<Config, Secret>[] = Array.isArray(plugin.signIn)
+    ? plugin.signIn
+    : [plugin.signIn as SignInFlow<Config, Secret>];
+  const ids = new Set<string>();
+  for (const flow of flows) {
+    const id = flow.id ?? flow.type;
+    if (ids.has(id)) {
+      throw new Error(`Two sign-in flows of ${plugin.id} share the id ${id}.`);
+    }
+    ids.add(id);
+  }
+  return flows;
+}
+
+function applies<Config, Secret>(
+  flow: SignInFlow<Config, Secret>,
+  kind: PluginSourceKind,
+  config: Config,
+): boolean {
+  return (flow.kinds?.includes(kind) ?? true) && (flow.when?.(config) ?? true);
+}
+
+/** The interactive half of `register`: picks the flow and validates what it finishes with. */
+async function runSignIn<Config, Secret>(
+  plugin: CarrierPlugin<Config, Secret>,
+  flows: readonly SignInFlow<Config, Secret>[],
+  call: SignInCall,
+): Promise<SignInTurn<unknown>> {
+  const config = parseWith(plugin.configSchema, call.rawConfig, "configuration", plugin.id);
+  const flow = flows.find((candidate) => (candidate.id ?? candidate.type) === call.flowId);
+  if (flow?.type !== "interactive" || !applies(flow, call.kind, config)) {
+    throw new InvalidSourceConfigError(
+      `${plugin.name} has no interactive sign-in "${call.flowId}" for this source.`,
+    );
+  }
+  const context = { config, kind: call.kind, http: call.http, clock: call.clock };
+  let turn: SignInTurn<Secret>;
+  if (call.action === "start") {
+    turn = await flow.start(context);
+  } else if (call.action === "continue") {
+    turn = await flow.continue(context, call.state, call.input ?? {});
+  } else {
+    if (flow.poll === undefined) {
+      throw new InvalidSourceConfigError(`${plugin.name}'s sign-in has nothing to wait for.`);
+    }
+    turn = await flow.poll(context, call.state);
+  }
+  if ("secret" in turn) {
+    return { secret: parseWith(plugin.secretSchema, turn.secret, "sign-in data", plugin.id) };
+  }
+  return turn;
+}
+
 export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>): RegisteredPlugin {
+  const flows = flowsOf(plugin);
   const context = (
     base: BaseContext,
     rawConfig: unknown,
@@ -85,7 +182,8 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
       name: plugin.name,
       countries: plugin.countries,
       sourceKinds: plugin.sourceKinds,
-      signIn: plugin.signIn.type,
+      signIn: flows[0]?.type ?? "none",
+      signInFlows: flows.map((flow) => flowInfo(plugin, flow)),
       configSchema: plugin.configSchema,
       secretSchema: plugin.secretSchema,
       browserUserAgentReason: plugin.http.userAgent?.reason ?? null,
@@ -94,22 +192,13 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
     canFetchAccount: plugin.fetchAccount !== undefined,
     canTrack: plugin.track !== undefined,
     canReadLive: plugin.readLive !== undefined,
-    async startSignIn(rawConfig, clock) {
-      if (plugin.signIn.type !== "pasted_redirect") {
-        throw new InvalidSourceConfigError(`${plugin.name} does not sign in with a pasted link.`);
-      }
-      return plugin.signIn.start({
-        config: parseWith(plugin.configSchema, rawConfig, "configuration", plugin.id),
-        clock,
-      });
+    signInFlows(kind, rawConfig) {
+      const config = parseWith(plugin.configSchema, rawConfig, "configuration", plugin.id);
+      return flows
+        .filter((flow) => applies(flow, kind, config))
+        .map((flow) => flowInfo(plugin, flow));
     },
-    async finishSignIn(http, clock, state, pasted) {
-      if (plugin.signIn.type !== "pasted_redirect") {
-        throw new InvalidSourceConfigError(`${plugin.name} does not sign in with a pasted link.`);
-      }
-      const secret = await plugin.signIn.finish({ http, clock }, state, pasted);
-      return parseWith(plugin.secretSchema, secret, "sign-in data", plugin.id);
-    },
+    signInTurn: (call) => runSignIn(plugin, flows, call),
     async readLive(base, rawConfig, rawSecret, target) {
       if (plugin.readLive === undefined) {
         return null;

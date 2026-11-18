@@ -29,7 +29,22 @@ const carrierSchema = z.object({
   name: z.string(),
   countries: z.array(z.string()),
   source_kinds: z.array(z.enum(["account", "tracking", "shop"])),
-  sign_in: z.string(),
+  sign_in: z
+    .string()
+    .describe("Type of the default sign-in flow: none, credentials, api_key or interactive."),
+  sign_in_flows: z
+    .array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        type: z.enum(["none", "credentials", "api_key", "interactive"]),
+        kinds: z.array(z.enum(["account", "tracking", "shop"])),
+        conditional: z
+          .boolean()
+          .describe("Applies only to some configurations; ask the source's own flow list."),
+      }),
+    )
+    .describe("Every sign-in flow of the plug-in. Interactive ones run as sign-in attempts."),
   config_schema: z.unknown().describe("JSON Schema of the source configuration form."),
   browser_user_agent_reason: z.string().nullable(),
 });
@@ -78,6 +93,7 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
         countries: [...plugin.info.countries],
         source_kinds: [...plugin.info.sourceKinds],
         sign_in: plugin.info.signIn,
+        sign_in_flows: plugin.info.signInFlows.map((flow) => ({ ...flow, kinds: [...flow.kinds] })),
         config_schema: z.toJSONSchema(plugin.info.configSchema, { unrepresentable: "any" }),
         browser_user_agent_reason: plugin.info.browserUserAgentReason,
       })),
