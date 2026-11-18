@@ -2,6 +2,7 @@ import { amazonCarrier } from "../carriers/amazon/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { hermes } from "../carriers/hermes/index.js";
+import { sameday } from "../carriers/sameday/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
 /**
@@ -13,4 +14,5 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(dhl),
   register(dpd),
   register(hermes),
+  register(sameday),
 ];
