@@ -15,6 +15,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY server/package.json server/
+# The shared rules ship as a vendored, integrity-pinned tarball (no install scripts).
+COPY server/vendor/ server/vendor/
 RUN npm ci --workspace server --include-workspace-root
 COPY server/ server/
 RUN npm run build --workspace server

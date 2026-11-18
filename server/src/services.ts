@@ -17,7 +17,9 @@ import { Scheduler } from "./engine/scheduler.js";
 import { SourceService } from "./engine/sources.js";
 import { EventBus } from "./events/bus.js";
 import { ImageProxy } from "./images/proxy.js";
+import { loadRules } from "open-parcels-rules";
 import { imapClientFactory } from "./mail/imap-client.js";
+import { createMailInterpreter } from "./mail/interpret.js";
 import type { MailboxClientFactory, MailInterpreter } from "./mail/types.js";
 import { MailWatcher } from "./mail/watcher.js";
 import type { Presentation } from "./parcels/repository.js";
@@ -238,7 +240,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     clock,
     logger,
     clientFactory: deps.mailClientFactory ?? imapClientFactory,
-    interpret: deps.mailInterpreter ?? (() => []),
+    interpret: deps.mailInterpreter ?? createMailInterpreter(loadRules(), deps.config.timeZone),
     followUp: async (sourceId) => {
       if (await followMailParcels(db, registry, sources, sourceId)) {
         scheduler.wake();
