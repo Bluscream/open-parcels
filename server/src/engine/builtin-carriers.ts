@@ -30,6 +30,16 @@ import { posti } from "../carriers/posti/index.js";
 import { postnl } from "../carriers/postnl/index.js";
 import { postnord } from "../carriers/postnord/index.js";
 import { quickpac } from "../carriers/quickpac/index.js";
+import { sameday } from "../carriers/sameday/index.js";
+import { seur } from "../carriers/seur/index.js";
+import { shopeeXpress } from "../carriers/shopee-xpress/index.js";
+import { slovakParcelService } from "../carriers/slovak-parcel-service/index.js";
+import { slovenskaPosta } from "../carriers/slovenska-posta/index.js";
+import { speeDee } from "../carriers/speedee/index.js";
+import { speedx } from "../carriers/speedx/index.js";
+import { straightship } from "../carriers/straightship/index.js";
+import { sunyou } from "../carriers/sunyou/index.js";
+import { swissPost } from "../carriers/swiss-post/index.js";
 import { tipsa } from "../carriers/tipsa/index.js";
 import { trunkrs } from "../carriers/trunkrs/index.js";
 import { ukrposhta } from "../carriers/ukrposhta/index.js";
@@ -75,6 +85,16 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(postnl),
   register(postnord),
   register(quickpac),
+  register(sameday),
+  register(seur),
+  register(shopeeXpress),
+  register(slovakParcelService),
+  register(slovenskaPosta),
+  register(speeDee),
+  register(speedx),
+  register(straightship),
+  register(sunyou),
+  register(swissPost),
   register(tipsa),
   register(trunkrs),
   register(ukrposhta),
