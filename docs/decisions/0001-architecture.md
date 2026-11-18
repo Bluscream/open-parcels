@@ -1,6 +1,7 @@
 # 0001 — Rebuild open-parcels as the single parcel-tracking backend
 
-- **Status:** proposed (waiting for the owner's approval)
+- **Status:** accepted 2026-11-18. The owner said "go" without answering §5, so the recommended
+  answers were taken and are recorded there; each can still be changed.
 - **Date:** 2026-11-18
 
 ## 1. Context
@@ -399,13 +400,15 @@ The deployed `/mnt/user/appdata/openparcels/data.db` has the UUID schema with 40
 | **9. HA app** | App repository, ingress, discovery, multi-arch publish |
 | *Later* | Thin HA integration; then, and only then, changes on the running Home Assistant; MQTT; more carriers |
 
-## 5. Open questions for the owner
+## 5. Questions settled at acceptance
 
-1. **Python backend.** Is the rewrite approved?
-2. **Several users.** Separate users, each with their own carrier accounts and parcels, plus an
-   admin. Or is a single household user enough?
-3. **Name of the knowledge repo.** `parcel-knowledge` or another name.
-4. **DPD Germany's public tracking page.** Its `robots.txt` disallows `/redirect.aspx`. Use it
-   anyway, for the user's own parcels at the normal polling rate?
-5. **Image registry.** Keep Docker Hub `bluscream1/open-parcels`, add GHCR as well, or switch to
-   GHCR?
+1. **Python backend:** yes.
+2. **Several users:** yes. Separate users, each with their own carrier accounts and parcels, plus
+   an admin.
+3. **Name of the knowledge repo:** `parcel-knowledge`.
+4. **DPD Germany's public tracking page:** used for the user's own parcels at the normal polling
+   rate. It can be switched off per source, because its `robots.txt` disallows `/redirect.aspx`.
+5. **Image registry:** Docker Hub `bluscream1/open-parcels`, as today.
+6. **Licensing:** not decided until publication.
+7. **Git history:** the scrubbed history is kept. The pre-rewrite code is on branch `legacy-ts`
+   and tag `v1-final`.
