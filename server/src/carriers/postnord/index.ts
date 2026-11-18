@@ -6,12 +6,14 @@ import {
   defineCarrier,
   isObject,
   readObject,
+  SignInRejectedError,
   TransientError,
   UnexpectedResponseError,
   type ParcelSnapshot,
   type PluginContext,
 } from "../../plugin/api.js";
 
+import { ACCOUNT_HOST, accountSignIn, fetchPostnordAccount } from "./account.js";
 import { CARRIER_ID, shipmentSnapshot } from "./parcel.js";
 
 const HOST = "api2.postnord.com";
@@ -19,8 +21,8 @@ const API = `https://${HOST}/rest/shipment/v5/trackandtrace/recipientview`;
 
 const BARCODE = carrierPattern("postnord");
 
-const configSchema = z.object({});
-const secretSchema = z.null();
+const configSchema = z.looseObject({});
+const secretSchema = z.object({ refreshToken: z.string().min(1) }).nullable();
 type Config = z.infer<typeof configSchema>;
 type Secret = z.infer<typeof secretSchema>;
 
@@ -64,20 +66,27 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
   return { snapshots, complete: true };
 }
 
-/** PostNord (Denmark, Sweden, Norway, Finland): the public recipient view. */
+/** PostNord (Denmark, Sweden, Norway, Finland): the public recipient view and the receiver app account. */
 export const postnord = defineCarrier<Config, Secret>({
   id: CARRIER_ID,
   name: "PostNord",
   countries: ["DK", "SE", "NO", "FI"],
-  sourceKinds: ["tracking"],
+  sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "none" },
+  signIn: [accountSignIn<Config>(), { type: "none", kinds: ["tracking"] }],
   http: {
     limits: {
       [HOST]: { intervalMs: 4_000, burst: 2 },
+      [ACCOUNT_HOST]: { intervalMs: 10_000, burst: 2 },
       "*": { intervalMs: 10_000, burst: 1 },
     },
   },
   track,
+  async fetchAccount(context) {
+    if (context.secret === null) {
+      throw new SignInRejectedError("Sign in to your PostNord account first.");
+    }
+    return fetchPostnordAccount(context, context.secret);
+  },
 });

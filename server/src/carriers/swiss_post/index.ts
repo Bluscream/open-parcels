@@ -4,12 +4,14 @@ import {
   asObject,
   defineCarrier,
   RateLimitedError,
+  SignInRejectedError,
   readJson,
   type Json,
   type ParcelSnapshot,
   type PluginContext,
   type PluginLogger,
 } from "../../plugin/api.js";
+import { accountSignIn, APP_HOST, fetchSwissPostAccount, LOGIN_HOST } from "./account.js";
 import { CARRIER_ID, shipmentSnapshot } from "./parse.js";
 import { HOST, LABEL, TrackerSession } from "./session.js";
 
@@ -22,7 +24,10 @@ const configSchema = z.looseObject({
   eventHistory: z.boolean().optional(),
 });
 type Config = z.infer<typeof configSchema>;
-const secretSchema = z.null();
+const secretSchema = z
+  .object({ refreshToken: z.string().min(1), deviceId: z.string().min(1) })
+  .nullable();
+type Secret = z.infer<typeof secretSchema>;
 
 let textCache: { readonly at: number; readonly texts: ReadonlyMap<string, string> } | null = null;
 
@@ -82,7 +87,7 @@ async function events(
   }
 }
 
-async function track(context: PluginContext<Config, null>, barcodes: readonly string[]) {
+async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
   const session = TrackerSession.restore(context.http, context.session);
   const withHistory = context.config.eventHistory !== false;
   const snapshots: ParcelSnapshot[] = [];
@@ -121,19 +126,27 @@ export function resetWordingCache(): void {
   textCache = null;
 }
 
-export const swissPost = defineCarrier<Config, null>({
+export const swissPost = defineCarrier<Config, Secret>({
   id: CARRIER_ID,
   name: "Swiss Post",
   countries: ["CH", "LI"],
-  sourceKinds: ["tracking"],
+  sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "none" },
+  signIn: [accountSignIn<Config>(), { type: "none", kinds: ["tracking"] }],
   http: {
     limits: {
       [HOST]: { intervalMs: 4_000, burst: 3 },
+      [LOGIN_HOST]: { intervalMs: 10_000, burst: 2 },
+      [APP_HOST]: { intervalMs: 5_000, burst: 2 },
       "*": { intervalMs: 10_000, burst: 1 },
     },
   },
   track,
+  async fetchAccount(context) {
+    if (context.secret === null) {
+      throw new SignInRejectedError("Sign in to your Swiss Post account first.");
+    }
+    return fetchSwissPostAccount(context, context.secret);
+  },
 });

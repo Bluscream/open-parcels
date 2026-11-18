@@ -7,7 +7,9 @@ import {
   defineCarrier,
   isObject,
   newestFirst,
+  PluginError,
   readObject,
+  SignInRejectedError,
   snapshot,
   text,
   trackEach,
@@ -18,6 +20,7 @@ import {
   type PluginContext,
   type SnapshotEvent,
 } from "../../plugin/api.js";
+import { ACCOUNT_HOST, fetchBpostAccount, type Credentials } from "./account.js";
 import { stepStatus } from "./status.js";
 
 const CARRIER_ID = "bpost";
@@ -140,33 +143,55 @@ const configSchema = z.looseObject({
   postalCode: z
     .string()
     .regex(/^[A-Z0-9 -]{3,10}$/i)
-    .describe("The recipient's postcode; bpost needs it with every barcode."),
+    .optional()
+    .describe("The recipient's postcode; bpost's tracking needs it with every barcode."),
   language: z.enum(LANGUAGES).default("en").describe("Language of bpost's event texts."),
 });
-const secretSchema = z.null();
+const secretSchema = z
+  .object({ username: z.string().min(1), password: z.string().min(1) })
+  .nullable();
 type Config = z.infer<typeof configSchema>;
+type Secret = Credentials | null;
 
-export const bpost = defineCarrier<Config, null>({
+export const bpost = defineCarrier<Config, Secret>({
   id: CARRIER_ID,
   name: "bpost",
   countries: ["BE"],
-  sourceKinds: ["tracking"],
+  sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "none" },
+  signIn: [
+    { type: "credentials", kinds: ["account"] },
+    { type: "none", kinds: ["tracking"] },
+  ],
   http: {
-    limits: { [HOST]: { intervalMs: 5_000, burst: 2 }, "*": { intervalMs: 10_000, burst: 1 } },
+    limits: {
+      [HOST]: { intervalMs: 5_000, burst: 2 },
+      [ACCOUNT_HOST]: { intervalMs: 5_000, burst: 2 },
+      "*": { intervalMs: 10_000, burst: 1 },
+    },
   },
-  track: (context: PluginContext<Config, null>, barcodes) =>
+  fetchAccount: async (context) => {
+    const secret = context.secret;
+    if (secret === null) {
+      throw new SignInRejectedError("The My bpost account needs an e-mail address and password.");
+    }
+    return await fetchBpostAccount({ ...context, secret });
+  },
+  track: (context: PluginContext<Config, Secret>, barcodes) =>
     trackEach(barcodes, PLAUSIBLE, async (barcode) => {
-      const item = await lookUp(context.http, barcode, context.config.postalCode);
+      const postalCode = context.config.postalCode;
+      if (postalCode === undefined) {
+        throw new PluginError("bpost's tracking needs the recipient's postcode in the source.");
+      }
+      const item = await lookUp(context.http, barcode, postalCode);
       return item === null
         ? null
         : bpostSnapshot(
             {
               item,
               barcode,
-              postalCode: context.config.postalCode,
+              postalCode,
               language: context.config.language,
             },
             (key) => {

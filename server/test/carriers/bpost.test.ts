@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { bpost } from "../../src/carriers/bpost/index.js";
-import { InvalidSourceConfigError } from "../../src/engine/registry.js";
 import { TransientError } from "../../src/plugin/errors.js";
 import { json, on, World } from "./harness.js";
 
@@ -101,9 +100,7 @@ describe("bpost tracking", () => {
   });
 
   it("needs a postcode and passes network errors on", async () => {
-    await expect(new World(bpost).track([CODE], {})).rejects.toBeInstanceOf(
-      InvalidSourceConfigError,
-    );
+    await expect(new World(bpost).track([CODE], {})).rejects.toThrow(/postcode/);
     const offline = new World(bpost);
     offline.routes = [on(ROUTE, new Error("offline"))];
     await expect(offline.track([CODE], config)).rejects.toBeInstanceOf(TransientError);
