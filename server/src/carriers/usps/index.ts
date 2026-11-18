@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  isTimeZone,
+  SignInRejectedError,
   snapshot,
   type ParcelSnapshot,
   type PluginContext,
@@ -8,6 +10,8 @@ import {
 } from "../../plugin/api.js";
 import { isoTime, objects, rulesTrackingUrl, text, type Json } from "../../plugin/api.js";
 import { API_HOST, UspsClient } from "./client.js";
+import { fetchInformed, INFORMED_API_HOST } from "./informed.js";
+import { informedSignIn } from "./journey.js";
 
 /** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
 const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
@@ -54,12 +58,21 @@ export function mapUsps(value: string | null): Status | null {
 
 const BARCODE_PATTERN = /^[A-Z0-9]{10,40}$/i;
 
-const configSchema = z.looseObject({});
+const configSchema = z.looseObject({
+  /** Where the Informed Delivery addresses are; their package times carry no zone. */
+  timeZone: z.string().refine(isTimeZone, "Not a known time zone.").optional(),
+});
 type Config = z.infer<typeof configSchema>;
-/** A consumer key pair from the USPS developer portal, with the Tracking API enabled. */
+/**
+ * A tracking source keeps a consumer key pair from the USPS developer portal, with the Tracking
+ * API enabled; an Informed Delivery account the sign-in chain and its enrolled addresses.
+ */
 const secretSchema = z.object({
-  consumerKey: z.string().min(1),
-  consumerSecret: z.string().min(1),
+  consumerKey: z.string().min(1).optional(),
+  consumerSecret: z.string().min(1).optional(),
+  informed: z
+    .object({ refreshToken: z.string().min(1), addresses: z.array(z.string().regex(/^\d{11}$/)) })
+    .optional(),
 });
 type Secret = z.infer<typeof secretSchema>;
 
@@ -108,10 +121,14 @@ export function uspsSnapshot(
 }
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
+  const { consumerKey, consumerSecret } = context.secret;
+  if (consumerKey === undefined || consumerSecret === undefined) {
+    throw new SignInRejectedError("Enter a USPS consumer key pair for tracking.");
+  }
   const client = new UspsClient(
     context.http,
     context.session,
-    context.secret,
+    { consumerKey, consumerSecret },
     () => context.clock.now().getTime(),
     context.logger,
   );
@@ -135,12 +152,24 @@ export const usps = defineCarrier<Config, Secret>({
   id: CARRIER_ID,
   name: "USPS",
   countries: ["US"],
-  sourceKinds: ["tracking"],
+  sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "api_key" },
+  signIn: [informedSignIn<Config>(), { type: "api_key", kinds: ["tracking"] }],
   http: {
-    limits: { [API_HOST]: { intervalMs: 4_000, burst: 2 }, "*": { intervalMs: 10_000, burst: 1 } },
+    limits: {
+      [API_HOST]: { intervalMs: 4_000, burst: 2 },
+      [INFORMED_API_HOST]: { intervalMs: 6_000, burst: 2 },
+      "verified.usps.com": { intervalMs: 3_000, burst: 3 },
+      "*": { intervalMs: 10_000, burst: 1 },
+    },
   },
   track,
+  async fetchAccount(context) {
+    const informed = context.secret.informed;
+    if (informed === undefined) {
+      throw new SignInRejectedError("Sign in to USPS Informed Delivery first.");
+    }
+    return fetchInformed(context, { informed }, context.config.timeZone ?? "America/New_York");
+  },
 });
