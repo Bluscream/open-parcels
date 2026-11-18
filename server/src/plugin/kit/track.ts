@@ -1,7 +1,7 @@
 import type { FetchResult, PluginContext } from "../api.js";
 import { TransientError } from "../errors.js";
 import type { HttpResponse } from "../http.js";
-import type { ParcelSnapshot, SnapshotEvent } from "../snapshot.js";
+import type { ParcelSnapshot } from "../snapshot.js";
 
 /** A canonical status, as a plug-in's local status table holds it. */
 export type Status = NonNullable<ParcelSnapshot["status"]>;
@@ -67,9 +67,4 @@ export async function trackEach(
     }
   }
   return { snapshots, complete: true };
-}
-
-/** The newest history entry with a mapped status, for the suite's status fallback. */
-export function newestMapped(history: readonly SnapshotEvent[]): SnapshotEvent | null {
-  return history.find((event) => event.status !== null) ?? null;
 }
