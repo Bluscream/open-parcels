@@ -4,6 +4,7 @@ import { airmee } from "../carriers/airmee/index.js";
 import { amazonCarrier } from "../carriers/amazon/index.js";
 import { amazonShipping } from "../carriers/amazon-shipping/index.js";
 import { ampere } from "../carriers/ampere/index.js";
+import { anPost } from "../carriers/an-post/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { hermes } from "../carriers/hermes/index.js";
@@ -20,6 +21,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(amazonCarrier()),
   register(amazonShipping),
   register(ampere),
+  register(anPost),
   register(dhl),
   register(dpd),
   register(hermes),
