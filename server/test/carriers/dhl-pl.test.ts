@@ -26,23 +26,39 @@ const CODE = "10000000000001";
 const JWT = "aaa.bbb.ccc";
 
 describe("Altcha proof of work", () => {
-  it("finds the number and returns the website's payload", () => {
-    const payload = JSON.parse(Buffer.from(solveAltcha(challenge(1234)), "base64").toString()) as {
+  it("finds the number and returns the website's payload", async () => {
+    const solved = await solveAltcha(challenge(1234));
+    const payload = JSON.parse(Buffer.from(solved, "base64").toString()) as {
       number: number;
       signature: string;
     };
     expect(payload).toMatchObject({ number: 1234, signature: "sig" });
   });
 
-  it("refuses odd shapes, too much work and an exhausted time budget", () => {
-    expect(() => solveAltcha({ ...challenge(1), algorithm: "MD5" })).toThrow(
+  it("refuses odd shapes, too much work and an exhausted time budget", async () => {
+    await expect(solveAltcha({ ...challenge(1), algorithm: "MD5" })).rejects.toThrow(
       UnexpectedResponseError,
     );
-    expect(() => solveAltcha(challenge(1, MAX_NUMBER_CAP + 1))).toThrow(UnexpectedResponseError);
-    expect(() => solveAltcha(challenge(40_000), { budgetMs: 10, elapsed: () => 11 })).toThrow(
-      TransientError,
+    await expect(solveAltcha(challenge(1, MAX_NUMBER_CAP + 1))).rejects.toThrow(
+      UnexpectedResponseError,
     );
-    expect(() => solveAltcha(challenge(60_000, 10))).toThrow(UnexpectedResponseError);
+    await expect(
+      solveAltcha(challenge(40_000), { budgetMs: 10, elapsed: () => 11 }),
+    ).rejects.toThrow(TransientError);
+    await expect(solveAltcha(challenge(60_000, 10))).rejects.toThrow(UnexpectedResponseError);
+  });
+
+  it("lets other work run while it searches", async () => {
+    let ticks = 0;
+    const timer = setInterval(() => {
+      ticks += 1;
+    }, 0);
+    try {
+      await solveAltcha(challenge(20_000));
+    } finally {
+      clearInterval(timer);
+    }
+    expect(ticks).toBeGreaterThan(0);
   });
 });
 

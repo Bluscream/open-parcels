@@ -61,7 +61,7 @@ export async function captcha(http: PluginHttp, jar?: CookieJar): Promise<string
   if (status !== 200 || !isObject(body)) {
     throw new TransientError(`Mój DHL's challenge answered HTTP ${status}.`);
   }
-  return solveAltcha(body);
+  return await solveAltcha(body);
 }
 
 async function postStatus(http: PluginHttp, codes: readonly string[]) {

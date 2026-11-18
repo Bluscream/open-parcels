@@ -23,8 +23,13 @@ export interface SolveOptions {
   readonly elapsed?: () => number;
 }
 
+/** Hands the event loop back between slices, so a long search never stalls other requests. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 /** The base64 JSON payload the website posts as `captcha-payload`. */
-export function solveAltcha(challenge: unknown, options: SolveOptions = {}): string {
+export async function solveAltcha(challenge: unknown, options: SolveOptions = {}): Promise<string> {
   const entry = asObject(challenge);
   const salt = text(entry["salt"], { numbers: false });
   const target = text(entry["challenge"], { numbers: false })?.toLowerCase() ?? null;
@@ -49,8 +54,13 @@ export function solveAltcha(challenge: unknown, options: SolveOptions = {}): str
   const elapsed = options.elapsed ?? (() => performance.now() - started);
   const budget = options.budgetMs ?? DEFAULT_BUDGET_MS;
   for (let number = 0; number <= maximum; number += 1) {
-    if (number % CHECK_EVERY === 0 && elapsed() > budget) {
-      throw new TransientError("Mój DHL's Altcha challenge took too long to solve.");
+    if (number % CHECK_EVERY === 0) {
+      if (elapsed() > budget) {
+        throw new TransientError("Mój DHL's Altcha challenge took too long to solve.");
+      }
+      if (number > 0) {
+        await yieldToEventLoop();
+      }
     }
     if (
       createHash("sha256")
