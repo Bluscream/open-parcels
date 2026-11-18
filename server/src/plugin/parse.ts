@@ -105,6 +105,16 @@ function offsetMs(epochMs: number, timeZone: string): number {
   return asUtc - Math.floor(epochMs / 1000) * 1000;
 }
 
+/** True for an IANA zone name the runtime knows, for validating zone options in configs. */
+export function isTimeZone(value: string): boolean {
+  try {
+    formatter(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The instant a wall clock in `timeZone` shows the given local time, as ISO 8601 UTC. */
 export function wallClockToIso(local: WallClock, timeZone: string): string | null {
   const guess = Date.UTC(
