@@ -10,6 +10,16 @@ const REPLAY_LIMIT = 1000;
 
 export type EventListener = (event: OutboxEvent) => void;
 
+/**
+ * A message that is pushed to connected clients but never stored or replayed: courier positions.
+ * Positions must not end up in history, so they bypass the outbox entirely.
+ */
+export interface EphemeralMessage {
+  readonly type: "parcel.live_position";
+  readonly payload: unknown;
+}
+export type EphemeralListener = (message: EphemeralMessage) => void;
+
 function toEvent(row: OutboxRow): OutboxEvent | undefined {
   if (!EVENT_TYPES.includes(row.type as EventType)) {
     return undefined;
@@ -46,6 +56,7 @@ export async function appendEvent(
 /** Delivers committed outbox rows to in-process subscribers (SSE clients) in sequence order. */
 export class EventBus {
   readonly #listeners = new Set<EventListener>();
+  readonly #ephemeral = new Set<EphemeralListener>();
   #lastSeq = 0;
   #pumping: Promise<void> | undefined;
   /** Bumped by every notify(); the pump keeps reading until it has caught up with it. */
@@ -69,6 +80,21 @@ export class EventBus {
   subscribe(listener: EventListener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  subscribeEphemeral(listener: EphemeralListener): () => void {
+    this.#ephemeral.add(listener);
+    return () => this.#ephemeral.delete(listener);
+  }
+
+  publishEphemeral(message: EphemeralMessage): void {
+    for (const listener of this.#ephemeral) {
+      try {
+        listener(message);
+      } catch (error) {
+        this.logger.error({ err: error }, "Live listener failed.");
+      }
+    }
   }
 
   get subscriberCount(): number {

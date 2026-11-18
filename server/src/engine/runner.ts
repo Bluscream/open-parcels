@@ -10,12 +10,14 @@ import {
   SignInRejectedError,
   TransientError,
   type FetchResult,
+  type LiveReading,
+  type LiveTarget,
   type PluginLogger,
   type SessionStore,
 } from "../plugin/api.js";
 import { PluginHttp, type FetchLike, type HostLimiter } from "../plugin/http.js";
 import type { FailureKind } from "./policy.js";
-import type { Reconciler } from "./reconciler.js";
+import type { LiveTargetOfParcel, Reconciler } from "./reconciler.js";
 import {
   InvalidSourceConfigError,
   type BaseContext,
@@ -30,6 +32,7 @@ export type RunOutcome =
       readonly created: number;
       readonly updated: number;
       readonly events: number;
+      readonly liveTargets: readonly LiveTargetOfParcel[];
     }
   | {
       readonly ok: false;
@@ -126,7 +129,45 @@ export class SourceRunner {
     }
   }
 
+  /**
+   * Reads one live courier map. Errors propagate to the live tracker, which owns the retry rules;
+   * none of them ever triggers a new sign-in here.
+   */
+  async readLive(sourceId: string, target: LiveTarget): Promise<LiveReading | null> {
+    const row = await this.deps.db
+      .selectFrom("sources")
+      .selectAll()
+      .where("id", "=", sourceId)
+      .executeTakeFirst();
+    const plugin = row === undefined ? undefined : this.deps.registry.get(row.plugin);
+    if (row === undefined || plugin?.canReadLive !== true) {
+      return null;
+    }
+    const { base, config, secret } = this.#prepare(
+      row,
+      plugin,
+      this.deps.logger.child({ plugin: row.plugin, source: row.id, live: true }),
+    );
+    return plugin.readLive(base, config, secret, target);
+  }
+
   async #fetch(row: SourceRow, plugin: RegisteredPlugin, log: Logger): Promise<FetchResult> {
+    const { base, config, secret } = this.#prepare(row, plugin, log);
+    if (row.kind !== "tracking") {
+      return plugin.fetchAccount(base, config, secret);
+    }
+    const barcodes = await this.#trackedBarcodes(row.id);
+    if (barcodes.length === 0) {
+      return { snapshots: [], complete: false };
+    }
+    return plugin.track(base, config, secret, barcodes);
+  }
+
+  #prepare(
+    row: SourceRow,
+    plugin: RegisteredPlugin,
+    log: Logger,
+  ): { base: BaseContext; config: unknown; secret: unknown } {
     const secret =
       row.secret_blob === null
         ? null
@@ -148,14 +189,7 @@ export class SourceRunner {
           });
       },
     };
-    if (row.kind !== "tracking") {
-      return plugin.fetchAccount(base, config, secret);
-    }
-    const barcodes = await this.#trackedBarcodes(row.id);
-    if (barcodes.length === 0) {
-      return { snapshots: [], complete: false };
-    }
-    return plugin.track(base, config, secret, barcodes);
+    return { base, config, secret };
   }
 
   async #trackedBarcodes(sourceId: string): Promise<string[]> {

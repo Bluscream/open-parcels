@@ -4,6 +4,7 @@ import {
   defineCarrier,
   snapshot,
   type FetchResult,
+  type LiveReading,
   type ParcelSnapshot,
   type SnapshotEvent,
 } from "../../src/plugin/api.js";
@@ -20,6 +21,9 @@ export class FakeWorld {
   readonly trackCalls: string[][] = [];
   readonly sessions: unknown[] = [];
   unknownToReport: string[] = [];
+  /** Live readings returned one per call; `Error` entries are thrown. */
+  liveScript: (LiveReading | null | Error)[] = [];
+  readonly liveCalls: unknown[] = [];
 
   result(): FetchResult {
     if (this.failWith !== undefined) {
@@ -80,8 +84,32 @@ export function fakeShop(world: FakeWorld): RegisteredPlugin {
         world.accountCalls.push(Date.now());
         return Promise.resolve(world.result());
       },
+      async readLive(_context, target) {
+        world.liveCalls.push(target.ref);
+        const next = world.liveScript.shift() ?? null;
+        if (next instanceof Error) {
+          throw next;
+        }
+        return Promise.resolve(next);
+      },
     }),
   );
+}
+
+export function reading(
+  state: LiveReading["state"],
+  stopsAway: number | null,
+  position: { latitude: number; longitude: number } | null = null,
+): LiveReading {
+  return {
+    state,
+    stopsAway,
+    latitude: position?.latitude ?? null,
+    longitude: position?.longitude ?? null,
+    accuracy: position === null ? null : 10,
+    positionAt: position === null ? null : "2026-11-18T14:00:00Z",
+    message: stopsAway === null ? null : `${stopsAway} stops away`,
+  };
 }
 
 export function scan(

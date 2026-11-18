@@ -7,6 +7,7 @@ import { isoNow, type Clock } from "./clock.js";
 import type { AppConfig } from "./config.js";
 import type { SecretBox } from "./crypto/secrets.js";
 import type { Database } from "./db/schema.js";
+import { LiveTracker } from "./engine/live.js";
 import { Reconciler } from "./engine/reconciler.js";
 import { PluginRegistry, type RegisteredPlugin } from "./engine/registry.js";
 import { SourceRunner } from "./engine/runner.js";
@@ -59,6 +60,7 @@ export interface Services {
   readonly reconciler: Reconciler;
   readonly runner: SourceRunner;
   readonly scheduler: Scheduler;
+  readonly live: LiveTracker;
   readonly parcels: ParcelService;
   readonly setup: SetupGate;
 }
@@ -113,7 +115,9 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     logger,
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
   });
-  const scheduler = new Scheduler({
+  // The scheduler hands live targets to the tracker after each poll, and the tracker asks the
+  // scheduler for an immediate poll when a session ends; the closures break the cycle.
+  const scheduler: Scheduler = new Scheduler({
     db,
     runner,
     sources,
@@ -122,16 +126,36 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     logger,
     timeZone: deps.config.timeZone,
     installId,
+    onRunSucceeded: (sourceId, liveTargets) => {
+      live.setTargets(sourceId, liveTargets);
+    },
   });
-  const parcels = new ParcelService(db, bus, clock, async (carrier) => {
-    if (registry.get(carrier)?.canTrack !== true) {
-      return undefined;
-    }
-    const sourceId = await sources.ensureTrackingSource(carrier);
-    await sources.requestRun(sourceId);
-    scheduler.wake();
-    return sourceId;
+  const live: LiveTracker = new LiveTracker({
+    db,
+    runner,
+    bus,
+    clock,
+    logger,
+    refreshSource: async (sourceId) => {
+      await sources.requestRun(sourceId);
+      scheduler.wake();
+    },
   });
+  const parcels = new ParcelService(
+    db,
+    bus,
+    clock,
+    async (carrier) => {
+      if (registry.get(carrier)?.canTrack !== true) {
+        return undefined;
+      }
+      const sourceId = await sources.ensureTrackingSource(carrier);
+      await sources.requestRun(sourceId);
+      scheduler.wake();
+      return sourceId;
+    },
+    (parcelId) => live.position(parcelId),
+  );
   const setup = new SetupGate((await auth.hasOwner()) ? undefined : humanCode());
   return {
     ...deps,
@@ -143,6 +167,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     reconciler,
     runner,
     scheduler,
+    live,
     parcels,
     setup,
   };

@@ -58,6 +58,7 @@ async function main(): Promise<void> {
   }
 
   services.scheduler.start();
+  services.live.start();
 
   const maintenance = setInterval(() => {
     runMaintenance(services).catch((error: unknown) => {
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, "Shutting down.");
     clearInterval(maintenance);
     services.scheduler.stop();
+    services.live.stop();
     Promise.all(servers.map((server) => server.close()))
       .then(() => db.destroy())
       .then(() => process.exit(0))

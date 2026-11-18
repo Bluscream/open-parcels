@@ -34,7 +34,8 @@ export function registerEventRoutes(app: TypedApp, services: Services): void {
         summary: "Server-Sent Events stream of parcel and source events.",
         description:
           "Each message carries `id` (the outbox sequence), `event` (the event type) and JSON `data`. " +
-          "Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events.",
+          "Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events. " +
+          "`parcel.live_position` messages carry the courier's position while en route; they have no `id` and are never replayed.",
         querystring: z.object({ last_event_id: z.coerce.number().int().nonnegative().optional() }),
       },
     },
@@ -72,10 +73,15 @@ export function registerEventRoutes(app: TypedApp, services: Services): void {
         raw.write(formatEvent(event));
       };
       const unsubscribe = services.bus.subscribe(send);
+      // Courier positions: no `id`, so they are never part of a replay.
+      const unsubscribeLive = services.bus.subscribeEphemeral((message) => {
+        raw.write(`event: ${message.type}\ndata: ${JSON.stringify(message.payload)}\n\n`);
+      });
       const heartbeat = setInterval(() => raw.write(": keep-alive\n\n"), HEARTBEAT_MS);
       request.raw.on("close", () => {
         clearInterval(heartbeat);
         unsubscribe();
+        unsubscribeLive();
       });
 
       if (since !== undefined) {

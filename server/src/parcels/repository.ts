@@ -46,8 +46,22 @@ interface Related {
 }
 
 /** Reads parcels in the normalised shape, loading related rows in one query per table. */
+/** A courier position held in memory by the live tracker. */
+export interface LivePosition {
+  readonly latitude: number | null;
+  readonly longitude: number | null;
+  readonly accuracy: number | null;
+  readonly positionAt: string | null;
+}
+
+export type PositionLookup = (parcelId: string) => LivePosition | undefined;
+
 export class ParcelRepository {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    /** Courier positions are never stored; the live tracker supplies them from memory. */
+    private readonly positions: PositionLookup = () => undefined,
+  ) {}
 
   async list(filter: ParcelFilter, withHistory: boolean): Promise<Parcel[]> {
     let query = this.db.selectFrom("parcels").selectAll();
@@ -167,20 +181,22 @@ export class ParcelRepository {
       );
     }
     const liveMap = new Map<string, Live>(
-      live.map((row) => [
-        row.parcel_id,
-        {
-          state: row.state,
-          stops_away: row.stops_away,
-          // Positions are never stored; the live tracker adds them in memory when it has them.
-          latitude: null,
-          longitude: null,
-          accuracy: null,
-          position_at: row.position_at,
-          message: row.message,
-          updated_at: row.updated_at,
-        },
-      ]),
+      live.map((row) => {
+        const position = this.positions(row.parcel_id);
+        return [
+          row.parcel_id,
+          {
+            state: row.state,
+            stops_away: row.stops_away,
+            latitude: position?.latitude ?? null,
+            longitude: position?.longitude ?? null,
+            accuracy: position?.accuracy ?? null,
+            position_at: position?.positionAt ?? row.position_at,
+            message: row.message,
+            updated_at: row.updated_at,
+          },
+        ];
+      }),
     );
     const sourceMap = new Map<string, Parcel["sources"]>();
     for (const [parcelId, list] of groupBy(sources, (source) => source.parcel_id)) {

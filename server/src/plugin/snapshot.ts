@@ -1,4 +1,5 @@
 import type { Direction, ParcelStatus } from "../domain/parcel.js";
+import type { LiveTarget } from "./live.js";
 
 /** One history entry as the carrier reports it. `status` is null when the raw value did not map. */
 export interface SnapshotEvent {
@@ -57,6 +58,8 @@ export interface ParcelSnapshot {
   readonly handoff: { readonly carrier: string; readonly barcode: string } | null;
   /** The raw payload, stored separately. Must not contain codes that open or sign in to anything. */
   readonly raw: unknown;
+  /** Set when the carrier can show the courier on a map for this parcel. Kept in memory only. */
+  readonly live: LiveTarget | null;
 }
 
 /** Fills the optional parts of a snapshot with nulls, so plug-ins only spell out what they know. */
@@ -82,6 +85,7 @@ export function snapshot(
     externalRef: null,
     handoff: null,
     raw: null,
+    live: null,
     ...required,
   };
 }

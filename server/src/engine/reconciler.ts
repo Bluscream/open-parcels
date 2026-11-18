@@ -7,7 +7,7 @@ import { effectiveStatus, PARCEL_STATUSES, type ParcelStatus } from "../domain/p
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
 import { ParcelRepository } from "../parcels/repository.js";
-import type { FetchResult } from "../plugin/api.js";
+import type { FetchResult, LiveTarget } from "../plugin/api.js";
 import type { ParcelSnapshot } from "../plugin/snapshot.js";
 import { mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
@@ -17,10 +17,17 @@ export const REMOVAL_GRACE_MS = 6 * 60 * 60 * 1000;
 
 type Trx = Transaction<Database>;
 
+export interface LiveTargetOfParcel {
+  readonly parcelId: string;
+  readonly target: LiveTarget;
+}
+
 export interface IngestSummary {
   readonly created: number;
   readonly updated: number;
   readonly events: number;
+  /** Parcels the carrier can show on a courier map; handed to the live tracker, never stored. */
+  readonly liveTargets: readonly LiveTargetOfParcel[];
 }
 
 function asStatus(value: string | null): ParcelStatus | null {
@@ -117,12 +124,15 @@ export class Reconciler {
     if (source === undefined) {
       throw new Error(`Unknown source ${sourceId}.`);
     }
-    const summary = { created: 0, updated: 0, events: 0 };
+    const summary = { created: 0, updated: 0, events: 0, liveTargets: [] as LiveTargetOfParcel[] };
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
       for (const snapshot of result.snapshots) {
         const outcome = await this.#applySnapshot(trx, source, snapshot);
         seen.add(outcome.parcelId);
+        if (snapshot.live !== null) {
+          summary.liveTargets.push({ parcelId: outcome.parcelId, target: snapshot.live });
+        }
         summary[outcome.created ? "created" : "updated"] += 1;
         summary.events += outcome.events;
       }

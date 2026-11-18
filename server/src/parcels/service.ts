@@ -10,7 +10,7 @@ import {
 import { deriveEvents, type EventView } from "../engine/rules.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
-import { ParcelRepository } from "./repository.js";
+import { ParcelRepository, type PositionLookup } from "./repository.js";
 
 export class DuplicateParcelError extends Error {
   override readonly name = "DuplicateParcelError";
@@ -59,8 +59,9 @@ export class ParcelService {
     private readonly bus: EventBus,
     private readonly clock: Clock,
     private readonly linkTracking: TrackingLinker,
+    positions: PositionLookup = () => undefined,
   ) {
-    this.repository = new ParcelRepository(db);
+    this.repository = new ParcelRepository(db, positions);
   }
 
   async create(input: NewParcelInput): Promise<Parcel> {

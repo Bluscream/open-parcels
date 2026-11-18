@@ -9,7 +9,7 @@ import {
   staggerMinutes,
   type ActiveParcel,
 } from "./policy.js";
-import type { Reconciler } from "./reconciler.js";
+import type { LiveTargetOfParcel, Reconciler } from "./reconciler.js";
 import type { RunOutcome, SourceRunner } from "./runner.js";
 import type { SourceService } from "./sources.js";
 
@@ -27,6 +27,8 @@ export interface SchedulerDeps {
   readonly timeZone: string;
   readonly installId: string;
   readonly concurrency?: number;
+  /** Called after each successful run with the parcels the carrier can show on a courier map. */
+  readonly onRunSucceeded?: (sourceId: string, liveTargets: readonly LiveTargetOfParcel[]) => void;
 }
 
 function asStatus(value: string): ParcelStatus {
@@ -139,6 +141,7 @@ export class Scheduler {
   async #record(source: SourceRow, outcome: RunOutcome): Promise<void> {
     const now = this.deps.clock.now();
     if (outcome.ok) {
+      this.deps.onRunSucceeded?.(source.id, outcome.liveTargets);
       const next = nextRunAfterSuccess({
         now,
         timeZone: this.deps.timeZone,

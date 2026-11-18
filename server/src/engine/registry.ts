@@ -1,5 +1,12 @@
 import type { z } from "zod";
-import type { CarrierPlugin, FetchResult, PluginContext, PluginSourceKind } from "../plugin/api.js";
+import type {
+  CarrierPlugin,
+  FetchResult,
+  LiveReading,
+  LiveTarget,
+  PluginContext,
+  PluginSourceKind,
+} from "../plugin/api.js";
 import type { HttpPolicy } from "../plugin/http.js";
 
 export class InvalidSourceConfigError extends Error {
@@ -31,7 +38,14 @@ export interface RegisteredPlugin {
   readonly http: HttpPolicy;
   readonly canFetchAccount: boolean;
   readonly canTrack: boolean;
+  readonly canReadLive: boolean;
   validateConfig(raw: unknown): void;
+  readLive(
+    base: BaseContext,
+    rawConfig: unknown,
+    rawSecret: unknown,
+    target: LiveTarget,
+  ): Promise<LiveReading | null>;
   fetchAccount(base: BaseContext, rawConfig: unknown, rawSecret: unknown): Promise<FetchResult>;
   track(
     base: BaseContext,
@@ -74,6 +88,13 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
     http: plugin.http,
     canFetchAccount: plugin.fetchAccount !== undefined,
     canTrack: plugin.track !== undefined,
+    canReadLive: plugin.readLive !== undefined,
+    async readLive(base, rawConfig, rawSecret, target) {
+      if (plugin.readLive === undefined) {
+        return null;
+      }
+      return plugin.readLive(context(base, rawConfig, rawSecret), target);
+    },
     validateConfig(raw) {
       parseWith(plugin.configSchema, raw, "configuration", plugin.id);
     },

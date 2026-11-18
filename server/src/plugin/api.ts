@@ -1,10 +1,12 @@
 import type { z } from "zod";
 import type { Clock } from "../clock.js";
 import type { HttpPolicy, PluginHttp } from "./http.js";
+import type { LiveReading, LiveTarget } from "./live.js";
 import type { ParcelSnapshot } from "./snapshot.js";
 
 export * from "./errors.js";
 export * from "./snapshot.js";
+export type { LiveReading, LiveTarget } from "./live.js";
 export type { HostLimit, HttpPolicy, HttpResponse, RequestOptions } from "./http.js";
 
 /** Source kinds a carrier can offer. Mailboxes are handled by the core, not by carrier plug-ins. */
@@ -82,6 +84,14 @@ export interface CarrierPlugin<Config = unknown, Secret = unknown> {
   fetchAccount?(context: PluginContext<Config, Secret>): Promise<FetchResult>;
   /** Tracking sources: look up these codes. A missing code in the result means "not found". */
   track?(context: PluginContext<Config, Secret>, barcodes: readonly string[]): Promise<FetchResult>;
+  /**
+   * Reads the courier map for one parcel. Returns null when there is no session. Must not sign
+   * in again on a network error; renewing a token the carrier explicitly refused, once, is fine.
+   */
+  readLive?(
+    context: PluginContext<Config, Secret>,
+    target: LiveTarget,
+  ): Promise<LiveReading | null>;
 }
 
 /** Identity helper that keeps the generic parameters inferred from the schemas. */
