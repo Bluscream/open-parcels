@@ -193,7 +193,7 @@ describe("gls group countries", () => {
 
   it("rejects a configuration without a supported country", () => {
     expect(() => {
-      plugin.validateConfig({ country: "DE", postalCode: "12345" });
+      plugin.validateConfig({ country: "SE", postalCode: "12345" });
     }).toThrow();
   });
 });

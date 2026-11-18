@@ -53,7 +53,11 @@ export const GROUP_COUNTRIES: Readonly<Record<string, GroupCountry>> = {
   SK: group("SK/sk", "Europe/Bratislava"),
 };
 
-export const COUNTRIES = ["NL", ...Object.keys(GROUP_COUNTRIES)] as const;
+/** Countries with a national route of their own. */
+export const NATIONAL_COUNTRIES = ["NL", "DE", "ES", "PT", "PL", "US", "CA"] as const;
+export type NationalCountry = (typeof NATIONAL_COUNTRIES)[number];
+
+export const COUNTRIES = [...NATIONAL_COUNTRIES, ...Object.keys(GROUP_COUNTRIES)] as const;
 
 /** GLS sends text fields as strings only; numbers are never read as text. */
 export const text = (value: unknown): string | null => anyText(value, { numbers: false });
