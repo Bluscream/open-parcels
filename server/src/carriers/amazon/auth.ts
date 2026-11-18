@@ -18,7 +18,12 @@ import type { Storefront } from "./storefronts.js";
  * can be removed there.
  */
 
-const APP_NAME = "Alexa Media Player";
+/**
+ * A free-text label sent with the registration; the client is identified by the device type and
+ * app version. Untested against a real registration: if Amazon refuses it, this is the first
+ * thing to look at.
+ */
+const APP_NAME = "open-parcels";
 const APP_VERSION = "2.2.556530.0";
 /** Shown in the user's device list. */
 const DEVICE_NAME = "open-parcels";

@@ -121,7 +121,7 @@ Versions are pinned and checked at install time.
 | `open-parcels` (this repo, npm workspaces) | `server/` (API, engine, carrier plug-ins), `web/` (UI), Dockerfile, Unraid template |
 | **`open-parcels-rules`** (`email-parser-rules` renamed; `mail-parser-ts` merged in with its history, then archived) | Language-neutral data plus a TypeScript engine, published as an npm package and a JSON bundle. See the list below |
 | `open-parcels-ha-apps` (later) | The Home Assistant app repository. It is separate because the Marketplace refuses repositories that contain apps |
-| `open-parcels-ha` (later, not part of this task) | The thin integration, installed from the Marketplace |
+| `open-parcels-ha` (later, not part of this task) | The thin integration, installed from the Marketplace. **One coherent "Open Parcels" integration** (owner's decision, 2026-11-18), unlike the one-repo-per-carrier suite: a Home Assistant device per provider and account (one per open-parcels source), with the parcels as that device's entities |
 
 `open-parcels-rules` holds:
 
@@ -424,6 +424,10 @@ applied.
 | DPD | DE public tracking page, myDPD DE account | The public page can be switched off per source, because of its `robots.txt` |
 | Hermes | tracking, account | Public forecast window for account parcels, with a concurrency cap |
 | Mail | IMAP IDLE | Rules from `open-parcels-rules`, seeded from the existing rules and the German `.eml` corpus |
+
+**Coverage goal** (owner's decision, 2026-11-18): open-parcels supports at least every provider and
+courier the Home Assistant suite covers, and more where it is cheap. After the suite, the
+universal-lookup service's carriers are the next source to mine.
 
 ## 3. Migrating the existing data
 
