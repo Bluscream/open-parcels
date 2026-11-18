@@ -5,6 +5,7 @@ import { canadapost } from "../carriers/canadapost/index.js";
 import { canpar } from "../carriers/canpar/index.js";
 import { cdl } from "../carriers/cdl/index.js";
 import { ceskaposta } from "../carriers/ceskaposta/index.js";
+import { colisprive } from "../carriers/colisprive/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { hermes } from "../carriers/hermes/index.js";
@@ -22,6 +23,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(canpar),
   register(cdl),
   register(ceskaposta),
+  register(colisprive),
   register(dhl),
   register(dpd),
   register(hermes),
