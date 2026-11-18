@@ -10,10 +10,12 @@ import { aramex } from "../carriers/aramex/index.js";
 import { betterTrucks } from "../carriers/better_trucks/index.js";
 import { boxNow } from "../carriers/box_now/index.js";
 import { bpost } from "../carriers/bpost/index.js";
+import { brt } from "../carriers/brt/index.js";
 import { budbee } from "../carriers/budbee/index.js";
 import { cainiao } from "../carriers/cainiao/index.js";
 import { canadapost } from "../carriers/canadapost/index.js";
 import { canpar } from "../carriers/canpar/index.js";
+import { cargus } from "../carriers/cargus/index.js";
 import { cdl } from "../carriers/cdl/index.js";
 import { ceskaPosta } from "../carriers/ceska_posta/index.js";
 import { colisPrive } from "../carriers/colis_prive/index.js";
@@ -56,11 +58,15 @@ import { packeta } from "../carriers/packeta/index.js";
 import { pdnExpress } from "../carriers/pdn_express/index.js";
 import { planzer } from "../carriers/planzer/index.js";
 import { pocztaPolska } from "../carriers/poczta_polska/index.js";
+import { postaSrbije } from "../carriers/posta_srbije/index.js";
 import { postaSlovenije } from "../carriers/posta_slovenije/index.js";
 import { posteItaliane } from "../carriers/poste_italiane/index.js";
+import { postenBring } from "../carriers/posten_bring/index.js";
 import { posti } from "../carriers/posti/index.js";
 import { postnl } from "../carriers/postnl/index.js";
 import { postnord } from "../carriers/postnord/index.js";
+import { pplCz } from "../carriers/ppl_cz/index.js";
+import { purolator } from "../carriers/purolator/index.js";
 import { quickpac } from "../carriers/quickpac/index.js";
 import { sameday } from "../carriers/sameday/index.js";
 import { seur } from "../carriers/seur/index.js";
@@ -97,10 +103,12 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(betterTrucks),
   register(boxNow),
   register(bpost),
+  register(brt),
   register(budbee),
   register(cainiao),
   register(canadapost),
   register(canpar),
+  register(cargus),
   register(cdl),
   register(ceskaPosta),
   register(colisPrive),
@@ -145,10 +153,14 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(planzer),
   register(pocztaPolska),
   register(postaSlovenije),
+  register(postaSrbije),
   register(posteItaliane),
+  register(postenBring),
   register(posti),
   register(postnl),
   register(postnord),
+  register(pplCz),
+  register(purolator),
   register(quickpac),
   register(sameday),
   register(seur),
