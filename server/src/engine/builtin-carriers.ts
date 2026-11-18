@@ -8,6 +8,7 @@ import { shopeeXpress } from "../carriers/shopee-xpress/index.js";
 import { slovakParcelService } from "../carriers/slovak-parcel-service/index.js";
 import { slovenskaPosta } from "../carriers/slovenska-posta/index.js";
 import { speeDee } from "../carriers/speedee/index.js";
+import { speedx } from "../carriers/speedx/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
 /**
@@ -25,4 +26,5 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(slovakParcelService),
   register(slovenskaPosta),
   register(speeDee),
+  register(speedx),
 ];
