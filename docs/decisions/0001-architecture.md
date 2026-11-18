@@ -1,160 +1,153 @@
-# 0001 — Rebuild open-parcels as the single parcel-tracking backend
+# 0001: Rebuild open-parcels as the single parcel-tracking backend
 
-- **Status:** accepted 2026-11-18. The owner said "go" without answering §5, so the recommended
-  answers were taken and are recorded there; each can still be changed.
-- **Date:** 2026-11-18
+- **Status:** accepted 2026-11-18. Revision 2 follows the owner's answers: TypeScript, one user per
+  container, Docker Hub and GHCR, and a consolidated rules repo.
+- **Supersedes:** revision 1 of this record, which proposed a Python backend. It is in git history.
 
 ## 1. Context
 
-open-parcels was dormant from September 2026. Meanwhile the parcel logic that actually works
-(carrier sign-ins, status vocabularies, adaptive polling, live courier tracking, calendars, the
-map) was built as Home Assistant integrations. The goal now is to make open-parcels the one place
-where tracking happens: a Docker container that signs in to carriers, polls, reads mail, follows
-couriers live, resolves places, stores history and publishes events. A later Home Assistant
-integration only displays what open-parcels publishes. It must be good enough for many
-installations (Docker, Unraid, and a Home Assistant app on a Raspberry Pi), not just one.
+open-parcels was dormant from September 2026. Meanwhile the parcel logic that actually works was
+built as Home Assistant integrations: carrier sign-ins, status vocabularies, adaptive polling,
+live courier tracking, calendars and the map. The goal now is to make open-parcels the one place
+where tracking happens. It is a Docker container that:
+
+- signs in to carriers and polls them;
+- reads mail;
+- follows couriers live;
+- resolves places;
+- stores history and publishes events.
+
+A later Home Assistant integration only displays what it publishes. The code must hold up for
+many installations, not just this one. Those run on Docker, Unraid, and a Home Assistant app on a
+Raspberry Pi.
 
 ### What the audit found
 
-**The existing TypeScript code** is about 4.8k lines of backend, 6.7k of React frontend and
-2.9k of scripts.
+**The existing TypeScript code**
 
+- About 4.8k backend lines, 6.7k React frontend lines and 2.9k script lines.
 - **No carrier logic of its own.** Every lookup went to a separate service, universal-lookup.
-- **Nothing runs by itself.** There is no scheduler: IMAP polling and parcel refresh were never
-  triggered automatically.
+- **No scheduler.** IMAP polling and parcel refresh were never triggered automatically.
 - **Security problems:**
-  - GET requests need no token, and `/admin/db-backup` returns the whole database to anyone.
+  - GET requests need no token.
+  - `/admin/db-backup` returns the whole database to anyone.
   - The WebSocket streams every log line without authentication.
-  - Mail rules are downloaded and executed with `node:vm`.
+  - Mail rules are downloaded and run with `node:vm`.
   - The encryption key silently falls back to a random one.
-- **Database:** the schema is pushed at every boot, with no versioned migrations.
-- **Container:** the image cannot run its own Playwright code, runs as root and has no
-  healthcheck.
-- **Worth keeping:** the React map pieces (`mapIcons`, `AnimatedRoute`, `SharedMap`,
-  `SplitContainer`), `DataTable`, and the knowledge of Amazon's live endpoints.
+- **Schema push at every boot.** There are no versioned migrations.
+- **The image can't run Playwright.** It also runs as root and has no healthcheck.
+- **Worth keeping:**
+  - the React map pieces: `mapIcons`, `AnimatedRoute`, `SharedMap`, `SplitContainer`;
+  - `DataTable`;
+  - the knowledge of Amazon's live endpoints.
 
-**The Home Assistant suite** has 87 carrier repos written in Python on top of aiohttp. Its
-carrier transports take an injected HTTP session and do not import Home Assistant, so they are
-separable. Carrier logic is 25–60 % of each repo. Each repo carries its own copy of the parcel
-model; there is no shared package.
+**The Home Assistant suite** has 87 carrier repos written in Python with aiohttp.
 
-**Newer techniques** are in the fork and PR worktrees: live courier tracking, the
-`parcel_removed` grace period, the calendar narrowing, place lookup, hand-off and the order-line
-parsers. The live-tracking path has been proven on a real delivery, a Home Assistant session on
-2026-11-18. It read every 30 s, the stop count went down and back up again, and the events
-carried no coordinates.
+- **The carrier transports are separable.** They take an injected HTTP session and don't import
+  Home Assistant.
+- **Carrier logic is 25–60 % of each repo.**
+- **The newer techniques live in the fork and PR worktrees:**
+  - live courier tracking;
+  - the `parcel_removed` grace period;
+  - calendar narrowing;
+  - place lookup;
+  - carrier hand-off;
+  - the order-line parsers.
+- **Live tracking was proven on a real delivery** in a Home Assistant session on 2026-11-18. It
+  read every 30 s, the stop count went down and back up, and the events carried no coordinates.
 
-**Prior art.** Nothing covers the whole job.
+**Earlier rule repos of the owner's own** (`Bluscream/email-parser-rules` and
+`Bluscream/mail-parser-ts`, both last touched 2026-06-11) hold mail rules as TypeScript modules
+with `parse()` functions. There are 25 rules across parcel, order, return and dunning mails.
 
-- *Dude, Where's My Package* has the closest architecture (Docker, API, a Home Assistant app and
-  integration), but it is Dutch-focused and has no Hermes, IMAP, map or ICS.
-- *Paket Tracker* has the best German mail rules and an anonymised `.eml` corpus, but it runs
-  only inside Home Assistant.
-- *jkeen/tracking_number_data* is the de-facto tracking-number dataset, but it has no Hermes,
-  GLS or PostNL and no DHL Paket DE.
+**Prior art: nothing covers the whole job.**
 
-### Requirements this decision has to meet
-
-- **Carriers as plug-ins**, one per source kind: account, tracking code, shop, mail.
-- **One normalised parcel shape:** the suite contract plus `items`, `live` and `location`.
-- **Adaptive polling** with per-carrier and per-account rate limits and backoff.
-- **Live courier tracking that feels instant:** the delivered event fires within about a minute.
-- **API:** versioned REST with OpenAPI, a push channel, an ICS feed and an image proxy.
-- **Accounts and secrets:** several users, API tokens, credentials and sessions encrypted at
-  rest, no secrets in logs, redacted diagnostics.
-- **Packaging:** one image for amd64 and aarch64. The same image also runs as a Home Assistant
-  app.
-- **Reusable knowledge:** regexes, parsing rules, status tables and locales live in a separate,
-  shared repository.
-- **Quality:** strict typing and linting, recorded made-up fixtures for every carrier, and
-  integration tests for the scheduler and the event rules.
+| Project | Strength | Gap |
+|---|---|---|
+| *Dude, Where's My Package* | Closest architecture: Docker, API, HA app and integration | Dutch-focused; no Hermes, IMAP, map or ICS |
+| *Paket Tracker* | Best German mail rules, plus an anonymised `.eml` corpus | Runs only inside Home Assistant |
+| *jkeen/tracking_number_data* | The de-facto tracking-number dataset | No Hermes, GLS, PostNL or DHL Paket DE |
 
 ## 2. Decision
 
-### 2.1 Rewrite the backend in Python; keep and rebuild the React frontend in TypeScript
+### 2.1 Rewrite the backend in TypeScript on Node; rebuild the React frontend on top of the old one
 
-**Backend: Python 3.14.** The reasons:
+**The owner prefers TypeScript.** It also has real advantages here:
 
-1. **The carrier logic is the product, and it exists in Python.** It is the bulk of the work and
-   the part that changes most often. In Python each carrier is re-implemented quickly against
-   behaviour that is already proven. In TypeScript every one of them would be a hand port, first
-   for the initial carriers and again for every later one.
-2. **Tooling against carrier anti-bot measures is most mature in Python.** `curl_cffi` is a
-   drop-in client that can present a browser's TLS fingerprint, which some carrier and shop
-   endpoints check. The Node alternatives are younger.
-3. **Runtime validation fits messy carrier JSON.** pydantic v2 is the strongest option in any of
-   the candidate stacks for validating payloads that change shape without notice.
-4. **Contributors are already in Python.** The people who write and fix carriers today work in
-   it, and the shared knowledge repo can still be used by any language.
-5. **Footprint is comparable.** Measured on Windows, a FastAPI app idles at about 90 MB; Fastify
-   with Drizzle idled at about 207 MB, an anomaly still to check on Linux. Neither matters next
-   to Chromium, which we avoid by default (2.6).
+- **One language for server, web UI and rules engine.** Shared types replace hand-written mirrors.
+  The old frontend and map code carry over directly.
+- **The strongest static checking** of the candidate stacks: strict `tsc` plus type-aware
+  linting.
+- **imapflow is the best IMAP IDLE client in any of the stacks**, and Playwright is first-class in
+  Node if a carrier ever needs a browser.
 
-**Frontend: React + Vite + TypeScript.** It stays: it is good code, it is what the owner liked,
-and it talks to the backend only through a generated OpenAPI client. Strict TypeScript and
-type-aware typescript-eslint, on TypeScript 6 until typescript-eslint supports TypeScript 7.
+**The old backend is not kept.** It has no carriers, no scheduler and a security model that has
+to be redone. A clean structure costs less than fixing it. It stays on the `legacy-ts` branch and
+the `v1-final` tag.
 
-**Not chosen:**
-
-- **Staying on the TypeScript backend.** Almost nothing of it survives a fix-up: there are no
-  carriers, the security model has to be redone, and there is no scheduler. Keeping it buys
-  little, and it would mean hand-porting every carrier.
-- **Go or Rust.** Smaller images, but Playwright drags Node in anyway. Carriers would be ported a
-  second time, Go's IMAP library is still beta, and the workload is I/O-bound at a few requests
-  per second.
-
-**Accepted risks and how they are handled:**
-
-- **Python's static typing is weaker than TypeScript's.** `mypy --strict` runs as a gate, pydantic
-  models sit at every boundary, there is no bare `Any`, and every `type: ignore` names its code
-  and gives a reason.
-- **Some dependencies need native aarch64 wheels.** Use a glibc slim base, never Alpine, pin the
-  Python minor version, and build arm64 in the same local buildx run.
-- **Some popular libraries are stalled.** Avoid httpx/respx, APScheduler 4 (alpha) and SQLModel
-  (0.0.x).
+**The cost we accept:** carriers from the Python suite are re-implemented by hand in TypeScript.
+They are written fresh against behaviour that is already proven, never copied. The rules repo
+(§2.3) keeps vocabularies, patterns and locale tables language-neutral, so most of the knowledge
+is shared anyway.
 
 ### 2.2 Main libraries
 
+Versions are pinned and checked at install time.
+
 | Concern | Choice | Why |
 |---|---|---|
-| Web framework | FastAPI + uvicorn | OpenAPI built from pydantic models; largest community |
-| Models / validation | pydantic v2, pydantic-settings | Runtime validation at every boundary |
-| Database | SQLite (WAL) via SQLAlchemy 2.1 async + aiosqlite | One file in `/data`; the schema can move to Postgres later |
-| Migrations | Alembic | Versioned migrations, never a schema push |
-| HTTP to carriers | aiohttp; `curl_cffi` only for carriers that need a browser fingerprint | Per-carrier choice, recorded in the plug-in |
-| HTML parsing | selectolax (lxml as fallback) | Fast, small |
-| Scheduler | Our own asyncio scheduler: a heap of next-run times, token buckets, backoff | The polling rules don't fit cron; it is fully testable with a fake clock |
-| IMAP | aioimaplib with IDLE | Push instead of polling; reconnect with backoff |
-| ICS | icalendar | Mature |
-| Push | Server-Sent Events | One-way is all clients need; `Last-Event-ID` replay is built in; works through HA ingress |
-| MQTT | aiomqtt, optional, later phase | Only for users without the integration |
-| Secrets | `cryptography` AES-256-GCM | Authenticated encryption, the row id bound as associated data |
-| Passwords | argon2-cffi (argon2id) | Current recommendation |
-| Logging | structlog, JSON output | A redaction processor runs on every log line |
-| Tests | pytest, pytest-asyncio, aioresponses, time-machine, hypothesis | Recorded fixtures at the HTTP boundary, plus a fake clock |
-| Frontend | React 19, Vite, TanStack Router + Query, orval-generated client, Leaflet/react-leaflet, FullCalendar (month/week/day/list/multi-month), TanStack Table | Reuses the existing map pieces and table |
-| Browser (only if a carrier needs it) | Playwright Chromium in a separate optional image variant | Most installs never download a browser |
+| Runtime | Node 26 LTS (`node:26-slim`, Debian/glibc) | Active LTS; glibc so native modules and Playwright work on arm64 |
+| Language | TypeScript, strict (§6 of the TypeScript rules), on the newest release typescript-eslint supports with type-aware rules | TypeScript 7 still lacks type-aware lint support |
+| Web framework | Fastify 5 with `fastify-type-provider-zod`, `@fastify/swagger` | Route types and OpenAPI come from one schema |
+| Validation | zod 4 | API schemas and parsing of messy carrier payloads use the same tool |
+| Database | SQLite (WAL) through better-sqlite3 + Kysely | Typed queries; migrations are code; no ORM magic. Drizzle was dropped because of its 0.x→1.0 migration churn and the memory measured during research |
+| HTTP to carriers | undici (built-in `fetch`) by default; `impit` only for carriers that check the browser's TLS fingerprint | Each plug-in chooses its transport |
+| HTML parsing | cheerio | |
+| Scheduler | Our own: a heap of next-run times, token buckets, backoff | The polling rules don't fit cron; testable with fake timers |
+| IMAP | imapflow (IDLE) + mailparser | |
+| ICS | ical-generator | |
+| Push | Server-Sent Events | Clients only need one-way; `Last-Event-ID` replay is built in; works through HA ingress |
+| MQTT | `mqtt`, optional, later phase | |
+| Secrets | `node:crypto` AES-256-GCM; scrypt for the password | No native dependency |
+| Logging | pino (Fastify's own logger), JSON, with `redact` paths and a value scrubber | |
+| Tests | vitest, undici `MockAgent`, Fastify `inject`, fake timers, recorded made-up fixtures | |
+| Web UI | React 19, Vite, TanStack Router + Query, OpenAPI-generated client (orval), Leaflet/react-leaflet, FullCalendar (month/week/day/list/multi-month), TanStack Table | |
+| Browser (only if a carrier needs it) | Playwright Chromium in an optional `-browser` image variant | Most installs never download a browser |
 
 ### 2.3 Repositories
 
 | Repo | Contents |
 |---|---|
-| `open-parcels` (this repo) | Server (`src/openparcels/`), carrier plug-ins (`src/openparcels/carriers/`), web UI (`web/`), Dockerfile, Unraid template |
-| **`parcel-knowledge`** (new; name to confirm) | Language-neutral data: tracking-number patterns (jkeen's dataset as a pinned upstream plus our EU overlay in the same schema), carrier status tables mapped to the canonical status list, locale tables for delivery dates and windows, mail rules, place-extraction patterns and tracking-URL templates. Includes a JSON Schema, test vectors per rule, and thin Python and TypeScript loaders checked against the same vectors. The regex subset is portable: no lookaround and no backreferences |
-| `open-parcels-ha-apps` (new, later) | The Home Assistant app repository: `repository.yaml` plus one app folder that points at the same image. It has to be separate, because the Marketplace refuses repositories that contain apps |
-| `open-parcels-ha` (new, later; not part of this task) | The thin integration, installed from the Marketplace |
+| `open-parcels` (this repo, npm workspaces) | `server/` (API, engine, carrier plug-ins), `web/` (UI), Dockerfile, Unraid template |
+| **`open-parcels-rules`** (`email-parser-rules` renamed; `mail-parser-ts` merged in with its history, then archived) | Language-neutral data plus a TypeScript engine, published as an npm package and a JSON bundle. See the list below |
+| `open-parcels-ha-apps` (later) | The Home Assistant app repository. It is separate because the Marketplace refuses repositories that contain apps |
+| `open-parcels-ha` (later, not part of this task) | The thin integration, installed from the Marketplace |
 
-The carrier plug-ins stay inside `open-parcels` at first, behind a strict boundary: no imports
-from the app, only the plug-in API. Once that API settles they can split out as a
-`parcel-carriers` package that the Home Assistant suite could also use.
+`open-parcels-rules` holds:
 
-The old TypeScript code moves to a `legacy-ts` branch with a `v1-final` tag. Nothing is deleted.
+- **Tracking-number patterns.** jkeen's dataset is the pinned upstream, with our EU overlay in the
+  same schema.
+- **Carrier status tables**, mapped to the canonical status list.
+- **Locale tables** for delivery dates and windows.
+- **Declarative mail rules**, kept as data wherever a rule can be expressed that way.
+- **Place-extraction patterns and tracking-URL templates.**
+- **Shared tooling:**
+  - a JSON Schema for every file;
+  - test vectors per rule;
+  - a lint that keeps every regex in a portable subset (no lookaround, no backreferences), so
+    Python and other consumers can use the same files.
+
+The app consumes `open-parcels-rules` as a versioned dependency. Rules are **never** downloaded and
+run at runtime.
+
+The carrier plug-ins live in `server/src/carriers/` behind a lint-enforced boundary: they import
+only the plug-in API. Once that API settles they can split out into their own package.
 
 ### 2.4 Architecture
 
 ```
                ┌──────────────── open-parcels container ────────────────┐
-  Web UI ─────►│ FastAPI  /api/v1 (REST, OpenAPI)   /api/v1/events (SSE)│◄── HA integration
+  Web UI ─────►│ Fastify  /api/v1 (REST, OpenAPI)   /api/v1/events (SSE)│◄── HA integration
   HA ingress ─►│          /ical/{token}.ics         /img/{signed-id}    │◄── calendar apps
                │      │                                                 │
                │  Services: parcels · events · calendar · places · auth │
@@ -172,243 +165,311 @@ The old TypeScript code moves to a `legacy-ts` branch with a `v1-final` tag. Not
                └────────────────────────────────────────────────────────┘
 ```
 
-- **Plug-in contract.** Each carrier is a module that declares:
-  - metadata: id, name, countries, capabilities, which source kinds it offers;
-  - a pydantic config schema, which the UI renders as a form;
-  - its sign-in flow type: none, credentials, a pasted redirect link, an API key, or OIDC;
-  - its rate-limit policy;
-  - async methods returning `ParcelSnapshot` objects.
+#### Plug-in contract
 
-  Plug-ins never touch the database or send events; they only return snapshots. Third-party
-  carriers can be added as Python entry points.
-- **The reconciler is the only writer of parcels.** It merges snapshots from every source. For
-  DHL that means the newest scan wins and the other backends fill gaps. It applies the suite's
-  status rule (map → newest mapped history entry → `unknown`, with one warning per new value),
-  handles hand-off (an Amazon parcel carried by DHL becomes one parcel with two sources), and
-  derives events by comparing old and new state in the same transaction that writes the outbox
-  row.
-- **The scheduler implements the suite's polling rules:**
-  - a quiet window from 00:00 to 06:00 with catch-up anchors;
-  - a fast tier of 15 minutes for parcels out for delivery within an hour of `planned_from`;
-  - a slow tier of 45 minutes for everything else;
-  - a stagger per install and source;
-  - on HTTP 429, honour `Retry-After`, otherwise back off 60 s × 2ⁿ up to 1 hour;
-  - stop polling account-less sources when nothing is active.
+Each carrier is a module that declares:
 
-  On top of that it adds a token bucket per carrier host and at most one request at a time per
-  account. A network error never triggers a new sign-in; only an explicit rejection does, once,
-  and then the source is marked "needs sign-in".
-- **Live tracker.** It polls every 30 s while a map session is open and probes every 5 minutes for
-  out-for-delivery parcels without a map. After 3 failed passes it stops until the next full
-  poll, honours `Retry-After`, and never signs in again because of a network error. When a
-  session reports delivered or ended, the parcel is refreshed immediately. Positions are kept in
-  memory and in the parcel's current `live` value only; they are never written to history.
-- **Mail watcher.** It uses IMAP IDLE per mailbox (the configured folders). Each new message goes
-  through:
-  1. schema.org `ParcelDelivery` markup, if present;
-  2. shop and carrier rules from `parcel-knowledge`;
-  3. tracking-number detection constrained by sender and context.
+- metadata: id, name, countries, capabilities, and the source kinds it offers;
+- a zod config schema, which the UI renders as a form;
+- its sign-in flow type: none, credentials, pasted redirect link, API key, or OIDC;
+- its rate-limit policy;
+- async methods that return `ParcelSnapshot` objects.
 
-  Messages are deduplicated by Message-ID. A message is never marked as read unless the user opts
-  in.
-- **Browser isolation.** No first-wave carrier needs a browser: Amazon signs in through device
-  registration with a pasted link, and DHL DE through OIDC with a pasted link. If one ever needs
-  it, it runs in the `-browser` image variant as a separate process with one browser at a time,
-  a hard timeout and a memory cap.
+Plug-ins never touch the database and never send events.
 
-### 2.5 Data model (SQLite, Alembic)
+#### Reconciler
+
+The reconciler is the only writer of parcels. It:
+
+- merges the snapshots from all sources: for DHL the newest scan wins and other backends fill
+  gaps;
+- applies the suite's status rule: map the status, else take the newest history entry that maps,
+  else `unknown`, with one warning per new value;
+- handles hand-off: an Amazon parcel carried by DHL becomes one parcel with two sources;
+- derives events by comparing old and new state, inside the same transaction that writes the
+  outbox row.
+
+#### Scheduler
+
+It implements the suite's polling rules:
+
+- **Quiet window:** 00:00–06:00, with catch-up anchors.
+- **Fast tier:** every 15 min for parcels out for delivery within an hour of `planned_from`.
+- **Slow tier:** every 45 min for everything else.
+- **Stagger** per install and per source.
+- **On 429:** honour `Retry-After`, otherwise back off 60 s × 2ⁿ, up to 1 h.
+- **Account-less sources stop** when they track nothing active.
+
+On top of that:
+
+- a token bucket per carrier host;
+- at most one request at a time per account;
+- **a network error never triggers a new sign-in.** Only an explicit rejection does, once. After
+  that the source is marked "needs sign-in".
+
+#### Live tracker
+
+- Polls every 30 s while a map session is open.
+- Probes every 5 min for out-for-delivery parcels that have no map yet.
+- Stops after 3 failed passes, until the next full poll.
+- Honours `Retry-After`, and never signs in again because of a network error.
+- Refreshes the parcel immediately when the session reports delivered or ended.
+- Keeps the courier's position in memory and in the current `live` value only. Positions are
+  never written to history.
+
+#### Mail watcher
+
+- Uses IMAP IDLE on each configured folder.
+- Each new message goes through, in order:
+  1. schema.org `ParcelDelivery` markup, when present;
+  2. the shop and carrier rules from `open-parcels-rules`;
+  3. tracking-number detection, constrained by the sender and the surrounding text.
+- Deduplicates by Message-ID.
+- Never marks a mail as read unless the user opts in.
+
+#### Browser
+
+No first-wave carrier needs one. Amazon signs in by device registration with a pasted link, and
+DHL DE by OIDC with a pasted link. If a later carrier needs a browser, it runs in the `-browser`
+image variant:
+
+- in a separate process;
+- one browser at a time;
+- with a hard timeout and a memory cap.
+
+### 2.5 Data model (SQLite, Kysely migrations)
+
+There is one owner per container, so tables carry no user column.
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `users` | id, username, password_hash (argon2id), role (`admin` / `user`), ha_user_id | `ha_user_id` maps HA ingress users |
-| `api_tokens` | id, user_id, name, hash (SHA-256), scopes, last_used_at, expires_at | Shown once at creation |
-| `sources` | id, user_id, plugin, kind (account / tracking / shop / mail), label, config (JSON), secret_blob (AES-GCM), session_blob (AES-GCM), state (ok / needs_sign_in / error / disabled), backoff fields, last_ok_at | One per sign-in or mailbox |
-| `parcels` | id (UUID), user_id, carrier, barcode, direction, status, raw_status, delivered, delivered_at, planned_from, planned_to, pickup, pickup_point, url, sender, receiver, weight, dimensions, label, order_id, manual_status, manual_until, first_seen_at, last_seen_at, removed_at, archived_at | Unique on (user, carrier, barcode). A manual override is never overwritten |
-| `parcel_sources` | parcel_id, source_id, external_ref, role (primary / handoff / mail), last_seen_at | Hand-off and deduplication live here |
-| `parcel_events` | id, parcel_id, source_id, at, status, raw_status, location_text, fingerprint (unique) | The history. No coordinates |
-| `parcel_raw` | parcel_id, source_id, fetched_at, payload (JSON) | Latest payload per source, kept separately. Codes that open or sign in to something are stripped |
-| `items` | id, parcel_id, title, image_ref, url, external_id (e.g. ASIN), quantity, price, currency | Images go through the image proxy |
-| `orders` | id, user_id, shop, order_number, placed_at, status | |
-| `live_state` | parcel_id, state, stops_away, message, position_at, updated_at | No coordinates are stored; the latest position lives in memory |
+| `owner` | password_hash (scrypt), created_at | A single row, created by the setup page on first start |
+| `api_tokens` | id, name, hash (SHA-256), scopes, last_used_at, expires_at | The token value is shown once |
+| `sources` | id, plugin, kind (account/tracking/shop/mail), label, config (JSON), secret_blob (AES-GCM), session_blob (AES-GCM), state (ok/needs_sign_in/error/disabled), backoff fields, last_ok_at | One row per sign-in or mailbox |
+| `parcels` | id (UUID), carrier, barcode, direction, status, raw_status, delivered, delivered_at, planned_from, planned_to, pickup, pickup_point, url, sender, receiver, weight, dimensions, label, order_id, manual_status, manual_until, first_seen_at, last_seen_at, removed_at, archived_at | Unique on (carrier, barcode). Nothing ever overwrites a manual override |
+| `parcel_sources` | parcel_id, source_id, external_ref, role (primary/handoff/mail), last_seen_at | Hand-off and deduplication |
+| `parcel_events` | id, parcel_id, source_id, at, status, raw_status, location_text, fingerprint (unique) | History. No coordinates |
+| `parcel_raw` | parcel_id, source_id, fetched_at, payload (JSON) | The latest raw payload per source. Codes that open or sign in to something are stripped |
+| `items` | id, parcel_id, title, image_ref, url, external_id, quantity, price, currency | |
+| `orders` | id, shop, order_number, placed_at, status | |
+| `live_state` | parcel_id, state, stops_away, message, position_at, updated_at | No coordinates |
 | `places` | key (normalised text), lat, lng, precision, missed_at | Hits and misses are cached; misses are retried after 7 days |
-| `outbox` | seq (monotonic), user_id, type, parcel_id, payload (JSON), created_at | Feeds SSE replay and later webhooks/MQTT |
-| `unknown_vocab` | plugin, kind, key, first_seen_at, count | Drives the one-time "please report" warning. Keys only, never values |
+| `outbox` | seq (monotonic), type, parcel_id, payload (JSON), created_at | Feeds SSE replay and, later, webhooks and MQTT |
+| `unknown_vocab` | plugin, kind, key, first_seen_at, count | Drives the one-time "please report" warning. Keys only |
 | `settings`, `image_cache` | | |
 
-**Retention:**
+**Retention defaults**, all configurable:
 
-- delivered parcels are archived after 30 days and deleted after 365 days (both configurable);
+- delivered parcels are archived after 30 days and deleted after 365;
 - `parcel_raw` is dropped 30 days after delivery;
 - the outbox is kept for 7 days;
 - the image cache is capped at 200 MB.
 
 ### 2.6 API and event contract
 
-**REST, under `/api/v1`, OpenAPI at `/api/v1/openapi.json`:**
+#### REST
 
-- `GET /parcels` (filters: status, carrier, active, delivered within, q), `GET /parcels/{id}` (adds
-  history, items, sources, live and location), `POST /parcels` (track a code; carrier is
-  detected or given), `PATCH /parcels/{id}` (label, manual status, archive), `DELETE`.
+Everything is under `/api/v1`. The OpenAPI document is at `/api/v1/openapi.json`.
+
+**Parcels**
+
+- `GET /parcels`, with filters: status, carrier, active, delivered-within, q.
+- `GET /parcels/{id}`, which adds history, items, sources, live and location.
+- `POST /parcels` to track a code. The carrier is detected, or given by the caller.
+- `PATCH /parcels/{id}` for the label, the manual status, or archiving.
+- `DELETE /parcels/{id}`.
 - `POST /parcels/{id}/refresh`.
-- `GET/POST/PATCH/DELETE /sources`, `POST /sources/{id}/sign-in/start`,
-  `POST /sources/{id}/sign-in/finish` (for pasted links and codes), `POST /sources/{id}/sync`.
-- `GET /carriers` (plug-ins, their capabilities, config schemas and sign-in flows).
-- `GET /calendar?from&to` (the events the UI calendar and the ICS feed share).
-- `GET /orders`, `GET /orders/{id}`.
-- `GET /me`, `/users`, `/tokens`, `/settings`.
-- `GET /health/live`, `/health/ready`, `/diagnostics` (admin only, redacted).
 
-**Push:** `GET /api/v1/events` (SSE).
+**Sources**
 
-- Each message is `id: <outbox seq>`, `event: <type>` and `data: <JSON>`.
+- `GET`, `POST`, `PATCH` and `DELETE /sources`.
+- `POST /sources/{id}/sign-in/start` and `/sign-in/finish`.
+- `POST /sources/{id}/sync`.
+
+**Other routes**
+
+- `GET /carriers` lists the plug-ins with their capabilities, config schemas and sign-in flows.
+- `GET /calendar?from&to` returns the same entries the UI calendar and the ICS feed use.
+- `GET /orders` and `GET /orders/{id}`.
+- `/tokens` and `/settings`.
+- `/health/live`, `/health/ready`, and `/diagnostics`, which is redacted.
+
+#### Push
+
+`GET /api/v1/events` is the SSE stream.
+
+- Each message has `id: <outbox seq>`, `event: <type>` and `data: <JSON>`.
 - `Last-Event-ID` replays up to 7 days of events.
 - A heartbeat is sent every 25 s.
 
-**Event types:**
+#### Event types
 
 | Type | Fires when |
 |---|---|
-| `parcel.registered` | First time a parcel is seen (incoming) |
-| `parcel.status_changed` | The canonical status changed, except a change *to* delivered |
+| `parcel.registered` | A new incoming parcel appears |
+| `parcel.status_changed` | The canonical status changes, except a change *to* delivered |
 | `parcel.delivered` | The only event for the hop to delivered |
-| `parcel.delivery_time_changed` | `planned_from` or `planned_to` changed |
-| `parcel.outgoing_registered` / `parcel.outgoing_delivered` | The outgoing pair |
-| `parcel.live_updated` | A live session starts or ends, its state changes, or `stops_away` changes. Never on a position change alone |
-| `parcel.removed` | An active parcel has been missing and not delivered for 6 h. Nothing is judged while one of its sources is failing |
-| `source.state_changed` | Includes "needs sign-in" |
-| `vocab.unknown` | First time an unmapped status is seen |
+| `parcel.delivery_time_changed` | `planned_from` or `planned_to` changes |
+| `parcel.outgoing_registered`, `parcel.outgoing_delivered` | The outgoing pair |
+| `parcel.live_updated` | A live session starts or ends, its state changes, or `stops_away` changes. Never for a position change alone |
+| `parcel.removed` | An active parcel has been gone, undelivered, for 6 h. Nothing is judged while one of its sources is failing |
+| `source.state_changed` | A source changes state, including "needs sign-in" |
+| `vocab.unknown` | An unmapped status value is seen for the first time |
 
-**Payload:** the normalised parcel without `raw`, with `live` stripped of coordinates and trail,
-plus `old_*` and `new_*` fields for the changed values.
+The payload is the normalised parcel without `raw`, with `live` stripped of coordinates and the
+trail, plus `old_*` and `new_*` for whatever changed.
 
-**Parcel shape:** the suite contract keys (`carrier`, `barcode`, `sender`, `receiver`, `status`,
-`raw_status`, `delivered`, `delivered_at`, `planned_from`, `planned_to`, `pickup`,
-`pickup_point`, `history`, `url`) plus `id`, `items`, `live`, `location`, `order`, `sources`,
-`manual_status`, `label` and `updated_at`. `raw` is only returned by
-`GET /parcels/{id}?include=raw` to admins.
+#### Parcel shape
 
-**ICS:** `/ical/{token}.ics`.
+The suite contract keys: `carrier`, `barcode`, `sender`, `receiver`, `status`, `raw_status`,
+`delivered`, `delivered_at`, `planned_from`, `planned_to`, `pickup`, `pickup_point`, `history`
+and `url`. On top of those:
 
-- The token is a per-user, read-only, revocable secret, because calendar apps cannot send
-  headers.
-- Event UID is `<parcel-id>@open-parcels`.
-- Whole-day windows become all-day events. When a real time window arrives, the same UID narrows
-  to it.
+- `id`, `items`, `live`, `location`, `order`, `sources`, `manual_status`, `label` and
+  `updated_at`;
+- `raw` only on request, with `?include=raw`.
 
-**Image proxy:** `/img/{id}.{sig}`.
+#### ICS feed
 
-- The id is HMAC-signed by the server, so it is not an open proxy.
-- Fetches only from hosts the carrier allow-lists, with a size cap and no redirects to private
-  addresses.
-- Images are cached on disk. Delivery photos behind expiring links are fetched at once and kept
-  only for their owner.
+`/ical/{token}.ics`.
+
+- The token is a read-only, revocable secret, because calendar apps can't send headers.
+- Each event's UID is `<parcel-id>@open-parcels`.
+- Windows that cover whole days become all-day events. When a real time window arrives, the same
+  UID narrows to it.
+
+#### Image proxy
+
+`/img/{id}.{sig}`.
+
+- The id is HMAC-signed, so the proxy is not open to arbitrary URLs.
+- It fetches only from hosts the carrier allow-lists, with a size cap, and refuses redirects to
+  private addresses.
+- Images are cached on disk.
+- Delivery photos behind expiring links are fetched at once and kept.
 
 ### 2.7 Security
 
-- **Sign-in to the web UI:** a session cookie (HttpOnly, SameSite=Lax, Secure when served over
-  HTTPS) plus a CSRF token.
-- **API clients:** Bearer API tokens with scopes `read`, `write` and `admin`.
-- **First start:** creates the admin through a one-time setup page. There is no default
-  password.
-- **Under HA ingress:** requests are accepted only from `172.30.32.2`, and `X-Remote-User-Id` is
-  mapped to a user. A request without that header is unauthenticated, never a default user.
-  Ingress runs on its own listener.
-- **Secrets at rest:** AES-256-GCM.
-  - The key comes from `OPENPARCELS_SECRET_KEY` or, if that is unset, from `/data/secret.key`
-    (created with mode 0600 and logged once as created).
-  - A decryption failure is a hard error that marks the source "needs sign-in". It never falls
-    back to a random key silently.
-- **Logs:** a structlog processor redacts tokens, cookies, Authorization headers, emails,
-  tracking numbers (except a short prefix) and coordinates. Diagnostics use the same redaction.
-- **No passwords where avoidable:** Amazon uses device registration (we never see the password)
-  and DHL DE uses OIDC with a pasted link. Hermes and IMAP need stored credentials, which are
-  encrypted.
-- **CORS:** off by default; an explicit allow-list when enabled.
-- **Container:**
-  - runs as a non-root user (uid 1000) with a read-only root file system;
-  - `/data` is the only writable volume, plus a tmpfs `/tmp`;
-  - `tini` as init and a `HEALTHCHECK`;
-  - no shell scripts at runtime other than the entrypoint.
+**Web UI sign-in**
+
+- An owner password, set on a one-time setup page at first start. There is no default password.
+- A session cookie (HttpOnly, SameSite=Lax, Secure over HTTPS) plus a CSRF token.
+
+**API clients** use Bearer API tokens with the scopes `read`, `write` and `admin`.
+
+**Under Home Assistant ingress**
+
+- Requests are accepted only from `172.30.32.2`, on a separate listener.
+- They count as the owner, because HA has already authenticated the user.
+
+**Secrets at rest**
+
+- Encrypted with AES-256-GCM, with the row id as associated data.
+- The key comes from `OPENPARCELS_SECRET_KEY`, or else from `/data/secret.key`, which is created
+  with mode 0600.
+- A decryption failure is a hard error that marks the source "needs sign-in". There is never a
+  silent random key.
+
+**Logs and diagnostics**
+
+- pino `redact` covers tokens, cookies, Authorization headers and credentials.
+- A value scrubber masks emails, tracking numbers (except a short prefix) and coordinates.
+- Diagnostics use the same scrubber.
+
+**Stored credentials**
+
+- Amazon uses device registration, so we never see the password.
+- DHL DE uses OIDC with a pasted link.
+- Hermes and IMAP need stored credentials, and those are encrypted.
+
+**CORS** is off by default. Enabling it requires an explicit allow-list.
+
+**Container**
+
+- Runs as a non-root user (uid 1000).
+- The root file system is read-only. `/data` is the only writable volume, plus a tmpfs `/tmp`.
+- `tini` as init, plus a `HEALTHCHECK`.
 
 ### 2.8 Packaging and operations
 
-- **One image:** `bluscream1/open-parcels`, built for `linux/amd64` and `linux/arm64`. arm64 is
-  needed, because HA apps support only amd64 and aarch64 and the Pi is aarch64.
-  - Base image: `python:3.14-slim`. The web UI is built in a Node stage and served as static
-    files.
-  - Port 3000, unchanged, so the existing Unraid template and the NAS mapping 4000→3000 keep
-    working.
-- **Building:** done locally with `docker buildx` and QEMU, because workflows do not run under
-  this account. A `workflow_dispatch` workflow is kept for anyone who forks the repo, with its
-  automatic triggers commented out and the reason written above them.
-- **Unraid:** the template is updated with the new variables, the healthcheck and the `/data`
-  path.
-- **Home Assistant app:**
-  - `image:` points at the same multi-arch image;
-  - `ingress: true`, `discovery: [open_parcels]`, `backup_exclude` for the image cache;
-  - its options map to environment variables.
-- **Visibility:** structured JSON logs, a Status page in the UI (sources, last runs, backoff,
-  queue, unknown statuses, version), and redacted diagnostics for download.
+**One image**, built for `linux/amd64` and `linux/arm64`. arm64 is needed because the Home
+Assistant Pi is aarch64, and HA apps support only amd64 and aarch64.
+
+- It is published to Docker Hub as `bluscream1/open-parcels` and to GHCR as
+  `ghcr.io/bluscream/open-parcels`.
+- It listens on port 3000, unchanged, so the existing Unraid mapping 4000→3000 keeps working.
+
+**Builds run locally** with `docker buildx` and QEMU, because workflows don't run under this
+account. A `workflow_dispatch` workflow is kept for anyone who forks the repo. Its automatic
+triggers are commented out, with the reason written above them.
+
+**Unraid:** the template is updated with the new variables, the healthcheck and `/data`.
+
+**Home Assistant app:**
+
+- `image:` points at the same image;
+- ingress is on, with `discovery: [open_parcels]`;
+- `backup_exclude` covers the image cache;
+- the app's options map to environment variables.
+
+**Visibility:** JSON logs, a Status page in the UI, and downloadable diagnostics with redaction
+applied.
 
 ### 2.9 First carriers
 
 | Carrier | Source kinds | Notes |
 |---|---|---|
-| Amazon (shop) | account (device registration), live, items, hand-off | Several storefronts; arrival parsing driven by the locale tables (en/de first) |
+| Amazon (shop) | account (device registration), live, items, hand-off | Several storefronts; arrival parsing driven by locale tables (en/de first) |
 | DHL | tracking (several backends, merged), DE account (OIDC with pasted link) | The official keyed API is optional |
-| DPD | DE public tracking page, myDPD DE account | The public page's `robots.txt` disallows the redirect URL; see open question 4 |
-| Hermes | tracking code, account | Public forecast window for account parcels, with a cap on concurrent lookups |
-| Mail | IMAP IDLE | Rules from `parcel-knowledge`, seeded from the German `.eml` corpus |
-
-GLS, PostNL, UPS and the others follow carrier by carrier through the same plug-in contract.
+| DPD | DE public tracking page, myDPD DE account | The public page can be switched off per source, because of its `robots.txt` |
+| Hermes | tracking, account | Public forecast window for account parcels, with a concurrency cap |
+| Mail | IMAP IDLE | Rules from `open-parcels-rules`, seeded from the existing rules and the German `.eml` corpus |
 
 ## 3. Migrating the existing data
 
-The deployed `/mnt/user/appdata/openparcels/data.db` has the UUID schema with 409 orders,
+The deployed `/mnt/user/appdata/openparcels/data.db` uses the UUID schema. It holds 409 orders,
 69 parcels, 296 events, 4 credentials and 5 settings.
 
-1. **Back up** `/mnt/user/appdata/openparcels`, all of it, before anything else.
-2. **Import with a dry run first.** `openparcels import-legacy <path> --dry-run` reads the old
-   schema (both the UUID and the older integer variant) and reports what it would do. Without
-   `--dry-run` it writes inside a single transaction.
-   - orders → `orders`;
-   - parcels → `parcels`, owned by the admin. Courier names are normalised to plug-in ids, and
-     old statuses are mapped (`arriving` → `out_for_delivery`, and so on). `is_manual_status`
-     becomes `manual_status`;
-   - events → `parcel_events`. Courier-position rows from the old live scraper are dropped,
-     because positions are never history;
+1. **Back up** `/mnt/user/appdata/openparcels` before anything else.
+2. **Run the importer as a dry run.** `openparcels import-legacy <path> --dry-run` reads both
+   old schema variants and reports what it would do. Without `--dry-run` it writes everything in
+   one transaction:
+   - orders become `orders`;
+   - parcels become `parcels`, with courier names normalised to plug-in ids and old statuses
+     mapped (`arriving` → `out_for_delivery`, and so on);
+   - `is_manual_status` becomes `manual_status`;
+   - events become `parcel_events`. Courier-position rows from the old live scraper are dropped;
    - IMAP credentials are decrypted with the old key and re-encrypted. Amazon passwords and TOTP
-     secrets are **not** imported; Amazon is signed in again through device registration;
-   - settings are mapped where an equivalent exists.
-3. **Keep the old file.** It stays read-only as `data.legacy.db`. The new database is
-   `openparcels.db`.
-4. **Verify against a copy.** The import runs against a copy, the counts are compared, and only
-   then is the container replaced.
+     secrets are **not** imported, because Amazon is signed in again by device registration.
+3. **Keep the old file** read-only as `data.legacy.db`.
+4. **Verify against a copy.** Run the import on a copy, compare the counts, and only then replace
+   the container.
 
-## 4. Roadmap (each phase lands as reviewable commits with the gate green)
+## 4. Roadmap
+
+Every phase lands as reviewable commits, with the gate green at each one.
 
 | Phase | Delivers |
 |---|---|
-| **1. Foundation** | `legacy-ts` branch; Python project; quality gate (ruff, mypy, pytest, size-limit tests, pre-commit); config; database and Alembic baseline; auth (setup, sessions, tokens); parcel model and API skeleton; outbox and SSE; Docker image (non-root, healthcheck) |
-| **2. Engine** | Plug-in contract; reconciler and event rules; scheduler with fake-clock integration tests; rate limits and backoff; a fake carrier plug-in used only in tests |
-| **3. `parcel-knowledge`** | Schema, loaders (Python and TypeScript), test vectors, jkeen import plus EU overlay (DHL Paket, DPD, Hermes, GLS, Amazon); status tables for the first carriers; en/de locale tables |
-| **4. Carriers, wave 1** | Amazon (account, items, arrival parsing, hand-off, live), DHL, DPD, Hermes. Each comes with recorded made-up fixtures |
-| **5. Mail** | IMAP IDLE watcher, rule engine, `.eml` fixture tests |
-| **6. Web UI** | Parcel list, detail, map with live couriers, Calendar tab, carrier and account setup, mail setup, users and tokens, Status page |
-| **7. Map, calendar and images** | Place resolver (Nominatim, opt-in, 1 request/s, hits and misses cached), ICS feed, image proxy, retention jobs |
-| **8. Migrate and deploy** | Legacy importer; NAS backup; replace the container; update the template; end-to-end test against the logs and visually in LibreWolf |
-| **9. HA app** | App repository, ingress, discovery, multi-arch publish |
-| *Later* | Thin HA integration; then, and only then, changes on the running Home Assistant; MQTT; more carriers |
+| **1. Foundation** | npm workspaces; the quality gate (tsc, eslint strict-type-checked with size limits, vitest, a pre-commit hook); config; database and migrations; auth (setup, sessions, tokens); parcel model and API skeleton; outbox and SSE; Docker image |
+| **2. Engine** | Plug-in contract; reconciler and event rules; scheduler with fake-timer integration tests; rate limits and backoff; a fake carrier for tests |
+| **3. `open-parcels-rules`** | Rename and merge; schemas, engine, test vectors; jkeen import plus the EU overlay; status tables for the first carriers; en/de locale tables; the existing mail rules converted |
+| **4. Carriers, wave 1** | Amazon (account, items, arrival parsing, hand-off, live), DHL, DPD, Hermes, each with recorded made-up fixtures |
+| **5. Mail** | IMAP IDLE watcher, rule engine integration, `.eml` fixture tests |
+| **6. Web UI** | Parcel list, detail view, map with live couriers, Calendar tab, carrier/account setup, mail setup, tokens, Status page |
+| **7. Map, calendar and images** | Place resolver (Nominatim, opt-in, 1 request/s, cached), ICS feed, image proxy, retention jobs |
+| **8. Migrate and deploy** | Legacy importer; NAS backup; replace the container; update the template; end-to-end check through the logs and visually in LibreWolf |
+| **9. HA app** | App repository, ingress, discovery, multi-arch publish to Docker Hub and GHCR |
+| *Later* | Thin HA integration, and only then changes on the running Home Assistant; MQTT; more carriers |
 
 ## 5. Questions settled at acceptance
 
-1. **Python backend:** yes.
-2. **Several users:** yes. Separate users, each with their own carrier accounts and parcels, plus
-   an admin.
-3. **Name of the knowledge repo:** `parcel-knowledge`.
-4. **DPD Germany's public tracking page:** used for the user's own parcels at the normal polling
-   rate. It can be switched off per source, because its `robots.txt` disallows `/redirect.aspx`.
-5. **Image registry:** Docker Hub `bluscream1/open-parcels`, as today.
-6. **Licensing:** not decided until publication.
+1. **Backend language:** TypeScript, the owner's preference.
+2. **Users:** one per container.
+3. **Shared knowledge repo:** `open-parcels-rules`, consolidating `email-parser-rules` and
+   `mail-parser-ts`.
+4. **DPD Germany's public tracking page:** used, at the normal polling rate.
+5. **Image registries:** Docker Hub and GHCR.
+6. **Licensing:** left undecided until publication.
 7. **Git history:** the scrubbed history is kept. The pre-rewrite code is on branch `legacy-ts`
    and tag `v1-final`.
