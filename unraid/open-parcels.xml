@@ -4,54 +4,24 @@
   <Repository>bluscream1/open-parcels:latest</Repository>
   <Registry>https://hub.docker.com/r/bluscream1/open-parcels</Registry>
   <Network>bridge</Network>
-  <MyIP/>
-  <MyMAC/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/bluscream/open-parcels/issues</Support>
-  <Project>https://github.com/bluscream/open-parcels</Project>
-  <ReadMe/>
-  <Overview>Self-hostable service that ingests and tracks parcels, returns and orders from multiple sources.</Overview>
-  <Category>Tools:Utilities</Category>
+  <Support>https://github.com/Bluscream/open-parcels/issues</Support>
+  <Project>https://github.com/Bluscream/open-parcels</Project>
+  <Overview>Self-hosted parcel and order tracking. Signs in to carriers and shops, reads shipping mails, follows couriers live on a map, keeps a delivery calendar (also as an ICS feed) and publishes events for Home Assistant and other clients.&#xD;
+&#xD;
+On first start the container log prints a one-time setup code; open the web UI and enter it to set the owner password.&#xD;
+&#xD;
+The image runs as uid 1000. The data folder must be writable for that user (chown 1000:1000), or set Extra Parameters to --user 99:100 and make the folder writable for nobody:users.</Overview>
+  <Category>Tools:Utilities HomeAutomation:</Category>
   <WebUI>http://[IP]:[PORT:3000]</WebUI>
-  <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/bluscream/open-parcels/main/icon.png</Icon>
-  <ExtraParams/>
+  <Icon>https://raw.githubusercontent.com/Bluscream/open-parcels/master/docs/icon.png</Icon>
+  <ExtraParams>--read-only --tmpfs /tmp --security-opt no-new-privileges</ExtraParams>
   <PostArgs/>
-  <CPUset/>
-  <DateInstalled>1781186458</DateInstalled>
-  <DonateText/>
-  <DonateLink/>
-  <Requires/>
-  <Config Name="Port" Target="3000" Default="3000" Mode="tcp" Description="{4}" Type="Port" Display="always" Required="true" Mask="{8}">3000</Config>
-  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/openparcels" Mode="rw" Description="{4}" Type="Path" Display="always" Required="true" Mask="{8}">/mnt/user/appdata/openparcels</Config>
-  <Config Name="Encryption Key" Target="ENCRYPTION_KEY" Default="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" Mode="{3}" Description="{4}" Type="Variable" Display="always" Required="true" Mask="true"></Config>
-  <Config Name="Admin Token" Target="OPENPARCELS_TOKEN" Default="admin_secret_token" Mode="{3}" Description="{4}" Type="Variable" Display="always" Required="true" Mask="true"></Config>
-  <Config Name="Database Path" Target="DB_PATH" Default="/data/data.db" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">/data/data.db</Config>
-  <Config Name="Rules URLs" Target="OPENPARCELS_RULES" Default="https://github.com/Bluscream/email-parser-rules/releases/latest/download/parcel.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/order.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/return.js" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">https://github.com/Bluscream/email-parser-rules/releases/latest/download/parcel.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/order.js,https://github.com/Bluscream/email-parser-rules/releases/latest/download/return.js</Config>
-  <Config Name="Lookup URLs" Target="LOOKUP_URLS" Default="http://localhost:24011,http://host.containers.internal:24011,https://lookup.tail230321.ts.net,https://lookup.minopia.de" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">http://localhost:24011,http://host.containers.internal:24011,https://lookup.tail230321.ts.net,https://lookup.minopia.de</Config>
-  <Config Name="Queue Interval" Target="OPENPARCELS_QUEUE_INTERVAL" Default="10" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">5</Config>
-  <Config Name="Max Upload Size" Target="OPENPARCELS_MAX_UPLOAD_SIZE" Default="1GB" Mode="{3}" Description="Max upload size for email ingestion (e.g. 1GB, 500MB, 1073741824)" Type="Variable" Display="advanced" Required="false" Mask="{8}">1GB</Config>
-  <Config Name="HA URL" Target="HASS_URL" Default="http://homeassistant.local:8123" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="{8}">http://homeassistant.local:8123</Config>
-  <Config Name="HA Token" Target="HASS_TOKEN" Default="" Mode="{3}" Description="{4}" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <TailscaleEnabled>true</TailscaleEnabled>
-  <TailscaleIsExitNode>false</TailscaleIsExitNode>
-  <TailscaleHostname>parcels</TailscaleHostname>
-  <TailscaleExitNodeIP/>
-  <TailscaleSSH>false</TailscaleSSH>
-  <TailscaleUserspaceNetworking>false</TailscaleUserspaceNetworking>
-  <TailscaleLANAccess>false</TailscaleLANAccess>
-  <TailscaleServe>serve</TailscaleServe>
-  <TailscaleWebUI>https://[hostname][magicdns]</TailscaleWebUI>
-  <TailscaleServePort>3000</TailscaleServePort>
-  <TailscaleServeTarget/>
-  <TailscaleServeLocalPath/>
-  <TailscaleServeProtocol/>
-  <TailscaleServeProtocolPort/>
-  <TailscaleServePath/>
-  <TailscaleDParams/>
-  <TailscaleParams/>
-  <TailscaleRoutes/>
-  <TailscaleAcceptRoutes>false</TailscaleAcceptRoutes>
-  <TailscaleStateDir/>
+  <Config Name="Web UI port" Target="3000" Default="3000" Mode="tcp" Description="Port of the web UI and the API." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/open-parcels" Mode="rw" Description="Database, encryption key and image cache. Back this folder up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/open-parcels</Config>
+  <Config Name="Encryption key" Target="OPENPARCELS_SECRET_KEY" Default="" Mode="" Description="Optional: 32 random bytes as base64 (openssl rand -base64 32). When empty, a key file is created in the data folder on first start. Never change it afterwards: stored carrier sign-ins would become unreadable." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Public URL" Target="OPENPARCELS_PUBLIC_URL" Default="" Mode="" Description="Optional: the address you open the web UI at (for example https://parcels.example.com). Used for links in the calendar feed." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Secure cookies" Target="OPENPARCELS_SECURE_COOKIES" Default="false" Mode="" Description="Set to true when the web UI is served over HTTPS (for example behind a reverse proxy)." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Log level" Target="OPENPARCELS_LOG_LEVEL" Default="info" Mode="" Description="fatal, error, warn, info, debug or trace." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
 </Container>

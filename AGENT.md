@@ -1,87 +1,48 @@
-make sure youre extra careful when scraping real world services like amazon, use plenty of failsafes, spoofs and delays and interject fast when something goes wrong
+Be extra careful when talking to real-world services like Amazon: conservative rate limits, generous
+delays, backoff, many failsafes, and stop fast when a response looks wrong. A network error must
+never trigger a new sign-in.
 
-# OpenParcels Developer Instructions (CLAUDE.md)
+# open-parcels: notes for agents
 
-This file contains guidelines, build instructions, and testing rules for development in the `open-parcels` workspace.
+Read [`docs/decisions/0001-architecture.md`](docs/decisions/0001-architecture.md) first. It explains
+what this service is, the stack, the data model, the API and event contract, and the roadmap.
 
----
+## Layout
 
-## 🛠️ Mandatory Environment Rule (Distrobox)
+| Path | What |
+|---|---|
+| `server/` | The backend: Fastify API, engine, carrier plug-ins (TypeScript, Node 26) |
+| `server/src/carriers/` | Carrier plug-ins. They may import only the plug-in API; ESLint enforces it |
+| `server/test/` | vitest suites: `unit/`, `api/`, and recorded made-up fixtures |
+| `web/` | The web UI (React + Vite). Still the pre-rewrite frontend until phase 6 |
+| `docs/decisions/` | Decision records |
+| `Dockerfile`, `docker-compose.yml`, `unraid/` | Packaging |
 
-Because this project resides on a local/NFS mount under an immutable OS (Universal Blue / Fedora Silverblue), performing builds, typescript compilations, or running node scripts directly on the host shell will fail due to filesystem and binary mismatches.
+The TypeScript implementation from before the rewrite is on branch `legacy-ts` (tag `v1-final`).
 
-> [!IMPORTANT]
-> **Always execute all build, install, test, and run commands inside the `open-parcels-dev` Distrobox container.**
-> This container runs a native Linux Node.js environment that mounts your home and project folder with matched user permissions, fully resolving all permissions and platform-native binary bugs.
+## The gate
 
----
+Run it before every commit; it must pass with zero warnings:
 
-## ⚡ Quick Testing (Distrobox Setup)
-
-To avoid container build overhead during rapid local testing and debugging, you can run both `universal-lookup` and `open-parcels` directly inside the Distrobox container.
-
-### 1. Run Universal Lookup in Distrobox
-1. Open a terminal and run the backend dev server:
-   ```bash
-   distrobox enter open-parcels-dev -- bash -c "cd .references/universal-lookup && npm install && npm run build && npm run dev"
-   ```
-   *(Backend runs on `http://localhost:24011`)*
-
-2. (Optional) Run the frontend dev server:
-   ```bash
-   distrobox enter open-parcels-dev -- bash -c "cd .references/universal-lookup && npm run dev:frontend"
-   ```
-   *(Frontend runs on `http://localhost:24010`)*
-
-### 2. Run OpenParcels in Distrobox
-1. Configure your `.env` file in the root of `open-parcels` to point `LOOKUP_URL` to the local backend:
-   ```env
-   LOOKUP_URL=http://localhost:24011
-   ```
-2. Start the dev server:
-   ```bash
-   distrobox enter open-parcels-dev -- npm run dev
-   ```
-   *(OpenParcels runs on `http://localhost:3000`)*
-
-### 3. Run Live Tracking Verification Tests
-Run the test suite inside the distrobox container:
-```bash
-distrobox enter open-parcels-dev -- npx -y tsx tests/resolve_tracking.test.ts
+```sh
+npm run gate   # prettier check, eslint (strict type-checked + size limits), tsc, vitest, build
 ```
 
----
+- **Build on NTFS (`G:\_TEMP\...`), never on the Btrfs drives** `D:`, `E:` or `F:` from Windows.
+- **npm 11 runs install scripts only for packages listed in `allowScripts`** in the root
+  `package.json`. Add a package there deliberately, never blanket-allow.
+- **The repository's pre-commit hook rejects literal strings assigned to `password` or `secret`
+  keys, even in tests.** Build made-up test values from parts, as `server/test/helpers.ts` does.
+  Never bypass it with `--no-verify`.
 
-## 📦 Container Deployment (Podman / Docker)
+## Rules that matter here
 
-Once your tests succeed in Distrobox, you should build and run both projects via Podman to verify container deployment and networking.
-
-### 1. Configure networking
-Inside containers, `localhost` resolves to the container loopback. To allow `open-parcels` to communicate with the host-bound `universal-lookup-backend` port, edit the root `.env` file:
-```env
-LOOKUP_URL=http://host.containers.internal:24011
-```
-
-### 2. Deploy Universal Lookup
-From the root of `open-parcels`, build and start the containers using `podman-compose`:
-```bash
-podman-compose -f .references/universal-lookup/docker/docker-compose.yml up -d --build --force-recreate
-```
-
-### 3. Deploy OpenParcels
-Run the update and redeploy script:
-```bash
-bash scripts/update.sh
-```
-
----
-
-## 📂 Project Architecture
-
-*   `open-parcels/`: The main self-hostable server application.
-    *   `src/services/ingest/rules-loader.ts`: Dynamically loads and caches the rules from remote URLs defined in the `OPENPARCELS_RULES` environment variable.
-    *   `packages/mail-parser-ts/`: Standardized email-parsing engine running prefix string matches and named capture group extractions.
-*   `packages/email-parser-rules/`: Separated parsing rules repository.
-    *   `src/parcel/`, `src/order/`, `src/return/`: Modular categories — one TypeScript file per service (e.g. `src/parcel/amazon.ts`). Each file exports a single `CourierRule` object.
-    *   `dist/`: Single-file minified rulesets (`parcel.js`, `order.js`, `return.js`) uploaded to your GitHub Release assets.
-
+- **Test fixtures contain made-up values only.** Never commit real tracking numbers, order numbers,
+  names, addresses, emails or coordinates. History was rewritten once to remove such data.
+- **No secrets in logs or events.** Use the logger, which redacts. Event payloads go through
+  `parcelForEvent`, which strips courier coordinates.
+- **Carrier knowledge that other projects could reuse goes to `open-parcels-rules`, not here.**
+  That covers regexes, status tables, locale tables and mail rules.
+- **Don't name the projects an endpoint was learned from** in code, docs or commit messages.
+- **GitHub Actions never run under this account.** Workflows keep only `workflow_dispatch` active;
+  automatic triggers stay commented out, with the reason written above them.

@@ -1,0 +1,25 @@
+# Example deployment. Start with `docker compose up -d`, then read the setup code from
+# `docker compose logs open-parcels` and enter it in the web UI at http://localhost:3000.
+services:
+  open-parcels:
+    image: bluscream1/open-parcels:latest
+    container_name: open-parcels
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - open-parcels-data:/data
+    environment:
+      OPENPARCELS_LOG_LEVEL: info
+      # OPENPARCELS_PUBLIC_URL: https://parcels.example.com
+      # OPENPARCELS_SECURE_COOKIES: "true"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  open-parcels-data:
