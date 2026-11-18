@@ -89,6 +89,8 @@ export interface RequestOptions {
   readonly body?: string | URLSearchParams;
   readonly timeoutMs?: number;
   readonly maxBytes?: number;
+  /** How to decode the body when the carrier declares no charset. Defaults to UTF-8. */
+  readonly encoding?: "utf8" | "latin1";
   /** Follow redirects automatically. Off when a plug-in has to inspect them (allow-listing). */
   readonly redirect?: "follow" | "manual";
   /**
@@ -214,7 +216,8 @@ export class PluginHttp {
     options: RequestOptions,
     url: URL,
   ): Promise<HttpResponse> {
-    const body = await this.#readBody(response, options.maxBytes ?? DEFAULT_MAX_BYTES, url);
+    const bytes = await this.#readBody(response, options.maxBytes ?? DEFAULT_MAX_BYTES, url);
+    const body = bytes.toString(options.encoding ?? "utf8");
     return {
       status: response.status,
       headers: response.headers,
@@ -224,10 +227,10 @@ export class PluginHttp {
     };
   }
 
-  async #readBody(response: Response, maxBytes: number, url: URL): Promise<string> {
+  async #readBody(response: Response, maxBytes: number, url: URL): Promise<Buffer> {
     const reader = response.body?.getReader();
     if (reader === undefined) {
-      return "";
+      return Buffer.alloc(0);
     }
     const chunks: Uint8Array[] = [];
     let total = 0;
@@ -247,6 +250,6 @@ export class PluginHttp {
       }
       chunks.push(chunk);
     }
-    return Buffer.concat(chunks).toString("utf8");
+    return Buffer.concat(chunks);
   }
 }
