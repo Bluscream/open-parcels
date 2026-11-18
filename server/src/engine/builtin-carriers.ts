@@ -23,6 +23,12 @@ import { paack } from "../carriers/paack/index.js";
 import { packeta } from "../carriers/packeta/index.js";
 import { pdnExpress } from "../carriers/pdn_express/index.js";
 import { planzer } from "../carriers/planzer/index.js";
+import { tipsa } from "../carriers/tipsa/index.js";
+import { trunkrs } from "../carriers/trunkrs/index.js";
+import { ukrposhta } from "../carriers/ukrposhta/index.js";
+import { uniuni } from "../carriers/uniuni/index.js";
+import { usps } from "../carriers/usps/index.js";
+import { vintedGo } from "../carriers/vinted_go/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
 /**
@@ -55,4 +61,10 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(packeta),
   register(pdnExpress),
   register(planzer),
+  register(tipsa),
+  register(trunkrs),
+  register(ukrposhta),
+  register(uniuni),
+  register(usps),
+  register(vintedGo),
 ];
