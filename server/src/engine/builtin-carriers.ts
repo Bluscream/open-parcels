@@ -1,4 +1,15 @@
+import { fourPx } from "../carriers/4px/index.js";
+import { acsCourier } from "../carriers/acs-courier/index.js";
+import { airmee } from "../carriers/airmee/index.js";
 import { amazonCarrier } from "../carriers/amazon/index.js";
+import { amazonShipping } from "../carriers/amazon-shipping/index.js";
+import { ampere } from "../carriers/ampere/index.js";
+import { anPost } from "../carriers/an-post/index.js";
+import { appleExpress } from "../carriers/apple-express/index.js";
+import { aramex } from "../carriers/aramex/index.js";
+import { betterTrucks } from "../carriers/better-trucks/index.js";
+import { boxNow } from "../carriers/boxnow/index.js";
+import { bpost } from "../carriers/bpost/index.js";
 import { budbee } from "../carriers/budbee/index.js";
 import { cainiao } from "../carriers/cainiao/index.js";
 import { canadapost } from "../carriers/canadapost/index.js";
@@ -74,7 +85,17 @@ import { register, type RegisteredPlugin } from "./registry.js";
  * `src/carriers/` and imports only the plug-in API; it is registered here with `register()`.
  */
 export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
+  register(acsCourier),
+  register(airmee),
   register(amazonCarrier()),
+  register(amazonShipping),
+  register(ampere),
+  register(anPost),
+  register(appleExpress),
+  register(aramex),
+  register(betterTrucks),
+  register(boxNow),
+  register(bpost),
   register(budbee),
   register(cainiao),
   register(canadapost),
@@ -98,6 +119,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(evri),
   register(fanCourier),
   register(fedex),
+  register(fourPx),
   register(genikiTaxydromiki),
   register(gls),
   register(gobolt),
