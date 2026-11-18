@@ -18,6 +18,7 @@ import {
 import type { Services } from "../services.js";
 import { registerAuth } from "./auth-plugin.js";
 import { ApiError } from "./errors.js";
+import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerParcelRoutes } from "./routes/parcels.js";
@@ -114,6 +115,7 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   registerTokenRoutes(typed, services);
   registerParcelRoutes(typed, services);
   registerSourceRoutes(typed, services);
+  registerCalendarRoutes(typed, services);
   registerEventRoutes(typed, services);
 
   app.get("/api/v1/openapi.json", { schema: { hide: true } }, () => app.swagger());

@@ -2,6 +2,7 @@ import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { humanCode } from "./auth/crypto.js";
 import { AuthStore } from "./auth/store.js";
+import { CalendarService } from "./calendar/service.js";
 import { BUILTIN_CARRIERS } from "./engine/builtin-carriers.js";
 import { isoNow, type Clock } from "./clock.js";
 import type { AppConfig } from "./config.js";
@@ -61,6 +62,7 @@ export interface Services {
   readonly runner: SourceRunner;
   readonly scheduler: Scheduler;
   readonly live: LiveTracker;
+  readonly calendar: CalendarService;
   readonly parcels: ParcelService;
   readonly setup: SetupGate;
 }
@@ -168,6 +170,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     runner,
     scheduler,
     live,
+    calendar: new CalendarService(db, clock, deps.config.timeZone),
     parcels,
     setup,
   };
