@@ -82,6 +82,21 @@ export const parcelSourceRefSchema = z.object({
   last_seen_at: isoDateTime,
 });
 
+export const LOOKUP_STATES = ["pending", "found", "not_found"] as const;
+export type LookupState = (typeof LOOKUP_STATES)[number];
+
+/**
+ * What the carrier said the last time a tracking source asked about the code. `pending`: never
+ * answered (or not followed by any tracking source); `not_found`: the carrier was asked and did
+ * not return the code. `since` is when the state began, `checked_at` the last time it was asked.
+ */
+export const lookupSchema = z.object({
+  state: z.enum(LOOKUP_STATES),
+  since: isoDateTime.nullable(),
+  checked_at: isoDateTime.nullable(),
+});
+export type Lookup = z.infer<typeof lookupSchema>;
+
 /**
  * The normalised parcel every client sees. The first block mirrors the Home Assistant suite's
  * contract key for key; the rest are this service's additions. Keys are never omitted: unknown
@@ -112,6 +127,7 @@ export const parcelSchema = z.object({
   location: locationSchema.nullable(),
   order: z.object({ shop: z.string(), order_number: z.string() }).nullable(),
   sources: z.array(parcelSourceRefSchema),
+  lookup: lookupSchema,
   first_seen_at: isoDateTime,
   updated_at: isoDateTime,
 });

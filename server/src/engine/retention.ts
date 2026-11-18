@@ -11,10 +11,17 @@ export interface RetentionPolicy {
   readonly deleteAfterDays: number;
   /** Raw carrier payloads are dropped this many days after delivery. */
   readonly rawAfterDays: number;
+  /**
+   * Undelivered parcels the carrier has answered "not found" for this many days without a break
+   * are archived (not deleted, and no `parcel.removed`). 0 turns it off. A manual status keeps
+   * the parcel.
+   */
+  readonly notFoundArchiveDays: number;
 }
 
 export interface RetentionResult {
   readonly archived: number;
+  readonly notFoundArchived: number;
   readonly deleted: number;
   readonly rawDropped: number;
 }
@@ -34,6 +41,22 @@ export async function applyRetention(
     .where("archived_at", "is", null)
     .where("delivered_at", "<", iso(policy.archiveAfterDays))
     .executeTakeFirst();
+  const notFoundArchived =
+    policy.notFoundArchiveDays <= 0
+      ? 0
+      : Number(
+          (
+            await db
+              .updateTable("parcels")
+              .set({ archived_at: new Date(now).toISOString() })
+              .where("delivered", "=", 0)
+              .where("archived_at", "is", null)
+              .where("manual_status", "is", null)
+              .where("lookup_state", "=", "not_found")
+              .where("lookup_since", "<", iso(policy.notFoundArchiveDays))
+              .executeTakeFirst()
+          ).numUpdatedRows,
+        );
   const deleted = await db
     .deleteFrom("parcels")
     .where("archived_at", "<", iso(policy.deleteAfterDays))
@@ -50,6 +73,7 @@ export async function applyRetention(
     .executeTakeFirst();
   return {
     archived: Number(archived.numUpdatedRows),
+    notFoundArchived,
     deleted: Number(deleted.numDeletedRows),
     rawDropped: Number(rawDropped.numDeletedRows),
   };

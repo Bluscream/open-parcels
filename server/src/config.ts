@@ -28,6 +28,8 @@ const envSchema = z.object({
   /** Days after delivery before a parcel is archived, and days after archiving before it is deleted. */
   OPENPARCELS_ARCHIVE_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   OPENPARCELS_DELETE_DAYS: z.coerce.number().int().min(1).max(36500).default(365),
+  /** Days a carrier may answer "not found" for an undelivered parcel before it is archived; 0 never. */
+  OPENPARCELS_NOT_FOUND_ARCHIVE_DAYS: z.coerce.number().int().min(0).max(3650).default(30),
   /** IANA time zone for the night-time quiet window and calendar days. Defaults to TZ / the system zone. */
   OPENPARCELS_TIMEZONE: z
     .string()
@@ -56,6 +58,7 @@ export interface AppConfig {
     readonly archiveAfterDays: number;
     readonly deleteAfterDays: number;
     readonly rawAfterDays: number;
+    readonly notFoundArchiveDays: number;
   };
 }
 
@@ -93,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       archiveAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
       deleteAfterDays: values.OPENPARCELS_DELETE_DAYS,
       rawAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
+      notFoundArchiveDays: values.OPENPARCELS_NOT_FOUND_ARCHIVE_DAYS,
     },
   };
 }

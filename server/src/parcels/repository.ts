@@ -252,6 +252,11 @@ export class ParcelRepository {
       location: null,
       order: row.order_id === null ? null : (related.orders.get(row.order_id) ?? null),
       sources: related.sources.get(row.id) ?? [],
+      lookup: {
+        state: row.lookup_state,
+        since: row.lookup_since,
+        checked_at: row.lookup_checked_at,
+      },
       first_seen_at: row.first_seen_at,
       updated_at: row.updated_at,
     };

@@ -298,6 +298,9 @@ There is one owner per container, so tables carry no user column.
 **Retention defaults**, all configurable:
 
 - delivered parcels are archived after 30 days and deleted after 365;
+- undelivered parcels the carrier has answered "not found" for 30 days without a break
+  (`lookup.state = not_found`) are archived, never deleted early and without `parcel.removed`;
+  a manual status keeps them. `OPENPARCELS_NOT_FOUND_ARCHIVE_DAYS`, 0 turns it off;
 - `parcel_raw` is dropped 30 days after delivery;
 - the outbox is kept for 7 days;
 - the image cache is capped at 200 MB.
@@ -379,6 +382,12 @@ and `url`. On top of those:
 
 - `id`, `items`, `live`, `location`, `order`, `sources`, `manual_status`, `label` and
   `updated_at`;
+- `lookup: {state, since, checked_at}`: what a tracking source last heard from the carrier about
+  the code. `pending` (never answered, or no tracking source follows it), `found`, or
+  `not_found` (asked, and the carrier did not return it). `since` is when the state began,
+  `checked_at` the last time the carrier was asked. Not found fires no event;
+- the runner logs at info level how many codes it asked about and how many were found, never
+  the codes;
 - `raw` only on request, with `?include=raw`.
 
 #### ICS feed
@@ -500,8 +509,20 @@ The deployed `/mnt/user/appdata/openparcels/data.db` uses the UUID schema. It ho
      mapped (`arriving` → `out_for_delivery`, and so on);
    - `is_manual_status` becomes `manual_status`;
    - events become `parcel_events`. Courier-position rows from the old live scraper are dropped;
-   - IMAP credentials are decrypted with the old key and re-encrypted. Amazon passwords and TOTP
-     secrets are **not** imported, because Amazon is signed in again by device registration.
+   - an empty or generic courier (`china`, `17track`, `unknown`) is resolved from the code by the
+     shared tracking-number detection, then from the old order's shop (AliExpress → Cainiao,
+     Amazon → Amazon); China Post codes go to Cainiao, which tracks them. `unknown` remains only
+     when nothing identifies the carrier. Running the importer again corrects a placeholder
+     carrier left by an earlier run;
+   - undelivered, unarchived parcels are linked to their carrier's tracking source (created if
+     missing), as `POST /parcels` does. Every server start repeats this for any active parcel no
+     carrier source follows, so databases imported earlier are covered;
+   - IMAP credentials are decrypted with the old key and re-encrypted as a mail source. The usual
+     field names and nestings are read (host/server, port, secure/tls/ssl, user/username/email,
+     password/pass, folders), with the host and port also taken from old `imap_*` settings.
+     Amazon passwords and TOTP secrets are **not** imported, because Amazon is signed in again by
+     device registration; AliExpress likewise. The report lists every skipped credential with
+     the reason.
 3. **Keep the old file** read-only as `data.legacy.db`.
 4. **Verify against a copy.** Run the import on a copy, compare the counts, and only then replace
    the container.

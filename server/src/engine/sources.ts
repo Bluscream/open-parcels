@@ -4,6 +4,12 @@ import type { SecretBox } from "../crypto/secrets.js";
 import type { Database, SourceRow } from "../db/schema.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { MAIL_PLUGIN, mailConfigSchema, mailSecretSchema } from "../mail/types.js";
+import {
+  linkUntrackedParcels,
+  trackingSourceIn,
+  type LinkOptions,
+  type LinkResult,
+} from "./linking.js";
 import { InvalidSourceConfigError, type PluginRegistry } from "./registry.js";
 
 export type SourceKind = SourceRow["kind"];
@@ -136,25 +142,21 @@ export class SourceService {
    * handed over by shops, are tracked through it.
    */
   async ensureTrackingSource(pluginId: string): Promise<string> {
-    const existing = await this.db
-      .selectFrom("sources")
-      .select("id")
-      .where("plugin", "=", pluginId)
-      .where("kind", "=", "tracking")
-      .orderBy("created_at")
-      .executeTakeFirst();
-    if (existing !== undefined) {
-      return existing.id;
+    const id = await trackingSourceIn(this.db, this.registry, this.clock)(pluginId);
+    if (id === undefined) {
+      throw new InvalidSourceConfigError(`There is no carrier plug-in that tracks ${pluginId}.`);
     }
-    const plugin = this.registry.get(pluginId);
-    const created = await this.create({
-      plugin: pluginId,
-      kind: "tracking",
-      label: `${plugin?.info.name ?? pluginId} tracking`,
-      config: {},
-      secret: null,
-    });
-    return created.id;
+    return id;
+  }
+
+  /** Links active parcels no carrier source follows to their tracking source; see `linking.ts`. */
+  async linkUntracked(options: LinkOptions = {}): Promise<LinkResult> {
+    return linkUntrackedParcels(
+      this.db,
+      this.clock,
+      trackingSourceIn(this.db, this.registry, this.clock),
+      options,
+    );
   }
 
   async setSecret(id: string, secret: unknown): Promise<void> {

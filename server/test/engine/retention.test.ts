@@ -30,7 +30,12 @@ async function delivered(barcode: string, daysAgo: number): Promise<string> {
 
 describe("retention", () => {
   it("archives delivered parcels after the archive period and deletes them a year later", async () => {
-    const policy = { archiveAfterDays: 30, deleteAfterDays: 365, rawAfterDays: 30 };
+    const policy = {
+      archiveAfterDays: 30,
+      deleteAfterDays: 365,
+      rawAfterDays: 30,
+      notFoundArchiveDays: 30,
+    };
     const old = await delivered("00340434000000000001", 40);
     const recent = await delivered("00340434000000000002", 5);
     const active = await context.services.parcels.create({

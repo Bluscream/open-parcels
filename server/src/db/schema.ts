@@ -106,6 +106,15 @@ export interface ParcelTable {
   updated_at: Timestamp;
   removed_at: Timestamp | null;
   archived_at: Timestamp | null;
+  /** What a carrier last said about the code: pending (never answered), found or not_found. */
+  lookup_state: ColumnType<
+    "pending" | "found" | "not_found",
+    "pending" | "found" | "not_found" | undefined
+  >;
+  /** When the current lookup state began. */
+  lookup_since: ColumnType<Timestamp | null, Timestamp | null | undefined>;
+  /** When a carrier was last asked about the code. */
+  lookup_checked_at: ColumnType<Timestamp | null, Timestamp | null | undefined>;
 }
 
 export interface ParcelSourceTable {

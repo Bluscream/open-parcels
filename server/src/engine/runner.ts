@@ -109,10 +109,17 @@ export class SourceRunner {
     }
     const log = this.deps.logger.child({ plugin: row.plugin, source: row.id });
     try {
-      const result = await this.#fetch(row, plugin, log);
+      const { result, asked } = await this.#fetch(row, plugin, log);
       // Let this run's unknown-value reports land before its result is applied.
       await this.#reports;
-      const summary = await this.deps.reconciler.ingest(row.id, result);
+      const summary = await this.deps.reconciler.ingest(row.id, result, asked);
+      if (asked.length > 0) {
+        // Counts only: the codes themselves never go to the log.
+        log.info(
+          { asked: summary.asked, found: summary.found },
+          "Asked the carrier about tracked codes.",
+        );
+      }
       return { ok: true, ...summary };
     } catch (error) {
       const outcome = classify(error);
@@ -156,16 +163,27 @@ export class SourceRunner {
     return plugin.readLive(base, config, secret, target);
   }
 
-  async #fetch(row: SourceRow, plugin: RegisteredPlugin, log: Logger): Promise<FetchResult> {
+  /** Runs the plug-in; for a tracking source also returns the ids of the parcels it asked about. */
+  async #fetch(
+    row: SourceRow,
+    plugin: RegisteredPlugin,
+    log: Logger,
+  ): Promise<{ result: FetchResult; asked: readonly string[] }> {
     const { base, config, secret } = this.#prepare(row, plugin, log);
     if (row.kind !== "tracking") {
-      return plugin.fetchAccount(base, config, secret);
+      return { result: await plugin.fetchAccount(base, config, secret), asked: [] };
     }
-    const barcodes = await this.#trackedBarcodes(row.id);
-    if (barcodes.length === 0) {
-      return { snapshots: [], complete: false };
+    const tracked = await this.#trackedParcels(row.id);
+    if (tracked.length === 0) {
+      return { result: { snapshots: [], complete: false }, asked: [] };
     }
-    return plugin.track(base, config, secret, barcodes);
+    const result = await plugin.track(
+      base,
+      config,
+      secret,
+      tracked.map((parcel) => parcel.barcode),
+    );
+    return { result, asked: tracked.map((parcel) => parcel.id) };
   }
 
   #prepare(
@@ -197,16 +215,15 @@ export class SourceRunner {
     return { base, config, secret };
   }
 
-  async #trackedBarcodes(sourceId: string): Promise<string[]> {
-    const rows = await this.deps.db
+  async #trackedParcels(sourceId: string): Promise<{ id: string; barcode: string }[]> {
+    return this.deps.db
       .selectFrom("parcel_sources")
       .innerJoin("parcels", "parcels.id", "parcel_sources.parcel_id")
-      .select("parcels.barcode")
+      .select(["parcels.id", "parcels.barcode"])
       .where("parcel_sources.source_id", "=", sourceId)
       .where("parcels.delivered", "=", 0)
       .where("parcels.archived_at", "is", null)
       .execute();
-    return rows.map((row) => row.barcode);
   }
 
   #pluginLogger(log: Logger): PluginLogger {

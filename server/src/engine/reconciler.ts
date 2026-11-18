@@ -28,6 +28,9 @@ export interface IngestSummary {
   readonly events: number;
   /** Parcels the carrier can show on a courier map; handed to the live tracker, never stored. */
   readonly liveTargets: readonly LiveTargetOfParcel[];
+  /** Parcels a tracking run asked the carrier about, and how many of them it returned. */
+  readonly asked: number;
+  readonly found: number;
 }
 
 function asStatus(value: string | null): ParcelStatus | null {
@@ -116,7 +119,16 @@ export class Reconciler {
     private readonly presentation: Presentation = RAW_PRESENTATION,
   ) {}
 
-  async ingest(sourceId: string, result: FetchResult): Promise<IngestSummary> {
+  /**
+   * Applies one source run. `asked` lists the parcels a tracking run asked the carrier about;
+   * each is marked found or not found, so a code the carrier does not know is visible on the
+   * parcel (`lookup`) instead of silently staying `registered`. No event fires for it.
+   */
+  async ingest(
+    sourceId: string,
+    result: FetchResult,
+    asked: readonly string[] = [],
+  ): Promise<IngestSummary> {
     const source = await this.db
       .selectFrom("sources")
       .selectAll()
@@ -125,7 +137,14 @@ export class Reconciler {
     if (source === undefined) {
       throw new Error(`Unknown source ${sourceId}.`);
     }
-    const summary = { created: 0, updated: 0, events: 0, liveTargets: [] as LiveTargetOfParcel[] };
+    const summary = {
+      created: 0,
+      updated: 0,
+      events: 0,
+      liveTargets: [] as LiveTargetOfParcel[],
+      asked: asked.length,
+      found: 0,
+    };
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
       for (const snapshot of result.snapshots) {
@@ -140,6 +159,7 @@ export class Reconciler {
       if (result.complete) {
         await this.#markMissing(trx, sourceId, seen);
       }
+      summary.found = await this.#recordLookup(trx, asked, seen);
     });
     await this.bus.notify();
     summary.events += await this.judgeRemovals();
@@ -427,6 +447,43 @@ export class Reconciler {
         )
         .execute();
     }
+  }
+
+  /** Marks the asked parcels found or not found; `since` moves only when the state changes. */
+  async #recordLookup(
+    trx: Trx,
+    asked: readonly string[],
+    seen: ReadonlySet<string>,
+  ): Promise<number> {
+    if (asked.length === 0) {
+      return 0;
+    }
+    const now = isoNow(this.clock);
+    const found = asked.filter((id) => seen.has(id));
+    const missing = asked.filter((id) => !seen.has(id));
+    for (const [ids, state] of [
+      [found, "found"],
+      [missing, "not_found"],
+    ] as const) {
+      if (ids.length === 0) {
+        continue;
+      }
+      await trx
+        .updateTable("parcels")
+        .set((eb) => ({
+          lookup_since: eb
+            .case()
+            .when("lookup_state", "=", state)
+            .then(eb.ref("lookup_since"))
+            .else(now)
+            .end(),
+          lookup_state: state,
+          lookup_checked_at: now,
+        }))
+        .where("id", "in", ids)
+        .execute();
+    }
+    return found.length;
   }
 
   async #markMissing(trx: Trx, sourceId: string, seen: ReadonlySet<string>): Promise<void> {

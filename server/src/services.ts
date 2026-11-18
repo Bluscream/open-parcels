@@ -94,54 +94,16 @@ export interface ServiceDeps {
 }
 
 /**
- * Parcels found in mail are linked to their carrier's tracking source, so the carrier is polled
- * for them. Returns true when anything was linked.
+ * Links active parcels that no carrier source follows (found in mail, imported, or left over from
+ * an older version) to their carrier's tracking source and makes those sources due. Returns true
+ * when anything was linked.
  */
-async function followMailParcels(
-  db: Kysely<Database>,
-  registry: PluginRegistry,
-  sources: SourceService,
-  mailSourceId: string,
-): Promise<boolean> {
-  const unfollowed = await db
-    .selectFrom("parcel_sources as mail")
-    .innerJoin("parcels", "parcels.id", "mail.parcel_id")
-    .select(["parcels.id", "parcels.carrier"])
-    .where("mail.source_id", "=", mailSourceId)
-    .where("parcels.delivered", "=", 0)
-    .where((eb) =>
-      eb.not(
-        eb.exists(
-          eb
-            .selectFrom("parcel_sources as other")
-            .select("other.parcel_id")
-            .whereRef("other.parcel_id", "=", "parcels.id")
-            .where("other.role", "in", ["primary", "handoff"]),
-        ),
-      ),
-    )
-    .execute();
-  let linked = false;
-  for (const parcel of unfollowed) {
-    if (registry.get(parcel.carrier)?.canTrack !== true) {
-      continue;
-    }
-    const trackingId = await sources.ensureTrackingSource(parcel.carrier);
-    await db
-      .insertInto("parcel_sources")
-      .values({
-        parcel_id: parcel.id,
-        source_id: trackingId,
-        external_ref: null,
-        role: "primary",
-        last_seen_at: new Date().toISOString(),
-      })
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-    await sources.requestRun(trackingId);
-    linked = true;
+async function followUntracked(sources: SourceService, viaSource?: string): Promise<boolean> {
+  const linked = await sources.linkUntracked(viaSource === undefined ? {} : { viaSource });
+  for (const sourceId of linked.sources) {
+    await sources.requestRun(sourceId);
   }
-  return linked;
+  return linked.parcels > 0;
 }
 
 /** A random id per installation, stored once; it spreads polling of different installs apart. */
@@ -170,6 +132,10 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   await bus.start();
   const registry = new PluginRegistry(deps.plugins ?? BUILTIN_CARRIERS);
   const sources = new SourceService(db, registry, deps.secrets, bus, clock);
+  // Repair on every start: parcels imported or added before they could be linked get followed.
+  if (await followUntracked(sources)) {
+    logger.info("Linked parcels without a tracking source to their carrier.");
+  }
   const images = new ImageProxy({
     secretKey: deps.secrets.derive("image proxy"),
     cacheDir: path.join(deps.config.dataDir, "images"),
@@ -245,7 +211,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     clientFactory: deps.mailClientFactory ?? imapClientFactory,
     interpret: deps.mailInterpreter ?? createMailInterpreter(loadRules(), deps.config.timeZone),
     followUp: async (sourceId) => {
-      if (await followMailParcels(db, registry, sources, sourceId)) {
+      if (await followUntracked(sources, sourceId)) {
         scheduler.wake();
       }
     },
