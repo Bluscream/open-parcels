@@ -15,7 +15,7 @@ import {
   type PluginLogger,
   type SessionStore,
 } from "../plugin/api.js";
-import { PluginHttp, type FetchLike, type HostLimiter } from "../plugin/http.js";
+import { PluginHttp, type FetchLike, type HostLimiter, type HttpPolicy } from "../plugin/http.js";
 import type { FailureKind } from "./policy.js";
 import type { LiveTargetOfParcel, Reconciler } from "./reconciler.js";
 import {
@@ -127,6 +127,11 @@ export class SourceRunner {
       }
       return { ok: false, ...outcome };
     }
+  }
+
+  /** A rate-limited HTTP client for a plug-in, for work outside a source run (sign-in). */
+  httpFor(policy: HttpPolicy): PluginHttp {
+    return new PluginHttp(policy, this.deps.limiter, this.deps.clock, this.deps.fetchImpl);
   }
 
   /**

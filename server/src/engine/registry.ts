@@ -7,7 +7,8 @@ import type {
   PluginContext,
   PluginSourceKind,
 } from "../plugin/api.js";
-import type { HttpPolicy } from "../plugin/http.js";
+import type { Clock } from "../clock.js";
+import type { HttpPolicy, PluginHttp } from "../plugin/http.js";
 
 export class InvalidSourceConfigError extends Error {
   override readonly name = "InvalidSourceConfigError";
@@ -40,6 +41,10 @@ export interface RegisteredPlugin {
   readonly canTrack: boolean;
   readonly canReadLive: boolean;
   validateConfig(raw: unknown): void;
+  /** Pasted-redirect sign-in, step 1: the address the user opens in their own browser. */
+  startSignIn(rawConfig: unknown, clock: Clock): Promise<{ url: string; state: unknown }>;
+  /** Step 2: turns the pasted final address into the sign-in data to store. */
+  finishSignIn(http: PluginHttp, clock: Clock, state: unknown, pasted: string): Promise<unknown>;
   readLive(
     base: BaseContext,
     rawConfig: unknown,
@@ -89,6 +94,22 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
     canFetchAccount: plugin.fetchAccount !== undefined,
     canTrack: plugin.track !== undefined,
     canReadLive: plugin.readLive !== undefined,
+    async startSignIn(rawConfig, clock) {
+      if (plugin.signIn.type !== "pasted_redirect") {
+        throw new InvalidSourceConfigError(`${plugin.name} does not sign in with a pasted link.`);
+      }
+      return plugin.signIn.start({
+        config: parseWith(plugin.configSchema, rawConfig, "configuration", plugin.id),
+        clock,
+      });
+    },
+    async finishSignIn(http, clock, state, pasted) {
+      if (plugin.signIn.type !== "pasted_redirect") {
+        throw new InvalidSourceConfigError(`${plugin.name} does not sign in with a pasted link.`);
+      }
+      const secret = await plugin.signIn.finish({ http, clock }, state, pasted);
+      return parseWith(plugin.secretSchema, secret, "sign-in data", plugin.id);
+    },
     async readLive(base, rawConfig, rawSecret, target) {
       if (plugin.readLive === undefined) {
         return null;

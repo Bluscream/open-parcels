@@ -54,7 +54,7 @@ export interface FetchResult {
 }
 
 /** How the user signs in. Each flow is driven by the generic sign-in routes and the UI. */
-export type SignInFlow<Secret> =
+export type SignInFlow<Config, Secret> =
   | { readonly type: "none" }
   | { readonly type: "credentials" }
   | { readonly type: "api_key" }
@@ -62,7 +62,7 @@ export type SignInFlow<Secret> =
       /** The user signs in in their own browser and pastes the final redirect URL back. */
       readonly type: "pasted_redirect";
       start(context: {
-        readonly config: unknown;
+        readonly config: Config;
         readonly clock: Clock;
       }): Promise<{ url: string; state: unknown }>;
       finish(
@@ -80,7 +80,7 @@ export interface CarrierPlugin<Config = unknown, Secret = unknown> {
   readonly sourceKinds: readonly PluginSourceKind[];
   readonly configSchema: z.ZodType<Config>;
   readonly secretSchema: z.ZodType<Secret>;
-  readonly signIn: SignInFlow<Secret>;
+  readonly signIn: SignInFlow<Config, Secret>;
   readonly http: HttpPolicy;
   /** Account and shop sources: return everything the account lists. */
   fetchAccount?(context: PluginContext<Config, Secret>): Promise<FetchResult>;

@@ -77,8 +77,22 @@ export function fakeShop(world: FakeWorld): RegisteredPlugin {
       countries: ["*"],
       sourceKinds: ["shop"],
       configSchema: z.looseObject({}),
-      secretSchema: z.null(),
-      signIn: { type: "none" },
+      secretSchema: z.object({ refreshToken: z.string() }).nullable(),
+      signIn: {
+        type: "pasted_redirect",
+        start: () =>
+          Promise.resolve({
+            url: "https://shop.example.invalid/sign-in?state=s1",
+            state: { nonce: "s1" },
+          }),
+        finish: (_context, state, pasted) => {
+          const code = new URL(pasted).searchParams.get("code");
+          if (code === null || (state as { nonce?: string }).nonce !== "s1") {
+            return Promise.reject(new Error("bad paste"));
+          }
+          return Promise.resolve({ refreshToken: `rt-${code}` });
+        },
+      },
       http: { limits: {} },
       async fetchAccount() {
         world.accountCalls.push(Date.now());

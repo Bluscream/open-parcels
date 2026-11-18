@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { App } from "../../src/api/app.js";
-import { FakeWorld, fakePost } from "../fakes/carriers.js";
+import { FakeWorld, fakePost, fakeShop } from "../fakes/carriers.js";
 import { createTestContext, signIn, type TestContext } from "../helpers.js";
 
 let context: TestContext;
@@ -105,6 +105,61 @@ describe("carriers and sources API", () => {
       (await app.inject({ method: "DELETE", url: `/api/v1/sources/${id}`, headers })).statusCode,
     ).toBe(204);
     expect((await app.inject({ url: "/api/v1/sources", headers })).json()).toEqual([]);
+  });
+
+  it("signs in with a pasted link and stores the result encrypted", async () => {
+    const shopContext = await createTestContext({ plugins: [fakeShop(new FakeWorld())] });
+    try {
+      const shopApp = await shopContext.app();
+      const session = await signIn(shopContext, shopApp);
+      const h = { cookie: session.cookie, "x-csrf-token": session.csrf };
+      const id = (
+        await shopApp.inject({
+          method: "POST",
+          url: "/api/v1/sources",
+          headers: h,
+          payload: { plugin: "fakeshop", kind: "shop", label: "Shop" },
+        })
+      ).json<{ id: string }>().id;
+
+      const early = await shopApp.inject({
+        method: "POST",
+        url: `/api/v1/sources/${id}/sign-in/finish`,
+        headers: h,
+        payload: { pasted: "https://x.invalid/?code=1" },
+      });
+      expect(early.statusCode).toBe(400);
+
+      const start = await shopApp.inject({
+        method: "POST",
+        url: `/api/v1/sources/${id}/sign-in/start`,
+        headers: h,
+      });
+      expect(start.json()).toEqual({ url: "https://shop.example.invalid/sign-in?state=s1" });
+      const bad = await shopApp.inject({
+        method: "POST",
+        url: `/api/v1/sources/${id}/sign-in/finish`,
+        headers: h,
+        payload: { pasted: "https://shop.example.invalid/done" },
+      });
+      expect(bad.json()).toMatchObject({ error: "sign_in_failed" });
+      const good = await shopApp.inject({
+        method: "POST",
+        url: `/api/v1/sources/${id}/sign-in/finish`,
+        headers: h,
+        payload: { pasted: "https://shop.example.invalid/done?code=abc" },
+      });
+      expect(good.statusCode).toBe(204);
+      expect((await shopContext.services.sources.get(id))?.hasSecret).toBe(true);
+      const row = await shopContext.services.db
+        .selectFrom("sources")
+        .select("secret_blob")
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow();
+      expect(row.secret_blob?.toString("utf8") ?? "").not.toContain("rt-abc");
+    } finally {
+      await shopContext.close();
+    }
   });
 
   it("needs the admin scope to change sources", async () => {
