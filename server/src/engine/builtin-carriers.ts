@@ -1,6 +1,7 @@
 import { amazonCarrier } from "../carriers/amazon/index.js";
 import { budbee } from "../carriers/budbee/index.js";
 import { cainiao } from "../carriers/cainiao/index.js";
+import { canadapost } from "../carriers/canadapost/index.js";
 import { canpar } from "../carriers/canpar/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
@@ -15,6 +16,7 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(amazonCarrier()),
   register(budbee),
   register(cainiao),
+  register(canadapost),
   register(canpar),
   register(dhl),
   register(dpd),
