@@ -171,11 +171,46 @@ Each carrier is a module that declares:
 
 - metadata: id, name, countries, capabilities, and the source kinds it offers;
 - a zod config schema, which the UI renders as a form;
-- its sign-in flow type: none, credentials, pasted redirect link, API key, or OIDC;
+- its sign-in flows (see below);
 - its rate-limit policy;
 - async methods that return `ParcelSnapshot` objects.
 
 Plug-ins never touch the database and never send events.
+
+**Sign-in flows.** A plug-in declares one flow or a list of them. Each flow may be limited to some
+source kinds (`kinds`) and to some configurations (`when(config)`); the first applicable flow is
+the default. DHL, for example, signs a German account in by pasted link, a Dutch account
+(`config.account = "nl"`) by email and password, and a tracking source by an optional API key.
+
+- `none`, `credentials` and `api_key` are static: the UI renders the plug-in's secret schema as a
+  form and stores what the user types.
+- `interactive` flows run on the server, step by step, because open-parcels has its own UI and can
+  ask several questions in a row. `start` and `continue` may call the carrier through the
+  rate-limited plug-in HTTP client. Each call returns either the next step with the state to keep,
+  or the finished secret, which is validated against the secret schema before it is stored.
+- Step kinds and the input each takes:
+
+  | Step | Shows | Input |
+  |---|---|---|
+  | `form` | fields (text, email, password, tel) | one value per field |
+  | `open_url` | an address to open in the user's own browser | `pasted`: the address the browser ends on |
+  | `email_link` | where the link went (masked) | `code`: the link or the code in it |
+  | `otp_code` | channel (SMS, email, app) and masked destination | `code` |
+  | `choose_method` | options | `choice`: an option id |
+  | `await_approval` | message, poll interval, timeout | none; the UI polls |
+
+- What a plug-in's error means: `SignInRejectedError` is a refused input (a wrong code); the
+  attempt keeps its step so the user can try again. `TransientError`/`RateLimitedError` mean the
+  carrier could not be reached; the attempt stays exactly as it was and is never restarted on its
+  own. Any other error counts as a failed try. After five failed tries the attempt is dropped.
+- The old pasted-redirect type is now the `pastedRedirect()` helper: an interactive flow with one
+  `open_url` step.
+
+The flow state lives in `sign_in_attempts` (§2.5), encrypted like `session_blob` and bound to the
+attempt and its source, with an expiry of 15 minutes per step (an approval step uses its own
+timeout, which polling does not extend). One attempt per source; a new start replaces it. The
+state may hold cookies, PKCE verifiers or a typed password and is never logged; failures are
+logged by error type only.
 
 #### Reconciler
 
@@ -256,6 +291,7 @@ There is one owner per container, so tables carry no user column.
 | `places` | key (normalised text), lat, lng, precision, missed_at | Hits and misses are cached; misses are retried after 7 days |
 | `outbox` | seq (monotonic), type, parcel_id, payload (JSON), created_at | Feeds SSE replay and, later, webhooks and MQTT |
 | `unknown_vocab` | plugin, kind, key, first_seen_at, count | Drives the one-time "please report" warning. Keys only |
+| `sign_in_attempts` | id, source_id, flow, blob (AES-GCM: plug-in state and current step), failures, expires_at, poll_not_before | Interactive sign-ins in progress; one per source, gone when finished, cancelled or expired |
 | `settings`, `image_cache` | | |
 
 **Retention defaults**, all configurable:
@@ -282,13 +318,28 @@ Everything is under `/api/v1`. The OpenAPI document is at `/api/v1/openapi.json`
 
 **Sources**
 
-- `GET`, `POST`, `PATCH` and `DELETE /sources`.
-- `POST /sources/{id}/sign-in/start` and `/sign-in/finish`.
+- `GET`, `POST`, `PATCH` and `DELETE /sources`; `PUT /sources/{id}/secret` for static flows.
+- `GET /sources/{id}/sign-in/flows`: the flows that apply to this source, the default first.
+- `POST /sources/{id}/sign-in/attempts` with an optional `{flow}` starts an interactive sign-in and
+  returns `{status: "step", attempt_id, flow, expires_at, step}`.
+- `POST /sources/{id}/sign-in/attempts/{attempt}/continue` with `{input}` answers the current step
+  and returns the next one or `{status: "done"}`; the secret is then stored and the source runs.
+- `POST /sources/{id}/sign-in/attempts/{attempt}/poll` checks an `await_approval` step. Calls
+  closer together than the step's interval get 429 with `Retry-After`; after its timeout the
+  attempt ends with `sign_in_timeout`.
+- `DELETE /sources/{id}/sign-in/attempts/{attempt}` cancels.
+- Errors: `sign_in_refused` (400, try the step again), `sign_in_unavailable` (503, carrier
+  unreachable, the step is kept), `sign_in_failed` (400), `sign_in_expired` (400: expired,
+  cancelled, tampered with or belonging to another source), `sign_in_timeout`,
+  `sign_in_wrong_step` (409), `sign_in_poll_too_soon` (429).
+- `POST /sources/{id}/sign-in/start` and `/sign-in/finish` remain for pasted-link flows: they run
+  the same attempt mechanism in one call each.
 - `POST /sources/{id}/sync`.
 
 **Other routes**
 
-- `GET /carriers` lists the plug-ins with their capabilities, config schemas and sign-in flows.
+- `GET /carriers` lists the plug-ins with their capabilities, config schemas, the default
+  sign-in type (`sign_in`) and every flow (`sign_in_flows`: id, label, type, kinds, conditional).
 - `GET /calendar?from&to` returns the same entries the UI calendar and the ICS feed use.
 - `GET /orders` and `GET /orders/{id}`.
 - `/tokens` and `/settings`.
@@ -380,7 +431,12 @@ and `url`. On top of those:
 
 - Amazon uses device registration, so we never see the password.
 - DHL DE uses OIDC with a pasted link.
-- Hermes and IMAP need stored credentials, and those are encrypted.
+- Vinted Go (emailed link), Airmee (SMS code), USPS Informed Delivery (password plus USPS's own
+  verification) and Posti (bank or mobile ID) keep only the tokens the sign-in yields. Posti
+  additionally keeps the private key of the trusted device it registers on the account.
+- Hermes, DHL NL and IMAP need stored credentials, and those are encrypted.
+- An unfinished interactive sign-in keeps its state encrypted in `sign_in_attempts` until it
+  finishes or expires.
 
 **CORS** is off by default. Enabling it requires an explicit allow-list.
 
