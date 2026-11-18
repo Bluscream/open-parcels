@@ -5,6 +5,7 @@ import type { LiveReading, LiveTarget } from "./live.js";
 import type { ParcelSnapshot } from "./snapshot.js";
 
 export * from "./errors.js";
+export * from "./parse.js";
 export * from "./snapshot.js";
 export type { LiveReading, LiveTarget } from "./live.js";
 export { CookieJar, restoreJar, serializeJar } from "./cookies.js";
