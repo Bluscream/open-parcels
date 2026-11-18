@@ -1,3 +1,4 @@
+import type { CookieJar } from "tough-cookie";
 import type { Clock } from "../clock.js";
 import { RateLimitedError, TransientError } from "./errors.js";
 
@@ -90,6 +91,22 @@ export interface RequestOptions {
   readonly maxBytes?: number;
   /** Follow redirects automatically. Off when a plug-in has to inspect them (allow-listing). */
   readonly redirect?: "follow" | "manual";
+  /**
+   * Send and store cookies through this jar. Redirects are then followed here, hop by hop, so
+   * cookies set along the way are kept; `allowRedirect` decides which hosts may be visited.
+   */
+  readonly jar?: CookieJar;
+  readonly allowRedirect?: (target: URL) => boolean;
+}
+
+const MAX_REDIRECTS = 10;
+
+/** Same host, or a host under the same parent domain (`www.example.de` → `login.example.de`). */
+export function sameSite(origin: URL): (target: URL) => boolean {
+  const parent = origin.hostname.split(".").slice(-2).join(".");
+  return (target) =>
+    target.protocol === "https:" &&
+    (target.hostname === parent || target.hostname.endsWith(`.${parent}`));
 }
 
 export interface HttpResponse {
@@ -112,6 +129,56 @@ export class PluginHttp {
   ) {}
 
   async request(url: URL, options: RequestOptions = {}): Promise<HttpResponse> {
+    const jar = options.jar;
+    if (jar === undefined) {
+      const response = await this.#send(url, options, options.redirect ?? "follow");
+      return this.#result(response, response.url || url.toString(), options, url);
+    }
+    // With a cookie jar every hop is sent here, so cookies set by intermediate redirects are kept.
+    const allow = options.allowRedirect ?? sameSite(url);
+    let current = url;
+    let method = options.method ?? "GET";
+    let body = options.body;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      const cookie = await jar.getCookieString(current);
+      const headers = { ...options.headers, ...(cookie === "" ? {} : { cookie }) };
+      const response = await this.#send(
+        current,
+        { ...options, method, headers, ...(body === undefined ? {} : { body }) },
+        "manual",
+      );
+      for (const setCookie of response.headers.getSetCookie()) {
+        await jar.setCookie(setCookie, current, { ignoreError: true });
+      }
+      const location = response.headers.get("location");
+      if (
+        response.status < 300 ||
+        response.status >= 400 ||
+        location === null ||
+        options.redirect === "manual"
+      ) {
+        return this.#result(response, current.toString(), options, current);
+      }
+      await response.body?.cancel();
+      const next = new URL(location, current);
+      if (!allow(next)) {
+        throw new TransientError(
+          `${current.hostname} redirected to a host that is not allowed (${next.hostname}).`,
+        );
+      }
+      if (
+        response.status === 303 ||
+        ((response.status === 301 || response.status === 302) && method === "POST")
+      ) {
+        method = "GET";
+        body = undefined;
+      }
+      current = next;
+    }
+    throw new TransientError(`Too many redirects from ${url.hostname}.`);
+  }
+
+  async #send(url: URL, options: RequestOptions, redirect: "follow" | "manual"): Promise<Response> {
     const limit = this.policy.limits[url.hostname] ?? this.policy.limits["*"] ?? DEFAULT_LIMIT;
     await this.limiter.acquire(url.hostname, limit);
     const headers = new Headers(options.headers);
@@ -124,7 +191,7 @@ export class PluginHttp {
         method: options.method ?? "GET",
         headers,
         ...(options.body === undefined ? {} : { body: options.body }),
-        redirect: options.redirect ?? "follow",
+        redirect,
         signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       });
     } catch (error) {
@@ -138,11 +205,20 @@ export class PluginHttp {
         retryAfter,
       );
     }
+    return response;
+  }
+
+  async #result(
+    response: Response,
+    finalUrl: string,
+    options: RequestOptions,
+    url: URL,
+  ): Promise<HttpResponse> {
     const body = await this.#readBody(response, options.maxBytes ?? DEFAULT_MAX_BYTES, url);
     return {
       status: response.status,
       headers: response.headers,
-      url: response.url,
+      url: finalUrl,
       body,
       json: () => JSON.parse(body) as unknown,
     };

@@ -7,6 +7,7 @@ import {
   PluginHttp,
   type FetchLike,
 } from "../../src/plugin/http.js";
+import { CookieJar, restoreJar, serializeJar } from "../../src/plugin/cookies.js";
 import { FakeClock } from "../helpers.js";
 
 function setup(fetchImpl: FetchLike, userAgent?: { value: string; reason: string }) {
@@ -82,6 +83,50 @@ describe("plug-in HTTP client", () => {
     await expect(
       setup(big).http.request(new URL("https://a.example.invalid/"), { maxBytes: 1024 }),
     ).rejects.toBeInstanceOf(TransientError);
+  });
+
+  it("keeps cookies across redirects and only follows allowed hosts", async () => {
+    const seenCookies: (string | null)[] = [];
+    const site: FetchLike = (url, init) => {
+      seenCookies.push(new Headers(init.headers).get("cookie"));
+      if (url.pathname === "/login") {
+        return Promise.resolve(
+          new Response("", {
+            status: 302,
+            headers: {
+              location: "https://www.example.invalid/home",
+              "set-cookie": "session=abc; Path=/; Domain=example.invalid; Secure",
+            },
+          }),
+        );
+      }
+      if (url.pathname === "/leave") {
+        return Promise.resolve(
+          new Response("", { status: 302, headers: { location: "https://evil.invalid/" } }),
+        );
+      }
+      return Promise.resolve(new Response("welcome"));
+    };
+    const jar = new CookieJar();
+    const result = await setup(site).http.request(new URL("https://login.example.invalid/login"), {
+      jar,
+      method: "POST",
+      body: "x=1",
+    });
+    expect(result).toMatchObject({
+      status: 200,
+      body: "welcome",
+      url: "https://www.example.invalid/home",
+    });
+    expect(seenCookies).toEqual([null, "session=abc"]);
+    await expect(
+      setup(site).http.request(new URL("https://www.example.invalid/leave"), { jar }),
+    ).rejects.toBeInstanceOf(TransientError);
+    // The jar survives a round trip through the session store format.
+    expect(
+      await restoreJar(serializeJar(jar)).getCookieString("https://www.example.invalid/"),
+    ).toBe("session=abc");
+    expect(await restoreJar("garbage").getCookieString("https://www.example.invalid/")).toBe("");
   });
 
   it("parses Retry-After as seconds or as an HTTP date", () => {

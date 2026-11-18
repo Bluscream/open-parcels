@@ -7,6 +7,8 @@ import type { ParcelSnapshot } from "./snapshot.js";
 export * from "./errors.js";
 export * from "./snapshot.js";
 export type { LiveReading, LiveTarget } from "./live.js";
+export { CookieJar, restoreJar, serializeJar } from "./cookies.js";
+export { sameSite } from "./http.js";
 export type { HostLimit, HttpPolicy, HttpResponse, RequestOptions } from "./http.js";
 
 /** Source kinds a carrier can offer. Mailboxes are handled by the core, not by carrier plug-ins. */
