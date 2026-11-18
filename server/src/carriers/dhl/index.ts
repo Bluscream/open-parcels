@@ -2,6 +2,8 @@ import { z } from "zod";
 import { defineCarrier, SignInRejectedError } from "../../plugin/api.js";
 import { fetchDeAccount } from "./de/account.js";
 import { finishSignIn, startSignIn } from "./de/session.js";
+import { IBERIA_HOST } from "./iberia.js";
+import { SWEDEN_HOST } from "./sweden.js";
 import { trackCodes } from "./tracking.js";
 
 /**
@@ -24,7 +26,14 @@ export const dhl = defineCarrier({
   name: "DHL",
   countries: ["*"],
   sourceKinds: ["account", "tracking"],
-  configSchema: z.looseObject({}),
+  configSchema: z.looseObject({
+    /**
+     * Regional DHL networks to ask as well, for parcels the gateway does not know: `ES`/`PT`
+     * (DHL eCommerce Iberia) and `SE` (DHL Freight Sweden). Off by default, so codes are not
+     * sent to back ends that cannot know them.
+     */
+    regions: z.array(z.enum(["ES", "PT", "SE"])).optional(),
+  }),
   secretSchema,
   signIn: {
     type: "pasted_redirect",
@@ -39,6 +48,8 @@ export const dhl = defineCarrier({
       "api-eu.dhl.com": { intervalMs: 6_000, burst: 1 },
       "login.dhl.de": { intervalMs: 5_000, burst: 2 },
       "www.dhl.de": { intervalMs: 6_000, burst: 2 },
+      [IBERIA_HOST]: { intervalMs: 6_000, burst: 2 },
+      [SWEDEN_HOST]: { intervalMs: 6_000, burst: 2 },
       "*": { intervalMs: 10_000, burst: 1 },
     },
   },
@@ -50,6 +61,10 @@ export const dhl = defineCarrier({
     return fetchDeAccount(context, refreshToken);
   },
   async track(context, barcodes) {
-    return trackCodes(context, context.secret?.apiKey ?? null, barcodes);
+    const regions = new Set(context.config.regions ?? []);
+    return trackCodes(context, context.secret?.apiKey ?? null, barcodes, {
+      iberia: regions.has("ES") || regions.has("PT"),
+      sweden: regions.has("SE"),
+    });
   },
 });
