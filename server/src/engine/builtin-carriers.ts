@@ -11,6 +11,7 @@ import { speeDee } from "../carriers/speedee/index.js";
 import { speedx } from "../carriers/speedx/index.js";
 import { straightship } from "../carriers/straightship/index.js";
 import { sunyou } from "../carriers/sunyou/index.js";
+import { swissPost } from "../carriers/swiss-post/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
 /**
@@ -31,4 +32,5 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(speedx),
   register(straightship),
   register(sunyou),
+  register(swissPost),
 ];
