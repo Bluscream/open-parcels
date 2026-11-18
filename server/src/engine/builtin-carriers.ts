@@ -10,6 +10,7 @@ import { ecoscooting } from "../carriers/ecoscooting/index.js";
 import { eltaCourier } from "../carriers/elta-courier/index.js";
 import { evri } from "../carriers/evri/index.js";
 import { fanCourier } from "../carriers/fan-courier/index.js";
+import { fedex } from "../carriers/fedex/index.js";
 import { hermes } from "../carriers/hermes/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
@@ -30,5 +31,6 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(eltaCourier),
   register(evri),
   register(fanCourier),
+  register(fedex),
   register(hermes),
 ];
