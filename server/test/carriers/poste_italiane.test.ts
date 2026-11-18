@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { posteItaliane } from "../../src/carriers/poste_italiane/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./post-harness.js";
+import { json, onPrefix, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "TE000000001IT";
@@ -35,7 +35,9 @@ function record(latest: string, extra: Record<string, unknown> = {}) {
 
 describe("Poste Italiane tracking", () => {
   it("maps the Italian wording, reads the estimate as a local day and keeps the history", async () => {
-    const world = new World(posteItaliane, [on(API, json(record("La spedizione è in consegna")))]);
+    const world = new World(posteItaliane, [
+      onPrefix(API, json(record("La spedizione è in consegna"))),
+    ]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
       carrier: "poste_italiane",
@@ -56,7 +58,7 @@ describe("Poste Italiane tracking", () => {
 
   it("names the office only for a collectable parcel", async () => {
     const world = new World(posteItaliane, [
-      on(API, json(record("Disponibile per il ritiro presso l'ufficio"))),
+      onPrefix(API, json(record("Disponibile per il ritiro presso l'ufficio"))),
     ]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
@@ -68,7 +70,7 @@ describe("Poste Italiane tracking", () => {
 
   it("takes Poste's delivered flag over the wording", async () => {
     const world = new World(posteItaliane, [
-      on(API, json(record("La spedizione è stata consegnata", { stato: "5" }))),
+      onPrefix(API, json(record("La spedizione è stata consegnata", { stato: "5" }))),
     ]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
@@ -81,23 +83,23 @@ describe("Poste Italiane tracking", () => {
 
   it("treats the not-found outcomes as not found", async () => {
     const world = new World(posteItaliane, [
-      on(API, json({ esitoRicerca: "1" }), json({ esitoRicerca: "2" })),
+      onPrefix(API, json({ esitoRicerca: "1" }), json({ esitoRicerca: "2" })),
     ]);
     expect((await world.track([CODE, OTHER, "../x"])).snapshots).toEqual([]);
     expect(world.calls).toHaveLength(2);
   });
 
   it("reports new wording and falls back to the newest mapped event", async () => {
-    const world = new World(posteItaliane, [on(API, json(record("Qualcosa di nuovo")))]);
+    const world = new World(posteItaliane, [onPrefix(API, json(record("Qualcosa di nuovo")))]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({ status: "in_transit", rawStatus: "Qualcosa di nuovo" });
     expect(world.unknown).toEqual(["status_text:Qualcosa di nuovo"]);
   });
 
   it("stops on an unknown envelope and on a network error", async () => {
-    const odd = new World(posteItaliane, [on(API, json({ esitoRicerca: "9" }))]);
+    const odd = new World(posteItaliane, [onPrefix(API, json({ esitoRicerca: "9" }))]);
     await expect(odd.track([CODE])).rejects.toBeInstanceOf(UnexpectedResponseError);
-    const offline = new World(posteItaliane, [on(API, new TypeError("offline"))]);
+    const offline = new World(posteItaliane, [onPrefix(API, new TypeError("offline"))]);
     await expect(offline.track([CODE, OTHER])).rejects.toBeInstanceOf(TransientError);
     expect(offline.calls).toHaveLength(1);
   });

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { postaSlovenije } from "../../src/carriers/posta_slovenije/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { json, madeUpPassword, on, World } from "./post-harness.js";
+import { json, onPrefix, World } from "./harness.js";
+
+/** Made up, built from parts so the pre-commit secret check stays quiet. */
+const madeUpPassword = ["not", "a", "real", "one"].join("-");
 
 // Made-up codes and values only.
 const CODE = "TE000000001SI";
@@ -40,7 +43,7 @@ const tokens = (n: number) => ({
 describe("Pošta Slovenije tracking", () => {
   it("maps the newest scan and keeps the history newest first", async () => {
     const world = new World(postaSlovenije, [
-      on(
+      onPrefix(
         TRACK,
         json(
           envelope(scans(scan("IZR", "2026-11-18T09:00:00Z", { pickupAddress: "Testna ulica 1" }))),
@@ -69,7 +72,7 @@ describe("Pošta Slovenije tracking", () => {
       scan("VL", "2026-11-19T09:00:00Z"),
     ];
     const world = new World(postaSlovenije, [
-      on(
+      onPrefix(
         TRACK,
         json(envelope(scans(scan("VL", "2026-11-18T09:00:00Z")))),
         json(envelope(returned, OTHER)),
@@ -86,7 +89,7 @@ describe("Pošta Slovenije tracking", () => {
 
   it("treats the service's not-found answer as not found", async () => {
     const world = new World(postaSlovenije, [
-      on(
+      onPrefix(
         TRACK,
         json({ errorCode: "error.not.found", errorMessage: `Parcel ${CODE} not found` }, 404),
       ),
@@ -96,7 +99,7 @@ describe("Pošta Slovenije tracking", () => {
 
   it("reports an unknown code and keeps the last known status", async () => {
     const world = new World(postaSlovenije, [
-      on(TRACK, json(envelope(scans(scan("ZZZ", "2026-11-18T09:00:00Z"))))),
+      onPrefix(TRACK, json(envelope(scans(scan("ZZZ", "2026-11-18T09:00:00Z"))))),
     ]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel?.status).toBe("in_transit");
@@ -105,7 +108,7 @@ describe("Pošta Slovenije tracking", () => {
 
   it("stops when the client guard refuses us", async () => {
     const world = new World(postaSlovenije, [
-      on(TRACK, json({ errorCode: "error.not.allowed" }, 403)),
+      onPrefix(TRACK, json({ errorCode: "error.not.allowed" }, 403)),
     ]);
     await expect(world.track([CODE, OTHER])).rejects.toBeInstanceOf(TransientError);
     expect(world.calls).toHaveLength(1);
@@ -123,18 +126,18 @@ describe("Pošta Slovenije account", () => {
 
   it("signs in, lists both directions and reads each live parcel's detail", async () => {
     const world = new World(postaSlovenije, [
-      on(TOKEN, json(tokens(1))),
-      on(
+      onPrefix(TOKEN, json(tokens(1))),
+      onPrefix(
         `${LIST}/1`,
         json({ result: { parcel: {}, statuses: scans(scan("N", "2026-11-18T09:00:00Z")) } }),
       ),
-      on(
+      onPrefix(
         LIST,
         page([row(1, CODE)]),
         page([row(2, OTHER, { isArchived: true, isOutgoingParcel: true })]),
       ),
     ]);
-    const result = await world.fetchAccount(secret);
+    const result = await world.fetchAccount({}, secret);
     expect(result.complete).toBe(true);
     expect(result.snapshots.map((p) => [p.barcode, p.status, p.direction, p.sender])).toEqual([
       [CODE, "out_for_delivery", "incoming", "Testna trgovina"],
@@ -146,35 +149,35 @@ describe("Pošta Slovenije account", () => {
 
   it("refreshes once on a 401 and keeps going", async () => {
     const world = new World(postaSlovenije, [
-      on(TOKEN, json(tokens(2))),
-      on(LIST, json({}, 401), page([]), page([])),
+      onPrefix(TOKEN, json(tokens(2))),
+      onPrefix(LIST, json({}, 401), page([]), page([])),
     ]);
     world.stored = {
       accessToken: "at-1",
       refreshToken: "rt-1",
       expiresAt: world.clock.now().getTime() + 3_600_000,
     };
-    await world.fetchAccount(secret);
+    await world.fetchAccount({}, secret);
     expect(world.calls[1]?.body).toContain("grant_type=refresh_token");
     expect(world.stored).toMatchObject({ accessToken: "at-2" });
   });
 
   it("reports a refused password as a sign-in problem", async () => {
     const world = new World(postaSlovenije, [
-      on(
+      onPrefix(
         TOKEN,
         json({ error: "invalid_grant", error_description: "Invalid user credentials" }, 401),
       ),
     ]);
-    await expect(world.fetchAccount(secret)).rejects.toBeInstanceOf(SignInRejectedError);
+    await expect(world.fetchAccount({}, secret)).rejects.toBeInstanceOf(SignInRejectedError);
   });
 
   it("never signs in again after a network error", async () => {
     const world = new World(postaSlovenije, [
-      on(TOKEN, json(tokens(1))),
-      on(LIST, new TypeError("offline")),
+      onPrefix(TOKEN, json(tokens(1))),
+      onPrefix(LIST, new TypeError("offline")),
     ]);
-    await expect(world.fetchAccount(secret)).rejects.toBeInstanceOf(TransientError);
-    expect(world.paths().filter((p) => p.startsWith("POST"))).toHaveLength(1);
+    await expect(world.fetchAccount({}, secret)).rejects.toBeInstanceOf(TransientError);
+    expect(world.requests().filter((p) => p.startsWith("POST"))).toHaveLength(1);
   });
 });

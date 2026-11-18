@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ampere } from "../../src/carriers/ampere/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { html, json, on, world, type Route } from "./harness.js";
+import { html, json, on, World, type Route } from "./harness.js";
 
 // Made-up links, codes and names only.
 const LINK = "https://link.bol.com/t/mailtoken-1?notificationId=0";
@@ -45,7 +45,7 @@ const progress = json({
 
 describe("Ampère via e-mail tracking links", () => {
   it("follows the link once, reads the page and keeps the session", async () => {
-    const w = world(ampere);
+    const w = new World(ampere);
     w.routes = [
       ...exchangeRoutes("p1", "c1"),
       on(
@@ -84,7 +84,7 @@ describe("Ampère via e-mail tracking links", () => {
   });
 
   it("reuses a stored session and marks delivery", async () => {
-    const w = world(ampere);
+    const w = new World(ampere);
     w.stored = { [LINK]: { cookie: "c1", parcelToken: "p1" } };
     w.routes = [
       on(`GET ${HOST}/nl/parcel/p1`, html(page(row("Pakket is bezorgd", "Wo 18 nov 12:00")))),
@@ -100,7 +100,7 @@ describe("Ampère via e-mail tracking links", () => {
   });
 
   it("follows the link again once when the stored session is refused", async () => {
-    const w = world(ampere);
+    const w = new World(ampere);
     w.stored = { [LINK]: { cookie: "old", parcelToken: "p0" } };
     w.routes = [
       on(`GET ${HOST}/nl/parcel/p0`, html('<h1 data-test-id="error-title">Oeps</h1>')),
@@ -114,7 +114,7 @@ describe("Ampère via e-mail tracking links", () => {
   });
 
   it("reports page wording it does not know", async () => {
-    const w = world(ampere);
+    const w = new World(ampere);
     w.stored = { [LINK]: { cookie: "c1", parcelToken: "p1" } };
     w.routes = [
       on(`GET ${HOST}/nl/parcel/p1`, html(page(row("Pakket is zoek", "Wo 18 nov 09:15")))),
@@ -126,11 +126,11 @@ describe("Ampère via e-mail tracking links", () => {
   });
 
   it("needs a new link when the only link is refused, but not on a network error", async () => {
-    const refused = world(ampere);
+    const refused = new World(ampere);
     refused.routes = [on("GET link.bol.com/t/mailtoken-1", html("gone", 410))];
     await expect(refused.fetchAccount({}, secret)).rejects.toBeInstanceOf(SignInRejectedError);
 
-    const offline = world(ampere);
+    const offline = new World(ampere);
     offline.stored = { [LINK]: { cookie: "c1", parcelToken: "p1" } };
     offline.routes = [on(`GET ${HOST}/nl/parcel/p1`, new Error("offline"))];
     await expect(offline.fetchAccount({}, secret)).rejects.toBeInstanceOf(TransientError);
@@ -139,7 +139,7 @@ describe("Ampère via e-mail tracking links", () => {
   });
 
   it("refuses to follow a link that leaves the shop and the tracker", async () => {
-    const w = world(ampere);
+    const w = new World(ampere);
     await expect(
       w.fetchAccount({}, { trackingLinks: ["https://example.invalid/t/x"] }),
     ).rejects.toBeInstanceOf(SignInRejectedError);

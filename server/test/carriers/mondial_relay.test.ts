@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { mondialRelay } from "../../src/carriers/mondial_relay/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, raw } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "90000001";
@@ -38,52 +38,47 @@ function expedition(steps: Record<string, unknown>, extra: Record<string, unknow
   };
 }
 
-type Reply = { status: number; body: unknown } | Error;
+/** A scripted reply: text bodies are sent as they are, anything else as JSON. */
+interface Reply {
+  readonly status: number;
+  readonly body: unknown;
+}
 
-function fakeSite(lookups: Reply[], page: Reply = { status: 200, body: PAGE }) {
+const send = (reply: Reply, headers: Record<string, string> = {}) =>
+  raw(
+    typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body),
+    reply.status,
+    headers,
+  );
+
+/**
+ * The tracking page (always `page`, setting a session cookie) and its lookup API (`lookups` in
+ * order; 500 once they run out).
+ */
+function fakeSite(lookups: (Reply | Error)[], page: Reply = { status: 200, body: PAGE }) {
   const calls: { path: string; token: string | null; cookie: string | null }[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    const headers = new Headers(init.headers);
-    calls.push({
-      path: url.pathname,
-      token: headers.get("requestverificationtoken"),
-      cookie: headers.get("cookie"),
-    });
-    const reply = url.pathname === "/api/tracking" ? lookups.shift() : page;
-    if (reply === undefined) {
-      return Promise.resolve(new Response("{}", { status: 500 }));
-    }
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    const body = typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body);
-    return Promise.resolve(
-      new Response(body, {
-        status: reply.status,
-        headers: url.pathname === "/api/tracking" ? {} : { "set-cookie": "sid=abc; Path=/" },
-      }),
-    );
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      calls.push({
+        path: call.url.pathname,
+        token: call.headers.get("requestverificationtoken"),
+        cookie: call.headers.get("cookie"),
+      });
+      if (call.url.pathname !== "/api/tracking") {
+        return send(page, { "set-cookie": "sid=abc; Path=/" });
+      }
+      const reply = lookups.shift();
+      if (reply === undefined) {
+        return raw("{}", 500);
+      }
+      return reply instanceof Error ? reply : send(reply);
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const unknown: string[] = [];
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(mondialRelay.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: { load: () => null, save: () => Promise.resolve() },
-    reportUnknown: (kind, key) => {
-      unknown.push(`${kind}:${key}`);
-    },
-  };
+  const { base, unknown } = fakeContext(mondialRelay.http, fetchImpl);
   return { base, unknown };
 }
 

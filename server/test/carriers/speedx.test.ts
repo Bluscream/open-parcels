@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { speedx } from "../../src/carriers/speedx/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness, type Reply } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, raw, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(speedx);
 
 // Made-up codes only.
 const CODE = "SPXTEST0000000001";
@@ -17,19 +24,18 @@ const event = (eventCode: string, category: string, localTs: string, eventDescri
 });
 
 /** A page whose flight chunk embeds the events, as the site serialises them. */
-function page(events: unknown[]): Reply {
+function page(events: unknown[]): Answer {
   const payload = `1:["$","div",null,{"tracking":{"events":${JSON.stringify(events)},"x":1}}]`;
   const push = JSON.stringify([1, payload]);
-  return {
-    status: 200,
-    contentType: "text/html",
-    body: `<html><script>self.__next_f.push([1,"0:[]"])</script><script>self.__next_f.push(${push})</script></html>`,
-  };
+  return raw(
+    `<html><script>self.__next_f.push([1,"0:[]"])</script><script>self.__next_f.push(${push})</script></html>`,
+    200,
+  );
 }
 
 describe("SpeedX tracking", () => {
   it("reads the history from the page and maps out-for-delivery by its text", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
+    const { fetchImpl, calls } = network({
       [PAGE]: [
         page([
           event("57110", "LAST_MILE_ENROUTE", "2026-11-18T08:00:00", "Out for delivery"),
@@ -39,7 +45,7 @@ describe("SpeedX tracking", () => {
         ]),
       ],
     });
-    const { plugin, base } = harness(speedx, fetchImpl);
+    const { base } = fakeContext(speedx.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({
       carrier: "speedx",
@@ -59,46 +65,44 @@ describe("SpeedX tracking", () => {
   });
 
   it("falls back to the current scan when the page has no history", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [PAGE]: [page([])],
-      [API]: [
-        { status: 200, body: [event("57201", "LAST_MILE_DELIVERED", "2026-11-18T12:00:00")] },
-      ],
+      [API]: [json([event("57201", "LAST_MILE_DELIVERED", "2026-11-18T12:00:00")], 200)],
     });
-    const { plugin, base } = harness(speedx, fetchImpl);
+    const { base } = fakeContext(speedx.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({ delivered: true, deliveredAt: "2026-11-18T17:00:00.000Z" });
   });
 
   it("treats no history and no current scan as not found", async () => {
-    const { fetchImpl } = fakeRoutes({ [PAGE]: [page([])], [API]: [{ status: 200, body: [] }] });
-    const { plugin, base } = harness(speedx, fetchImpl);
+    const { fetchImpl } = network({ [PAGE]: [page([])], [API]: [json([], 200)] });
+    const { base } = fakeContext(speedx.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE, "../x"])).snapshots).toEqual([]);
   });
 
   it("reports an unknown category", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [PAGE]: [page([event("99999", "SOMETHING_NEW", "2026-11-18T08:00:00")])],
     });
-    const { plugin, base, unknown } = harness(speedx, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(speedx.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual(["SOMETHING_NEW"]);
   });
 
   it("stops when the page lost its data or the server fails", async () => {
-    const changed = harness(
-      speedx,
-      fakeRoutes({
-        [PAGE]: [{ status: 200, body: "<html>new site</html>", contentType: "text/html" }],
-        [API]: [{ status: 200, body: [] }],
+    const changed = fakeContext(
+      speedx.http,
+      network({
+        [PAGE]: [raw("<html>new site</html>", 200)],
+        [API]: [json([], 200)],
       }).fetchImpl,
     );
-    await expect(changed.plugin.track(changed.base, {}, null, [CODE])).rejects.toBeInstanceOf(
+    await expect(plugin.track(changed.base, {}, null, [CODE])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );
-    const failing = harness(speedx, fakeRoutes({ [PAGE]: [{ status: 500, body: "" }] }).fetchImpl);
-    await expect(failing.plugin.track(failing.base, {}, null, [CODE])).rejects.toBeInstanceOf(
+    const failing = fakeContext(speedx.http, network({ [PAGE]: [raw("", 500)] }).fetchImpl);
+    await expect(plugin.track(failing.base, {}, null, [CODE])).rejects.toBeInstanceOf(
       TransientError,
     );
   });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cdl } from "../../src/carriers/cdl/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const LABEL = "CDL00000000001";
@@ -22,7 +22,7 @@ describe("CDL Last Mile tracking", () => {
   it("reads status and history, and sends an order number with its hyphen", async () => {
     const world = new World(cdl);
     world.routes = [
-      on(
+      onFragment(
         "value=000000000-1",
         json(
           answer("000000000-1", [
@@ -50,7 +50,7 @@ describe("CDL Last Mile tracking", () => {
   it("treats a completion as delivered even when the door scan reads later", async () => {
     const world = new World(cdl);
     world.routes = [
-      on(
+      onFragment(
         LABEL,
         json(
           answer(LABEL, [
@@ -69,8 +69,8 @@ describe("CDL Last Mile tracking", () => {
   it("returns nothing for 204, another reference or a code of the wrong shape", async () => {
     const world = new World(cdl);
     world.routes = [
-      on(LABEL, new Response(null, { status: 204 })),
-      on("000000000-1", json(answer("OTHER", []))),
+      onFragment(LABEL, new Response(null, { status: 204 })),
+      onFragment("000000000-1", json(answer("OTHER", []))),
     ];
     expect((await world.track([LABEL, ORDER, "SHIPPERREF"], {}, null)).snapshots).toEqual([]);
     expect(world.calls).toHaveLength(2);
@@ -78,7 +78,9 @@ describe("CDL Last Mile tracking", () => {
 
   it("reports an unmapped wording", async () => {
     const world = new World(cdl);
-    world.routes = [on(LABEL, json(answer(LABEL, [["Teleported", "2026-11-18T10:00:00"]])))];
+    world.routes = [
+      onFragment(LABEL, json(answer(LABEL, [["Teleported", "2026-11-18T10:00:00"]]))),
+    ];
     const [parcel] = (await world.track([LABEL], {}, null)).snapshots;
     expect(parcel?.status).toBeNull();
     expect(world.unknown).toEqual(["status_code:teleported"]);
@@ -86,7 +88,9 @@ describe("CDL Last Mile tracking", () => {
 
   it("fails on a redirect", async () => {
     const world = new World(cdl);
-    world.routes = [on(LABEL, new Response(null, { status: 302, headers: { location: "/x" } }))];
+    world.routes = [
+      onFragment(LABEL, new Response(null, { status: 302, headers: { location: "/x" } })),
+    ];
     await expect(world.track([LABEL], {}, null)).rejects.toBeInstanceOf(TransientError);
   });
 });

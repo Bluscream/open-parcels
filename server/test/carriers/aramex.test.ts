@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aramex } from "../../src/carriers/aramex/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up labels and values only.
 const LABEL = "AX0000000001";
@@ -24,7 +24,7 @@ function found(eta: string, ...Scans: ReturnType<typeof scan>[]) {
 
 describe("Aramex tracking", () => {
   it("reads the newest scan, Sydney-time history and a whole-day window", async () => {
-    const w = world(aramex);
+    const w = new World(aramex);
     w.routes = [
       on(
         AU,
@@ -58,7 +58,7 @@ describe("Aramex tracking", () => {
   });
 
   it("uses the New Zealand site and zone when configured, and marks delivery", async () => {
-    const w = world(aramex);
+    const w = new World(aramex);
     w.routes = [on(NZ, json(found("18/11/2026", scan("YES", "2026-11-18T13:00:00", "Delivered"))))];
     const [parcel] = (await w.track([LABEL], { country: "NZ" })).snapshots;
     expect(parcel).toMatchObject({
@@ -69,13 +69,13 @@ describe("Aramex tracking", () => {
   });
 
   it("treats an answer without scans as not found", async () => {
-    const w = world(aramex);
+    const w = new World(aramex);
     w.routes = [on(AU, json({ result: { Scans: null } }))];
     expect((await w.track([LABEL])).snapshots).toEqual([]);
   });
 
   it("reports an unmapped scan code", async () => {
-    const w = world(aramex);
+    const w = new World(aramex);
     w.routes = [on(AU, json(found("", scan("ZZ9", "2026-11-18T07:30:00", "Something new"))))];
     const [parcel] = (await w.track([LABEL])).snapshots;
     expect(parcel?.status).toBeNull();
@@ -83,10 +83,10 @@ describe("Aramex tracking", () => {
   });
 
   it("passes server and network errors on", async () => {
-    const down = world(aramex);
+    const down = new World(aramex);
     down.routes = [on(AU, json({}, 502))];
     await expect(down.track([LABEL])).rejects.toBeInstanceOf(TransientError);
-    const offline = world(aramex);
+    const offline = new World(aramex);
     offline.routes = [on(AU, new Error("offline"))];
     await expect(offline.track([LABEL])).rejects.toBeInstanceOf(TransientError);
   });

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { shopeeXpress } from "../../src/carriers/shopee_xpress/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness, type Reply } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(shopeeXpress);
 
 // Made-up codes and values only.
 const CODE = "SPXTEST00000001";
@@ -16,22 +23,23 @@ const record = (milestone_code: number, actual_time: number, text: string, displ
   display_flag,
 });
 
-const found = (records: unknown[], extra: object = {}): Reply => ({
-  status: 200,
-  body: {
-    retcode: 0,
-    message: "success",
-    data: {
-      order_info: { spx_tn: CODE },
-      sls_tracking_info: { receiver_name: "T*** P***", records },
-      ...extra,
+const found = (records: unknown[], extra: object = {}): Answer =>
+  json(
+    {
+      retcode: 0,
+      message: "success",
+      data: {
+        order_info: { spx_tn: CODE },
+        sls_tracking_info: { receiver_name: "T*** P***", records },
+        ...extra,
+      },
     },
-  },
-});
+    200,
+  );
 
 describe("Shopee Xpress tracking", () => {
   it("reads the milestone, the estimate window and the visible history", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
+    const { fetchImpl, calls } = network({
       [ROUTE]: [
         found(
           [
@@ -44,7 +52,7 @@ describe("Shopee Xpress tracking", () => {
         ),
       ],
     });
-    const { plugin, base } = harness(shopeeXpress, fetchImpl);
+    const { base } = fakeContext(shopeeXpress.http, fetchImpl);
     const result = await plugin.track(base, config, null, [CODE]);
     expect(result.complete).toBe(true);
     expect(result.snapshots[0]).toMatchObject({
@@ -65,48 +73,42 @@ describe("Shopee Xpress tracking", () => {
   });
 
   it("drops the window once delivered", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [ROUTE]: [
         found([record(8, 1_795_000_000, "Delivered")], {
           edd_info: { edd_min: 1_795_010_000, edd_max: 1_795_020_000 },
         }),
       ],
     });
-    const { plugin, base } = harness(shopeeXpress, fetchImpl);
+    const { base } = fakeContext(shopeeXpress.http, fetchImpl);
     const [parcel] = (await plugin.track(base, config, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({ delivered: true, plannedFrom: null, plannedTo: null });
   });
 
   it("skips an error envelope without calling the result complete", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
-      [ROUTE]: [{ status: 200, body: { retcode: 2, message: "record not unique" } }],
+    const { fetchImpl, calls } = network({
+      [ROUTE]: [json({ retcode: 2, message: "record not unique" }, 200)],
     });
-    const { plugin, base } = harness(shopeeXpress, fetchImpl);
+    const { base } = fakeContext(shopeeXpress.http, fetchImpl);
     const result = await plugin.track(base, config, null, [OTHER, "../x"]);
     expect(result).toEqual({ snapshots: [], complete: false });
     expect(calls).toHaveLength(1);
   });
 
   it("reports an unknown milestone code", async () => {
-    const { fetchImpl } = fakeRoutes({ [ROUTE]: [found([record(42, 1_795_000_000, "New")])] });
-    const { plugin, base, unknown } = harness(shopeeXpress, fetchImpl);
+    const { fetchImpl } = network({ [ROUTE]: [found([record(42, 1_795_000_000, "New")])] });
+    const { base, unknownKeys: unknown } = fakeContext(shopeeXpress.http, fetchImpl);
     const [parcel] = (await plugin.track(base, config, null, [CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual(["42"]);
   });
 
   it("stops on HTTP errors and answers without a result code", async () => {
-    const one = harness(
-      shopeeXpress,
-      fakeRoutes({ [ROUTE]: [{ status: 502, body: {} }] }).fetchImpl,
-    );
-    await expect(one.plugin.track(one.base, config, null, [CODE])).rejects.toBeInstanceOf(
+    const one = fakeContext(shopeeXpress.http, network({ [ROUTE]: [json({}, 502)] }).fetchImpl);
+    await expect(plugin.track(one.base, config, null, [CODE])).rejects.toBeInstanceOf(
       TransientError,
     );
-    const two = harness(
-      shopeeXpress,
-      fakeRoutes({ [ROUTE]: [{ status: 200, body: {} }] }).fetchImpl,
-    );
-    await expect(two.plugin.track(two.base, config, null, [CODE])).rejects.toThrow(/result code/);
+    const two = fakeContext(shopeeXpress.http, network({ [ROUTE]: [json({}, 200)] }).fetchImpl);
+    await expect(plugin.track(two.base, config, null, [CODE])).rejects.toThrow(/result code/);
   });
 });

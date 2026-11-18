@@ -18,8 +18,8 @@ import {
   TransientError,
   UnexpectedResponseError,
 } from "../../src/plugin/api.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
 import { FakeClock } from "../helpers.js";
+import { fakeContext, fakeNetwork, html, json } from "./harness.js";
 import {
   CAPTCHA_PAGE,
   cookieExchange,
@@ -38,62 +38,42 @@ const SERIAL = "0123456789ABCDEF0123456789ABCDEF";
 /** Built from parts, so no literal credential sits in the file. */
 const REFRESH = ["Atnr", "made", "up"].join("|");
 
+/** Every request goes to one function of its URL. */
 type Route = (url: URL, init: RequestInit) => Response | Promise<Response>;
-
-function html(body: string, status = 200): Response {
-  return new Response(body, { status, headers: { "content-type": "text/html" } });
-}
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
 
 interface Harness {
   readonly context: AmazonContext;
+  /** "METHOD path" of every request. */
   readonly calls: string[];
   readonly unknown: [string, string][];
-  stored: unknown;
+  readonly stored: unknown;
 }
 
 function harness(route: Route, stored: unknown = null): Harness {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const calls: string[] = [];
-  const fetchImpl: FetchLike = async (url, init) => {
-    calls.push(`${init.method ?? "GET"} ${url.pathname}`);
-    return route(url, init);
-  };
-  const state: Harness = {
-    calls,
-    unknown: [],
-    stored,
-    context: undefined as unknown as AmazonContext,
-  };
+  const network = fakeNetwork([(call) => route(call.url, call.init)]);
+  const fake = fakeContext(plugin.http, network.fetchImpl, { session: stored });
   const context: AmazonContext = {
-    sourceId: "source-1",
+    ...fake.base,
     config: { storefront: "amazon.de" },
     secret: { refreshToken: REFRESH, deviceSerial: SERIAL },
-    http: new PluginHttp(plugin.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
     session: {
-      load: () => state.stored,
-      save: (value) => {
-        state.stored = JSON.parse(JSON.stringify(value)) as unknown;
-        return Promise.resolve();
-      },
-    },
-    reportUnknown: (kind, key) => {
-      state.unknown.push([kind, key]);
+      load: () => fake.base.session.load(),
+      // A copy, as the encrypted store would keep it: later changes to the object never leak in.
+      save: (value) => fake.base.session.save(JSON.parse(JSON.stringify(value)) as unknown),
     },
   };
-  return Object.assign(state, { context });
+  return {
+    context,
+    get calls() {
+      return network.calls.map((call) => `${call.method} ${call.url.pathname}`);
+    },
+    get unknown() {
+      return fake.reports.map(({ kind, key }): [string, string] => [kind, key]);
+    },
+    get stored() {
+      return fake.stored();
+    },
+  };
 }
 
 /** A storefront that serves the given order lines and package pages. */

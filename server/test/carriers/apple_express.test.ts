@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appleExpress } from "../../src/carriers/apple_express/index.js";
 import { InvalidSourceConfigError } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "AE000000001";
@@ -28,7 +28,7 @@ function found(currentStatus: string, statusChangeText: string) {
 
 describe("Apple Express tracking", () => {
   it("reads status, Eastern-time history and the six-hour window", async () => {
-    const w = world(appleExpress);
+    const w = new World(appleExpress);
     w.routes = [
       on(ROUTE, json(found("Out for Delivery", "Estimated Delivery: November 18, 2026 02:00 PM"))),
     ];
@@ -49,7 +49,7 @@ describe("Apple Express tracking", () => {
   });
 
   it("reads the delivery time from the display sentence and honours a zone option", async () => {
-    const w = world(appleExpress);
+    const w = new World(appleExpress);
     w.routes = [on(ROUTE, json(found("Delivered", "Delivered November 18, 2026 01:30 PM")))];
     const [parcel] = (await w.track([CODE], { timeZone: "America/Regina" })).snapshots;
     expect(parcel).toMatchObject({
@@ -61,7 +61,7 @@ describe("Apple Express tracking", () => {
   });
 
   it("treats the all-null answer as not found", async () => {
-    const w = world(appleExpress);
+    const w = new World(appleExpress);
     w.routes = [
       on(ROUTE, json({ orderDetails: null, statusDetails: null, customerDetails: null })),
     ];
@@ -69,7 +69,7 @@ describe("Apple Express tracking", () => {
   });
 
   it("reports an unmapped status", async () => {
-    const w = world(appleExpress);
+    const w = new World(appleExpress);
     w.routes = [on(ROUTE, json(found("Held at Depot", "")))];
     const [parcel] = (await w.track([CODE])).snapshots;
     expect(parcel?.status).toBeNull();
@@ -77,16 +77,16 @@ describe("Apple Express tracking", () => {
   });
 
   it("stops on a half answer, passes network errors on and rejects a bad zone", async () => {
-    const half = world(appleExpress);
+    const half = new World(appleExpress);
     half.routes = [on(ROUTE, json({ orderDetails: {}, statusDetails: "x" }))];
     await expect(half.track([CODE])).rejects.toBeInstanceOf(UnexpectedResponseError);
 
-    const offline = world(appleExpress);
+    const offline = new World(appleExpress);
     offline.routes = [on(ROUTE, new Error("offline"))];
     await expect(offline.track([CODE])).rejects.toBeInstanceOf(TransientError);
 
     await expect(
-      world(appleExpress).track([CODE], { timeZone: "Mars/Base" }),
+      new World(appleExpress).track([CODE], { timeZone: "Mars/Base" }),
     ).rejects.toBeInstanceOf(InvalidSourceConfigError);
   });
 });

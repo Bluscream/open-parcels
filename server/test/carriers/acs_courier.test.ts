@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { acsCourier } from "../../src/carriers/acs_courier/index.js";
 import { RateLimitedError, TransientError } from "../../src/plugin/errors.js";
-import { html, json, on, world } from "./harness.js";
+import { html, json, on, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "9900000001";
@@ -35,7 +35,7 @@ function item(statusId: number | null, extra: Record<string, unknown> = {}) {
 
 describe("ACS Courier tracking", () => {
   it("reads status, Athens-time history and a whole-day window", async () => {
-    const w = world(acsCourier);
+    const w = new World(acsCourier);
     w.routes = [on(PAGE, page("tok-1")), on(SEARCH, json(item(null)))];
     const [parcel] = (await w.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
@@ -57,7 +57,7 @@ describe("ACS Courier tracking", () => {
   });
 
   it("takes delivered from the parcel status id and clears the window", async () => {
-    const w = world(acsCourier);
+    const w = new World(acsCourier);
     w.stored = { token: "tok-1" };
     w.routes = [on(SEARCH, json(item(4, { deliveryDate: "2026-11-18T12:00:00" })))];
     const [parcel] = (await w.track([CODE])).snapshots;
@@ -71,7 +71,7 @@ describe("ACS Courier tracking", () => {
   });
 
   it("treats the not-found note and a JSON 404 as not found", async () => {
-    const w = world(acsCourier);
+    const w = new World(acsCourier);
     w.stored = { token: "tok-1" };
     w.routes = [
       on(SEARCH, json({ items: [{ notes: "Shipment not found" }] }), json({ title: "nf" }, 404)),
@@ -81,7 +81,7 @@ describe("ACS Courier tracking", () => {
   });
 
   it("reports an unmapped control point and status id", async () => {
-    const w = world(acsCourier);
+    const w = new World(acsCourier);
     w.stored = { token: "tok-1" };
     const body = item(9, {
       statusHistory: [point(777, "2026-11-18T09:30:00", "Something new")],
@@ -93,7 +93,7 @@ describe("ACS Courier tracking", () => {
   });
 
   it("replaces a refused token once, then pauses instead of retrying", async () => {
-    const w = world(acsCourier);
+    const w = new World(acsCourier);
     w.stored = { token: "old" };
     w.routes = [on(PAGE, page("tok-2")), on(SEARCH, json({}, 401), json({}, 401))];
     await expect(w.track([CODE])).rejects.toBeInstanceOf(RateLimitedError);
@@ -102,7 +102,7 @@ describe("ACS Courier tracking", () => {
   });
 
   it("does not fetch a new token on a network error", async () => {
-    const w = world(acsCourier);
+    const w = new World(acsCourier);
     w.stored = { token: "tok-1" };
     w.routes = [on(SEARCH, new Error("offline"))];
     await expect(w.track([CODE])).rejects.toBeInstanceOf(TransientError);

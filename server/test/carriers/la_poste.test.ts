@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import { laposte } from "../../src/carriers/la_poste/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { keylessContext, scripted, type Reply } from "./keyless-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, json, raw, type Answer } from "./harness.js";
+
+/** Replies in order; once they run out, 500 with an empty body. */
+const scripted = (replies: Answer[]) => fakeNetwork([inOrder(...replies)], () => raw("", 500));
 
 // Made-up codes and values only.
 const CODE = "ZZ000000001FR";
 const plugin = register(laposte);
 
-function found(shipment: Record<string, unknown>): Reply {
-  return { status: 200, body: [{ returnCode: 200, shipment }] };
+function found(shipment: Record<string, unknown>): Answer {
+  return json([{ returnCode: 200, shipment }], 200);
 }
 
 const chronopost = (codes: string[]) => ({
@@ -22,9 +25,9 @@ const chronopost = (codes: string[]) => ({
   })),
 });
 
-async function run(replies: Reply[]) {
+async function run(replies: Answer[]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = keylessContext(laposte.http, fetchImpl);
+  const { base, unknownKeys: unknown } = fakeContext(laposte.http, fetchImpl);
   const result = await plugin.track(base, {}, null, [CODE]);
   return { result, calls, unknown };
 }
@@ -68,7 +71,7 @@ describe("la_poste", () => {
   });
 
   it("returns nothing for an unknown code", async () => {
-    const { result } = await run([{ status: 200, body: [{ returnCode: 104 }] }]);
+    const { result } = await run([json([{ returnCode: 104 }], 200)]);
     expect(result.snapshots).toEqual([]);
   });
 
@@ -79,11 +82,11 @@ describe("la_poste", () => {
   });
 
   it("stops on unexpected answers and network errors", async () => {
-    await expect(run([{ status: 200, body: {} }])).rejects.toBeInstanceOf(UnexpectedResponseError);
-    await expect(run([{ status: 200, body: [{ returnCode: 200 }] }])).rejects.toBeInstanceOf(
+    await expect(run([json({}, 200)])).rejects.toBeInstanceOf(UnexpectedResponseError);
+    await expect(run([json([{ returnCode: 200 }], 200)])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );
-    await expect(run([{ status: 500, text: "" }])).rejects.toBeInstanceOf(TransientError);
+    await expect(run([raw("", 500)])).rejects.toBeInstanceOf(TransientError);
     await expect(run([new Error("offline")])).rejects.toBeInstanceOf(TransientError);
   });
 });

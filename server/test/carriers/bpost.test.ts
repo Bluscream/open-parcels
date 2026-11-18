@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bpost } from "../../src/carriers/bpost/index.js";
 import { InvalidSourceConfigError } from "../../src/engine/registry.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up codes, postcodes and names only.
 const CODE = "323200000000000001";
@@ -37,7 +37,7 @@ function item(step: Record<string, unknown>, extra: Record<string, unknown> = {}
 
 describe("bpost tracking", () => {
   it("maps the process step and reads window, history, weight in Brussels time", async () => {
-    const w = world(bpost);
+    const w = new World(bpost);
     w.routes = [on(ROUTE, json(item({ knownProcessStep: "OUT_FOR_DELIVERY_HOME", name: "x" })))];
     const [parcel] = (await w.track([CODE], config)).snapshots;
     expect(parcel).toMatchObject({
@@ -62,7 +62,7 @@ describe("bpost tracking", () => {
   });
 
   it("takes delivery from the delivery record and names a pickup point", async () => {
-    const w = world(bpost);
+    const w = new World(bpost);
     const delivered = item(
       { name: "delivered_some_new_method" },
       {
@@ -86,14 +86,14 @@ describe("bpost tracking", () => {
   });
 
   it("treats an error answer or no items as not found", async () => {
-    const w = world(bpost);
+    const w = new World(bpost);
     w.routes = [on(ROUTE, json({ error: "NO_DATA_FOUND" }), json({ items: [] }))];
     expect((await w.track([CODE], config)).snapshots).toEqual([]);
     expect((await w.track([CODE], config)).snapshots).toEqual([]);
   });
 
   it("reports a step code outside the vocabulary", async () => {
-    const w = world(bpost);
+    const w = new World(bpost);
     w.routes = [on(ROUTE, json(item({ knownProcessStep: "TELEPORTING" })))];
     const [parcel] = (await w.track([CODE], config)).snapshots;
     expect(parcel?.status).toBeNull();
@@ -101,8 +101,10 @@ describe("bpost tracking", () => {
   });
 
   it("needs a postcode and passes network errors on", async () => {
-    await expect(world(bpost).track([CODE], {})).rejects.toBeInstanceOf(InvalidSourceConfigError);
-    const offline = world(bpost);
+    await expect(new World(bpost).track([CODE], {})).rejects.toBeInstanceOf(
+      InvalidSourceConfigError,
+    );
+    const offline = new World(bpost);
     offline.routes = [on(ROUTE, new Error("offline"))];
     await expect(offline.track([CODE], config)).rejects.toBeInstanceOf(TransientError);
   });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fourPx } from "../../src/carriers/4px/index.js";
 import { RateLimitedError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "4PX0000000000001TEST";
@@ -29,7 +29,7 @@ function found(latest: string) {
 
 describe("4PX tracking", () => {
   it("maps the newest event, lists history newest first and has no window", async () => {
-    const w = world(fourPx);
+    const w = new World(fourPx);
     w.routes = [on(ROUTE, json(found("FPX_D_SD")))];
     const result = await w.track([CODE]);
     expect(result.complete).toBe(true);
@@ -53,7 +53,7 @@ describe("4PX tracking", () => {
   });
 
   it("marks a delivered parcel with its delivery time", async () => {
-    const w = world(fourPx);
+    const w = new World(fourPx);
     w.routes = [on(ROUTE, json(found("FPX_S_OK")))];
     const [parcel] = (await w.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
@@ -64,14 +64,14 @@ describe("4PX tracking", () => {
   });
 
   it("leaves a code 4PX does not know out of the result", async () => {
-    const w = world(fourPx);
+    const w = new World(fourPx);
     w.routes = [on(ROUTE, json({ result: 1, data: [{ serverCode: null, tracks: null }] }))];
     const result = await w.track([CODE]);
     expect(result).toEqual({ snapshots: [], complete: true });
   });
 
   it("reports an unmapped event code and keeps the status unknown", async () => {
-    const w = world(fourPx);
+    const w = new World(fourPx);
     w.routes = [on(ROUTE, json(found("FPX_X_NEW")))];
     const [parcel] = (await w.track([CODE])).snapshots;
     expect(parcel?.status).toBeNull();
@@ -79,13 +79,13 @@ describe("4PX tracking", () => {
   });
 
   it("stops on an envelope it does not recognise", async () => {
-    const w = world(fourPx);
+    const w = new World(fourPx);
     w.routes = [on(ROUTE, json({ result: 0, data: [] }))];
     await expect(w.track([CODE])).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 
   it("passes a rate limit on and sends nothing for implausible codes", async () => {
-    const w = world(fourPx);
+    const w = new World(fourPx);
     w.routes = [on(ROUTE, json({}, 429, { "retry-after": "60" }))];
     await expect(w.track(["no spaces allowed", CODE])).rejects.toBeInstanceOf(RateLimitedError);
     expect(w.calls).toHaveLength(1);

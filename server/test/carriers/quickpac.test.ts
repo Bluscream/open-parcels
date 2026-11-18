@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { quickpac } from "../../src/carriers/quickpac/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./post-harness.js";
+import { json, onPrefix, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "99000000000000001";
@@ -26,7 +26,7 @@ function record(last: number, extra: Record<string, unknown> = {}) {
 
 describe("Quickpac tracking", () => {
   it("maps the code groups and reads Swiss local times", async () => {
-    const world = new World(quickpac, [on(lookup(CODE), json(record(1801)))]);
+    const world = new World(quickpac, [onPrefix(lookup(CODE), json(record(1801)))]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
       carrier: "quickpac",
@@ -44,7 +44,7 @@ describe("Quickpac tracking", () => {
   });
 
   it("reports a delivery with its time", async () => {
-    const world = new World(quickpac, [on(lookup(CODE), json(record(2104)))]);
+    const world = new World(quickpac, [onPrefix(lookup(CODE), json(record(2104)))]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
       status: "delivered",
@@ -54,24 +54,27 @@ describe("Quickpac tracking", () => {
   });
 
   it("treats a 400 as not found only when the start-up call works", async () => {
-    const world = new World(quickpac, [on(lookup(CODE), json({}, 400)), on(STARTUP, json({}))]);
+    const world = new World(quickpac, [
+      onPrefix(lookup(CODE), json({}, 400)),
+      onPrefix(STARTUP, json({})),
+    ]);
     expect((await world.track([CODE, "../x"])).snapshots).toEqual([]);
     const broken = new World(quickpac, [
-      on(lookup(CODE), json({}, 400)),
-      on(STARTUP, json({}, 404)),
+      onPrefix(lookup(CODE), json({}, 400)),
+      onPrefix(STARTUP, json({}, 404)),
     ]);
     await expect(broken.track([CODE])).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 
   it("reports an info-group code as unknown", async () => {
-    const world = new World(quickpac, [on(lookup(CODE), json(record(3100)))]);
+    const world = new World(quickpac, [onPrefix(lookup(CODE), json(record(3100)))]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(world.unknown).toEqual(["status_code:3100"]);
   });
 
   it("stops on a network error", async () => {
-    const world = new World(quickpac, [on(lookup(CODE), new TypeError("offline"))]);
+    const world = new World(quickpac, [onPrefix(lookup(CODE), new TypeError("offline"))]);
     await expect(world.track([CODE, OTHER])).rejects.toBeInstanceOf(TransientError);
     expect(world.calls).toHaveLength(1);
   });

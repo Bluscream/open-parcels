@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { packeta } from "../../src/carriers/packeta/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { keylessContext, scripted } from "./keyless-harness.js";
+import { fakeContext, fakeNetwork, inOrder, raw, type Answer } from "./harness.js";
+
+const JSON_TYPE = { "content-type": "application/json" };
+const ok = (body: string) => raw(body, 200, JSON_TYPE);
+/** Replies in order; once they run out, 404 with an empty body. */
+const scripted = (replies: Answer[]) =>
+  fakeNetwork([inOrder(...replies)], () => raw("", 404, JSON_TYPE));
 
 // Made-up codes and values only.
 const CODE = "Z0000000001";
@@ -32,8 +38,8 @@ const HISTORY = [
 
 describe("Packeta public tracking", () => {
   it("maps the status id, reads the pickup point and history in Prague time", async () => {
-    const { fetchImpl, calls } = scripted([{ status: 200, body: item("2", HISTORY) }]);
-    const { base } = keylessContext(packeta.http, fetchImpl);
+    const { fetchImpl, calls } = scripted([ok(item("2", HISTORY))]);
+    const { base } = fakeContext(packeta.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({
       carrier: "packeta",
@@ -58,25 +64,25 @@ describe("Packeta public tracking", () => {
       ...HISTORY,
       { text: "The parcel is with you.", time: "2026-01-05 14:00:00" },
     ];
-    const { fetchImpl } = scripted([{ status: 200, body: item("3", delivered) }]);
-    const { base } = keylessContext(packeta.http, fetchImpl);
+    const { fetchImpl } = scripted([ok(item("3", delivered))]);
+    const { base } = fakeContext(packeta.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({ delivered: true, deliveredAt: "2026-07-03T10:00:00.000Z" });
   });
 
   it("treats a 404 and an error body as not found", async () => {
     const { fetchImpl } = scripted([
-      { status: 404, body: JSON.stringify({ error: "notFound" }) },
-      { status: 200, body: JSON.stringify({ error: "notFound" }) },
+      raw(JSON.stringify({ error: "notFound" }), 404, JSON_TYPE),
+      ok(JSON.stringify({ error: "notFound" })),
     ]);
-    const { base } = keylessContext(packeta.http, fetchImpl);
+    const { base } = fakeContext(packeta.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE, CODE])).snapshots).toEqual([]);
   });
 
   it("reports unknown status ids and event texts", async () => {
     const odd = [{ text: "Something new happened.", time: "2026-07-01 10:00:00" }];
-    const { fetchImpl } = scripted([{ status: 200, body: item("4242", odd) }]);
-    const { base, unknown } = keylessContext(packeta.http, fetchImpl);
+    const { fetchImpl } = scripted([ok(item("4242", odd))]);
+    const { base, reports: unknown } = fakeContext(packeta.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual([
@@ -86,10 +92,10 @@ describe("Packeta public tracking", () => {
   });
 
   it("fails transiently on network errors and server errors", async () => {
-    for (const reply of [new Error("offline"), { status: 500, body: "" }]) {
+    for (const reply of [new Error("offline"), raw("", 500, JSON_TYPE)]) {
       const { fetchImpl } = scripted([reply]);
       await expect(
-        plugin.track(keylessContext(packeta.http, fetchImpl).base, {}, null, [CODE]),
+        plugin.track(fakeContext(packeta.http, fetchImpl).base, {}, null, [CODE]),
       ).rejects.toBeInstanceOf(TransientError);
     }
   });

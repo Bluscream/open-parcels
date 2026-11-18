@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { hrvatskaPosta } from "../../src/carriers/hrvatska_posta/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { scripted, trackingContext, type Reply } from "./public-tracking-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, raw, type Answer } from "./harness.js";
+
+const JSON_TYPE = { "content-type": "application/json" };
+/** Replies in order; once they run out, 404 with an empty body. */
+const scripted = (replies: Answer[]) =>
+  fakeNetwork([inOrder(...replies)], () => raw("", 404, JSON_TYPE));
 
 // Made-up codes and values only.
 const CODE = "ZZ000000001HR";
@@ -17,15 +22,15 @@ function row(date: string, wording: string, location: string): string {
   );
 }
 
-function page(title: string, body: string): Reply {
-  return {
-    status: 200,
-    type: "text/html",
-    body: `<html><head><title>${title}</title><script>var a = "<div>";</script></head><body>${body}</body></html>`,
-  };
+function page(title: string, body: string): Answer {
+  return raw(
+    `<html><head><title>${title}</title><script>var a = "<div>";</script></head><body>${body}</body></html>`,
+    200,
+    { "content-type": "text/html" },
+  );
 }
 
-function found(...rows: string[]): Reply {
+function found(...rows: string[]): Answer {
   return page(
     "Hrvatska Pošta - Tracking",
     '<div class="track__n__trace"><div><span>Broj pošiljke</span><span>' +
@@ -36,9 +41,9 @@ function found(...rows: string[]): Reply {
   );
 }
 
-async function run(replies: Reply[]) {
+async function run(replies: Answer[]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = trackingContext(hrvatskaPosta.http, fetchImpl);
+  const { base, unknown } = fakeContext(hrvatskaPosta.http, fetchImpl);
   const result = await plugin.track(base, {}, null, [CODE]);
   return { result, calls, unknown };
 }
@@ -118,7 +123,7 @@ describe("hrvatska_posta tracking", () => {
       UnexpectedResponseError,
     );
     await expect(run([found()])).rejects.toThrow(UnexpectedResponseError);
-    await expect(run([{ status: 302, body: "" }])).rejects.toThrow(TransientError);
+    await expect(run([raw("", 302, JSON_TYPE)])).rejects.toThrow(TransientError);
     await expect(run([new Error("offline")])).rejects.toThrow(TransientError);
   });
 });

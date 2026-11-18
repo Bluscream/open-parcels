@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dhl } from "../../src/carriers/dhl/index.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { html, json, on, World, type Route } from "./kit-harness.js";
+import { html, json, onFragment as on, World, type Route } from "./harness.js";
 
 // Made-up codes and values only.
 const IBERIA = "0000000000000001";
@@ -24,7 +24,7 @@ describe("DHL regional back ends", () => {
     const world = new World(dhl);
     world.routes = [gatewayMiss];
     expect((await world.track([IBERIA, SWEDEN], {}, null)).snapshots).toEqual([]);
-    expect(world.paths().every((p) => p.includes("dhlparcel.nl"))).toBe(true);
+    expect(world.requests().every((p) => p.includes("dhlparcel.nl"))).toBe(true);
   });
 
   it("reads a DHL Iberia shipment with status, pickup point and history", async () => {

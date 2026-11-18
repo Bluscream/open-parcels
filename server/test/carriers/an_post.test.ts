@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { anPost } from "../../src/carriers/an_post/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { json, madeUp, on, world, type World } from "./harness.js";
+import { json, madeUp, on, World } from "./harness.js";
 
 // Made-up codes, ids and names only.
 const CODE = "CE000000001IE";
@@ -43,7 +43,7 @@ function signInRoutes(w: World): void {
 
 describe("An Post account", () => {
   it("signs in once, reads the deliveries and keeps the session", async () => {
-    const w = world(anPost);
+    const w = new World(anPost);
     signInRoutes(w);
     w.routes.push(on(JWT, jwt()), on(ITEMS, items(item(3))));
     const result = await w.fetchAccount({}, secret);
@@ -66,7 +66,7 @@ describe("An Post account", () => {
   });
 
   it("reuses the stored session and reads a delivery in Irish summer time", async () => {
-    const w = world(anPost);
+    const w = new World(anPost);
     w.stored = { uid: "uid-1", loginToken: madeUp("login"), gmid: "gm-1" };
     w.routes = [
       on(JWT, jwt()),
@@ -82,14 +82,14 @@ describe("An Post account", () => {
   });
 
   it("returns an empty account as complete", async () => {
-    const w = world(anPost);
+    const w = new World(anPost);
     w.stored = { uid: "uid-1", loginToken: madeUp("login"), gmid: "" };
     w.routes = [on(JWT, jwt()), on(ITEMS, items())];
     expect(await w.fetchAccount({}, secret)).toEqual({ snapshots: [], complete: true });
   });
 
   it("reports an unmapped category", async () => {
-    const w = world(anPost);
+    const w = new World(anPost);
     w.stored = { uid: "uid-1", loginToken: madeUp("login"), gmid: "" };
     w.routes = [on(JWT, jwt()), on(ITEMS, items(item(42)))];
     const [parcel] = (await w.fetchAccount({}, secret)).snapshots;
@@ -98,7 +98,7 @@ describe("An Post account", () => {
   });
 
   it("signs in again only when the service says the session expired", async () => {
-    const w = world(anPost);
+    const w = new World(anPost);
     w.stored = { uid: "uid-1", loginToken: madeUp("old"), gmid: "" };
     signInRoutes(w);
     w.routes.push(on(JWT, json({ errorCode: 403007 }), jwt()), on(ITEMS, items()));
@@ -107,11 +107,11 @@ describe("An Post account", () => {
   });
 
   it("tells wrong credentials apart from a network error", async () => {
-    const refused = world(anPost);
+    const refused = new World(anPost);
     refused.routes = [on(BOOT, json({})), on(LOGIN, json({ errorCode: 403042 }))];
     await expect(refused.fetchAccount({}, secret)).rejects.toBeInstanceOf(SignInRejectedError);
 
-    const offline = world(anPost);
+    const offline = new World(anPost);
     offline.stored = { uid: "uid-1", loginToken: madeUp("login"), gmid: "" };
     offline.routes = [on(JWT, new Error("offline"))];
     await expect(offline.fetchAccount({}, secret)).rejects.toBeInstanceOf(TransientError);

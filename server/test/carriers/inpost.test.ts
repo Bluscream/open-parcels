@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { inpost } from "../../src/carriers/inpost/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, json } from "./harness.js";
 
 // Made-up codes and values only.
 const ACTIVE = "990000000000000000000001";
@@ -17,54 +17,23 @@ type Reply = { status: number; body: unknown } | Error;
 /** Routes requests by "METHOD host/path" to scripted replies, used in order. */
 function fake(routes: Record<string, Reply[]>) {
   const calls: { key: string; auth: string | null; body: string | null }[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    const key = `${init.method ?? "GET"} ${url.hostname}${url.pathname}`;
-    calls.push({
-      key,
-      auth: new Headers(init.headers).get("authorization"),
-      body: init.body instanceof URLSearchParams ? init.body.toString() : null,
-    });
-    const reply = routes[key]?.shift() ?? { status: 404, body: {} };
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    return Promise.resolve(
-      new Response(JSON.stringify(reply.body), {
-        status: reply.status,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      calls.push({
+        key: call.key,
+        auth: call.headers.get("authorization"),
+        body: call.init.body instanceof URLSearchParams ? call.init.body.toString() : null,
+      });
+      const reply = routes[call.key]?.shift() ?? { status: 404, body: {} };
+      return reply instanceof Error ? reply : json(reply.body, reply.status);
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike, session: unknown = null) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const saved: unknown[] = [];
-  const unknown: string[] = [];
-  let current = session;
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(inpost.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: {
-      load: () => current,
-      save: (value) => {
-        current = value;
-        saved.push(value);
-        return Promise.resolve();
-      },
-    },
-    reportUnknown: (_kind, key) => {
-      unknown.push(key);
-    },
-  };
-  return { base, saved, unknown };
+  const { base, saved, unknownKeys } = fakeContext(inpost.http, fetchImpl, { session });
+  return { base, saved, unknown: unknownKeys };
 }
 
 const TRACK = (code: string) => `GET inposteasy.com/api/tracking/${code}`;

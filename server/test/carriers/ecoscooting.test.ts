@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ecoscooting } from "../../src/carriers/ecoscooting/index.js";
 import { register } from "../../src/engine/registry.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up references and values only.
 const CODE = "ECTEST00000001";
@@ -27,18 +27,23 @@ function reply(...statuses: ReturnType<typeof step>[]) {
 
 describe("Ecoscooting tracking", () => {
   it("maps the newest code and turns out-for-delivery into a window to the day's end", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: reply(
-            step("LM_DELIVERY_DEPART", "1763452800000", "Out for delivery"),
-            step("SC_INBOUND", "1763380800000", "Arrived at sorting centre"),
-          ),
+          [ROUTE]: [
+            json(
+              reply(
+                step("LM_DELIVERY_DEPART", "1763452800000", "Out for delivery"),
+                step("SC_INBOUND", "1763380800000", "Arrived at sorting centre"),
+              ),
+              200,
+            ),
+          ],
         },
-      ],
-    });
-    const { base, unknown } = harness(ecoscooting.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(ecoscooting.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(new URLSearchParams(calls[0]?.body ?? "").get("logistics_interface")).toContain(CODE);
     expect(found).toMatchObject({
@@ -55,38 +60,48 @@ describe("Ecoscooting tracking", () => {
   });
 
   it("maps return codes by their prefix and treats the query-failed code as not found", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
-        { status: 200, body: reply(step("RT_SOMETHING", "1763452800000", "Returning")) },
-        { status: 200, body: { success: "false", errorCode: "P-011-0201-00-00-502" } },
-      ],
-    });
-    const { base } = harness(ecoscooting.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [
+            json(reply(step("RT_SOMETHING", "1763452800000", "Returning")), 200),
+            json({ success: "false", errorCode: "P-011-0201-00-00-502" }, 200),
+          ],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(ecoscooting.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots[0]?.status).toBe("returning");
     expect((await plugin.track(base, {}, null, [CODE])).snapshots).toEqual([]);
   });
 
   it("reports an unknown code but falls back to the newest known one", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: reply(
-            step("NEW_CODE", "1763452800000", "New"),
-            step("SC_INBOUND", "1763380800000", "Sorted"),
-          ),
+          [ROUTE]: [
+            json(
+              reply(
+                step("NEW_CODE", "1763452800000", "New"),
+                step("SC_INBOUND", "1763380800000", "Sorted"),
+              ),
+              200,
+            ),
+          ],
         },
-      ],
-    });
-    const { base, unknown } = harness(ecoscooting.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(ecoscooting.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots[0]?.status).toBe("in_transit");
     expect(unknown).toEqual(["status:NEW_CODE"]);
   });
 
   it("stops when the answer is for another reference", async () => {
     const other = { ...reply(), packageParam: { trackingNumber: "OTHER0000001" } };
-    const { fetchImpl } = scripted({ [ROUTE]: [{ status: 200, body: other }] });
-    const { base } = harness(ecoscooting.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([routeTable({ [ROUTE]: [json(other, 200)] }, "host")]);
+    const { base } = fakeContext(ecoscooting.http, fetchImpl);
     await expect(plugin.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canadapost } from "../../src/carriers/canadapost/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { bodyOf, json, on, World, type Route } from "./kit-harness.js";
+import { json, onFragment, World, type Route } from "./harness.js";
 
 // Made-up codes and values only.
 const PIN = "TESTPIN000000001";
@@ -33,7 +33,8 @@ function detail(pin: string, status: string, extra: Record<string, unknown> = {}
   };
 }
 
-const detailRoute = (pin: string, body: unknown): Route => on(`/package/${pin}/detail`, json(body));
+const detailRoute = (pin: string, body: unknown): Route =>
+  onFragment(`/package/${pin}/detail`, json(body));
 const tokens = (n: number) => ({
   access_token: `at-${n}`,
   id_token: `id-${n}`,
@@ -101,15 +102,15 @@ describe("Canada Post account", () => {
   it("signs in, lists the PINs and reads each one's detail", async () => {
     const world = new World(canadapost);
     world.routes = [
-      on("/oauth20/token", json(tokens(1))),
-      on("/graphql", json(list(PIN))),
+      onFragment("/oauth20/token", json(tokens(1))),
+      onFragment("/graphql", json(list(PIN))),
       detailRoute(PIN, detail(PIN, "Delivered", { delivered: true })),
     ];
     const result = await world.fetchAccount({}, credentials);
     expect(result.snapshots.map((p) => [p.barcode, p.status, p.delivered])).toEqual([
       [PIN, "delivered", true],
     ]);
-    expect(bodyOf(world.calls[0])).toContain("grant_type=password");
+    expect(world.calls[0]?.body ?? "").toContain("grant_type=password");
     expect(new Headers(world.calls[1]?.init.headers).get("authorization")).toBe("id-1");
     expect(world.stored).toMatchObject({ idToken: "id-1", refreshToken: "rt-1" });
   });
@@ -118,25 +119,29 @@ describe("Canada Post account", () => {
     const world = new World(canadapost);
     world.stored = { accessToken: "a", idToken: "old", refreshToken: "rt-0", expiresAt: null };
     world.routes = [
-      on("/graphql", json({ errors: [{ errorType: "UnauthorizedException" }] }), json(list())),
-      on("/oauth20/token", json(tokens(2))),
+      onFragment(
+        "/graphql",
+        json({ errors: [{ errorType: "UnauthorizedException" }] }),
+        json(list()),
+      ),
+      onFragment("/oauth20/token", json(tokens(2))),
     ];
     await world.fetchAccount({}, credentials);
-    expect(world.paths().filter((p) => p.includes("token"))).toHaveLength(1);
-    expect(bodyOf(world.calls[1])).toContain("grant_type=refresh_token");
+    expect(world.requests().filter((p) => p.includes("token"))).toHaveLength(1);
+    expect(world.calls[1]?.body ?? "").toContain("grant_type=refresh_token");
   });
 
   it("asks the user to sign in again when the password is refused", async () => {
     const world = new World(canadapost);
-    world.routes = [on("/oauth20/token", json({ error: "invalid_grant" }, 401))];
+    world.routes = [onFragment("/oauth20/token", json({ error: "invalid_grant" }, 401))];
     await expect(world.fetchAccount({}, credentials)).rejects.toBeInstanceOf(SignInRejectedError);
   });
 
   it("never signs in again on a network error", async () => {
     const world = new World(canadapost);
     world.stored = { accessToken: "a", idToken: "old", refreshToken: "rt-0", expiresAt: null };
-    world.routes = [on("/graphql", new Error("ECONNRESET"))];
+    world.routes = [onFragment("/graphql", new Error("ECONNRESET"))];
     await expect(world.fetchAccount({}, credentials)).rejects.toBeInstanceOf(TransientError);
-    expect(world.paths().some((p) => p.includes("token"))).toBe(false);
+    expect(world.requests().some((p) => p.includes("token"))).toBe(false);
   });
 });

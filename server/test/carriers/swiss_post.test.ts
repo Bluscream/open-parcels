@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetWordingCache, swissPost } from "../../src/carriers/swiss_post/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness, type Reply } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(swissPost);
 
 // Made-up codes, places and values only.
 const CODE = "99.00.000000.00000001";
@@ -12,11 +19,8 @@ const RESULT = `GET ${BASE}/api/history/not-included/h-1`;
 const EVENTS = `GET ${BASE}/api/shipment/id/id-1/events`;
 const TEXTS = `GET ${BASE}/core/rest/translations/en/shipment-text-messages`;
 
-const handshake = (n = 1): Reply => ({
-  status: 200,
-  body: { userIdentifier: `<[anonymous]>u-${n}` },
-});
-const registered: Reply = { status: 200, body: { hash: "h-1" } };
+const handshake = (n = 1): Answer => json({ userIdentifier: `<[anonymous]>u-${n}` }, 200);
+const registered = (): Answer => json({ hash: "h-1" }, 200);
 
 function shipment(globalStatus: string, extra: object = {}) {
   return {
@@ -32,8 +36,8 @@ function shipment(globalStatus: string, extra: object = {}) {
 }
 
 /** The handshake answer must carry the CSRF header, which the route harness cannot set. */
-function withCsrf(routes: Record<string, Reply[]>) {
-  const { fetchImpl, calls } = fakeRoutes(routes);
+function withCsrf(routes: Record<string, Answer[]>) {
+  const { fetchImpl, calls } = network(routes);
   const wrapped: typeof fetchImpl = async (url, init) => {
     const response = await fetchImpl(url, init);
     if (url.pathname.endsWith("/api/user") && response.status === 200) {
@@ -55,34 +59,31 @@ describe("Swiss Post tracking", () => {
   it("registers the code, reads the window, weight and worded history", async () => {
     const { fetchImpl, calls } = withCsrf({
       [USER]: [handshake()],
-      [REGISTER]: [registered],
+      [REGISTER]: [registered()],
       [RESULT]: [
-        {
-          status: 200,
-          body: [
+        json(
+          [
             shipment("IN_DELIVERY", {
               deliveryRange: { start: "2026-11-18T09:00:00Z", end: "2026-11-18T12:00:00Z" },
             }),
           ],
-        },
+          200,
+        ),
       ],
       [EVENTS]: [
-        {
-          status: 200,
-          body: [
+        json(
+          [
             { eventCode: "PARCEL.*.65.4000", timestamp: "2026-11-18T07:00:00Z" },
             { eventCode: "PARCEL.*.65.1003", timestamp: "2026-11-17T07:00:00Z" },
           ],
-        },
+          200,
+        ),
       ],
       [TEXTS]: [
-        {
-          status: 200,
-          body: { "shipment-text--": { "PARCEL.*.ALL_PROD.4000.*": "Out for delivery" } },
-        },
+        json({ "shipment-text--": { "PARCEL.*.ALL_PROD.4000.*": "Out for delivery" } }, 200),
       ],
     });
-    const { plugin, base, saved } = harness(swissPost, fetchImpl);
+    const { base, saved } = fakeContext(swissPost.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({
       carrier: "swiss_post",
@@ -108,27 +109,25 @@ describe("Swiss Post tracking", () => {
   it("treats an empty shipment list as not found", async () => {
     const { fetchImpl } = withCsrf({
       [USER]: [handshake()],
-      [REGISTER]: [registered],
-      [RESULT]: [{ status: 200, body: [] }],
+      [REGISTER]: [registered()],
+      [RESULT]: [json([], 200)],
     });
-    const { plugin, base } = harness(swissPost, fetchImpl);
+    const { base } = fakeContext(swissPost.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE, "../x"])).snapshots).toEqual([]);
   });
 
   it("reports an unknown global status and keeps the delivered flag", async () => {
     const { fetchImpl } = withCsrf({
       [USER]: [handshake()],
-      [REGISTER]: [registered],
+      [REGISTER]: [registered()],
       [RESULT]: [
-        {
-          status: 200,
-          body: [
-            shipment("SOMETHING_NEW", { delivered: true, deliveryDate: "2026-11-18T10:00:00Z" }),
-          ],
-        },
+        json(
+          [shipment("SOMETHING_NEW", { delivered: true, deliveryDate: "2026-11-18T10:00:00Z" })],
+          200,
+        ),
       ],
     });
-    const { plugin, base, unknown } = harness(swissPost, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(swissPost.http, fetchImpl);
     const [parcel] = (await plugin.track(base, { eventHistory: false }, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({ status: null, delivered: true, plannedFrom: null });
     expect(unknown).toEqual(["SOMETHING_NEW"]);
@@ -137,13 +136,10 @@ describe("Swiss Post tracking", () => {
   it("renews an expired session once, then gives up", async () => {
     const stored = { jar: null, user: "<[anonymous]>old", csrf: "old" };
     const { fetchImpl, calls } = withCsrf({
-      [REGISTER]: [
-        { status: 403, body: {} },
-        { status: 403, body: {} },
-      ],
+      [REGISTER]: [json({}, 403), json({}, 403)],
       [USER]: [handshake(2)],
     });
-    const { plugin, base } = harness(swissPost, fetchImpl, stored);
+    const { base } = fakeContext(swissPost.http, fetchImpl, { session: stored });
     await expect(plugin.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );
@@ -153,7 +149,7 @@ describe("Swiss Post tracking", () => {
   it("never renews the session after a network error", async () => {
     const stored = { jar: null, user: "<[anonymous]>old", csrf: "old" };
     const { fetchImpl, calls } = withCsrf({ [REGISTER]: [new Error("reset")] });
-    const { plugin, base } = harness(swissPost, fetchImpl, stored);
+    const { base } = fakeContext(swissPost.http, fetchImpl, { session: stored });
     await expect(plugin.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(TransientError);
     expect(calls.map((c) => c.key)).toEqual([REGISTER]);
   });
@@ -161,11 +157,11 @@ describe("Swiss Post tracking", () => {
   it("keeps the parcel when the timeline fails", async () => {
     const { fetchImpl } = withCsrf({
       [USER]: [handshake()],
-      [REGISTER]: [registered],
-      [RESULT]: [{ status: 200, body: [shipment("TO_BE_DELIVERED")] }],
-      [EVENTS]: [{ status: 500, body: {} }],
+      [REGISTER]: [registered()],
+      [RESULT]: [json([shipment("TO_BE_DELIVERED")], 200)],
+      [EVENTS]: [json({}, 500)],
     });
-    const { plugin, base } = harness(swissPost, fetchImpl);
+    const { base } = fakeContext(swissPost.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({ status: "in_transit", history: [] });
   });

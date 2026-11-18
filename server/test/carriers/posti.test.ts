@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { posti } from "../../src/carriers/posti/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./post-harness.js";
+import { json, onPrefix, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "JJFI00000000000001";
@@ -53,8 +53,8 @@ function hit(main: string, newest: string, extra: Record<string, unknown> = {}) 
 describe("Posti tracking", () => {
   it("mints an anonymous token, maps the events and reads the window", async () => {
     const world = new World(posti, [
-      on(MINT, token(1)),
-      on(SEARCH, hit("IN_TRANSPORT", "Item is in delivery transportation.")),
+      onPrefix(MINT, token(1)),
+      onPrefix(SEARCH, hit("IN_TRANSPORT", "Item is in delivery transportation.")),
     ]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
@@ -79,8 +79,8 @@ describe("Posti tracking", () => {
 
   it("takes a delivery from status.main", async () => {
     const world = new World(posti, [
-      on(MINT, token(1)),
-      on(SEARCH, hit("DELIVERED", "The item has been delivered.")),
+      onPrefix(MINT, token(1)),
+      onPrefix(SEARCH, hit("DELIVERED", "The item has been delivered.")),
     ]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel).toMatchObject({
@@ -93,16 +93,16 @@ describe("Posti tracking", () => {
 
   it("treats zero hits as not found", async () => {
     const world = new World(posti, [
-      on(MINT, token(1)),
-      on(SEARCH, json({ data: { consumerSearchShipments: { totalHits: 0, hits: [] } } })),
+      onPrefix(MINT, token(1)),
+      onPrefix(SEARCH, json({ data: { consumerSearchShipments: { totalHits: 0, hits: [] } } })),
     ]);
     expect((await world.track([CODE, "../x"])).snapshots).toEqual([]);
   });
 
   it("reports new event wording", async () => {
     const world = new World(posti, [
-      on(MINT, token(1)),
-      on(SEARCH, hit("DELIVERED", "Something new happened.")),
+      onPrefix(MINT, token(1)),
+      onPrefix(SEARCH, hit("DELIVERED", "Something new happened.")),
     ]);
     await world.track([CODE]);
     expect(world.unknown).toEqual(["event_text:something new happened"]);
@@ -111,15 +111,18 @@ describe("Posti tracking", () => {
   it("mints once more when the token is refused, then gives up", async () => {
     const refused = json({ data: null, errors: [{ errorType: "Unauthorized" }] });
     const world = new World(posti, [
-      on(MINT, token(1), token(2)),
-      on(SEARCH, refused, json({}, 401)),
+      onPrefix(MINT, token(1), token(2)),
+      onPrefix(SEARCH, refused, json({}, 401)),
     ]);
     await expect(world.track([CODE])).rejects.toBeInstanceOf(TransientError);
-    expect(world.paths().filter((p) => p === MINT)).toHaveLength(2);
+    expect(world.requests().filter((p) => p === MINT)).toHaveLength(2);
   });
 
   it("stops on a network error without minting again", async () => {
-    const world = new World(posti, [on(MINT, token(1)), on(SEARCH, new TypeError("offline"))]);
+    const world = new World(posti, [
+      onPrefix(MINT, token(1)),
+      onPrefix(SEARCH, new TypeError("offline")),
+    ]);
     await expect(world.track([CODE, OTHER])).rejects.toBeInstanceOf(TransientError);
     expect(world.calls).toHaveLength(2);
   });

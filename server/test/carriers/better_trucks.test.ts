@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { betterTrucks } from "../../src/carriers/better_trucks/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "BTS_TEST0000001";
@@ -28,7 +28,7 @@ function found(current: string, at: string, history: ReturnType<typeof event>[])
 
 describe("Better Trucks tracking", () => {
   it("reads status, hub scans, history and the expected delivery", async () => {
-    const w = world(betterTrucks);
+    const w = new World(betterTrucks);
     w.routes = [
       on(
         ROUTE,
@@ -61,7 +61,7 @@ describe("Better Trucks tracking", () => {
   });
 
   it("marks delivery, drops the window and honours a zone option", async () => {
-    const w = world(betterTrucks);
+    const w = new World(betterTrucks);
     w.routes = [
       on(
         ROUTE,
@@ -79,7 +79,7 @@ describe("Better Trucks tracking", () => {
   });
 
   it("treats the UNKNOWN answer as not found", async () => {
-    const w = world(betterTrucks);
+    const w = new World(betterTrucks);
     w.routes = [
       on(
         ROUTE,
@@ -94,7 +94,7 @@ describe("Better Trucks tracking", () => {
   });
 
   it("reports an unmapped status once", async () => {
-    const w = world(betterTrucks);
+    const w = new World(betterTrucks);
     w.routes = [
       on(
         ROUTE,
@@ -111,10 +111,10 @@ describe("Better Trucks tracking", () => {
   });
 
   it("passes unexpected answers and network errors on", async () => {
-    const down = world(betterTrucks);
+    const down = new World(betterTrucks);
     down.routes = [on(ROUTE, json({}, 500))];
     await expect(down.track([CODE])).rejects.toBeInstanceOf(TransientError);
-    const offline = world(betterTrucks);
+    const offline = new World(betterTrucks);
     offline.routes = [on(ROUTE, new Error("offline"))];
     await expect(offline.track([CODE])).rejects.toBeInstanceOf(TransientError);
   });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { orlenPaczka } from "../../src/carriers/orlen_paczka/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, raw, type Answer } from "./harness.js";
 
 // Made-up codes and values only.
 const ACTIVE = "9000000000000001";
@@ -12,42 +12,24 @@ const MISSING = "9000000000000003";
 
 const plugin = register(orlenPaczka);
 
-type Reply = { status: number; body: string } | Error;
-
 const jsonp = (payload: unknown) => `callback(${JSON.stringify(payload)});`;
 
-function fakeOrlen(routes: Record<string, Reply[]>) {
+/** Answers by the `id` query parameter; unscripted codes get an empty status. */
+function fakeOrlen(routes: Record<string, Answer[]>) {
   const calls: string[] = [];
-  const fetchImpl: FetchLike = (url) => {
-    const code = url.searchParams.get("id") ?? "";
-    calls.push(code);
-    const reply = routes[code]?.shift() ?? { status: 200, body: jsonp({ status: "" }) };
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    return Promise.resolve(new Response(reply.body, { status: reply.status }));
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      const code = call.url.searchParams.get("id") ?? "";
+      calls.push(code);
+      return routes[code]?.shift() ?? raw(jsonp({ status: "" }));
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const unknown: string[] = [];
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(orlenPaczka.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: { load: () => null, save: () => Promise.resolve() },
-    reportUnknown: (_kind, key) => {
-      unknown.push(key);
-    },
-  };
-  return { base, unknown };
+  const { base, unknownKeys } = fakeContext(orlenPaczka.http, fetchImpl);
+  return { base, unknown: unknownKeys };
 }
 
 function answer(code: string, history: [string | number, string, string][]) {
@@ -63,14 +45,14 @@ describe("ORLEN Paczka public tracking", () => {
   it("maps the latest event, converts Warsaw time and keeps the history", async () => {
     const { fetchImpl } = fakeOrlen({
       [ACTIVE]: [
-        {
-          status: 200,
-          body: answer(ACTIVE, [
+        raw(
+          answer(ACTIVE, [
             [200, "16-11-2026, 10:00", "Nadana"],
             ["300", "17-07-2026, 10:00", "W drodze"],
             ["1000", "18-11-2026, 09:30", "Doręczona"],
           ]),
-        },
+          200,
+        ),
       ],
     });
     const { base } = context(fetchImpl);
@@ -98,10 +80,7 @@ describe("ORLEN Paczka public tracking", () => {
   it("tells a pickup point from a hand-off abroad for code 690", async () => {
     const { fetchImpl } = fakeOrlen({
       [PICKUP]: [
-        {
-          status: 200,
-          body: answer(PICKUP, [["690", "18-11-2026, 08:00", "Czeka na odbiór w punkcie"]]),
-        },
+        raw(answer(PICKUP, [["690", "18-11-2026, 08:00", "Czeka na odbiór w punkcie"]]), 200),
       ],
     });
     const { base } = context(fetchImpl);
@@ -119,8 +98,8 @@ describe("ORLEN Paczka public tracking", () => {
 
   it("reports an unmapped code and keeps a refused code as unknown", async () => {
     const { fetchImpl } = fakeOrlen({
-      [ACTIVE]: [{ status: 200, body: answer(ACTIVE, [["777", "18-11-2026, 08:00", "Nowy"]]) }],
-      [PICKUP]: [{ status: 200, body: jsonp({ err: 1004 }) }],
+      [ACTIVE]: [raw(answer(ACTIVE, [["777", "18-11-2026, 08:00", "Nowy"]]), 200)],
+      [PICKUP]: [raw(jsonp({ err: 1004 }), 200)],
     });
     const { base, unknown } = context(fetchImpl);
     const result = await plugin.track(base, {}, null, [ACTIVE, PICKUP]);
@@ -138,12 +117,12 @@ describe("ORLEN Paczka public tracking", () => {
     ).rejects.toBeInstanceOf(TransientError);
     expect(network.calls).toEqual([ACTIVE]);
 
-    const server = fakeOrlen({ [ACTIVE]: [{ status: 500, body: "" }] });
+    const server = fakeOrlen({ [ACTIVE]: [raw("", 500)] });
     await expect(
       plugin.track(context(server.fetchImpl).base, {}, null, [ACTIVE]),
     ).rejects.toBeInstanceOf(TransientError);
 
-    const html = fakeOrlen({ [ACTIVE]: [{ status: 200, body: "<html>blocked</html>" }] });
+    const html = fakeOrlen({ [ACTIVE]: [raw("<html>blocked</html>", 200)] });
     await expect(
       plugin.track(context(html.fetchImpl).base, {}, null, [ACTIVE]),
     ).rejects.toBeInstanceOf(UnexpectedResponseError);

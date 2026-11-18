@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { fedex } from "../../src/carriers/fedex/index.js";
 import { register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up tracking numbers and keys only; the secret is assembled so no literal is assigned.
 const CODE = "990000000001";
@@ -12,7 +12,7 @@ const TOKEN = "POST apis.fedex.com/oauth/token";
 const TRACK = "POST apis.fedex.com/track/v1/trackingnumbers";
 const plugin = register(fedex);
 
-const token = (value: string) => ({ status: 200, body: { access_token: value, expires_in: 3600 } });
+const token = (value: string) => json({ access_token: value, expires_in: 3600 }, 200);
 
 function result(code: string, extra: Record<string, unknown> = {}) {
   return {
@@ -47,11 +47,16 @@ function result(code: string, extra: Record<string, unknown> = {}) {
 
 describe("FedEx tracking", () => {
   it("signs in with the key, keeps the token and reads status, window, weight and history", async () => {
-    const { fetchImpl, calls } = scripted({
-      [TOKEN]: [token("t1")],
-      [TRACK]: [{ status: 200, body: result("IT") }],
-    });
-    const { base, saved, unknown } = harness(fedex.http, fetchImpl);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [token("t1")],
+          [TRACK]: [json(result("IT"), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, saved, unknown } = fakeContext(fedex.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, SECRET, [CODE])).snapshots;
     expect(calls[1]?.headers.get("authorization")).toBe("Bearer t1");
     expect(saved).toHaveLength(1);
@@ -75,14 +80,16 @@ describe("FedEx tracking", () => {
   it("reuses a stored token and renews it once when FedEx refuses it", async () => {
     const keyBase = createHash("sha256").update(SECRET.clientId).digest("hex").slice(0, 16);
     const stored = { base: keyBase, accessToken: "old", expiresAt: Date.parse("2027-01-01") };
-    const { fetchImpl, calls } = scripted({
-      [TOKEN]: [token("t2")],
-      [TRACK]: [
-        { status: 401, body: {} },
-        { status: 200, body: result("DL") },
-      ],
-    });
-    const { base } = harness(fedex.http, fetchImpl, stored);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [token("t2")],
+          [TRACK]: [json({}, 401), json(result("DL"), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(fedex.http, fetchImpl, { session: stored });
     const [found] = (await plugin.track(base, {}, SECRET, [CODE])).snapshots;
     expect(calls.map((call) => call.key)).toEqual([TRACK, TOKEN, TRACK]);
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer old");
@@ -91,11 +98,16 @@ describe("FedEx tracking", () => {
 
   it("never sends a token stored for another key", async () => {
     const stored = { base: "other", accessToken: "old", expiresAt: Date.parse("2027-01-01") };
-    const { fetchImpl, calls } = scripted({
-      [TOKEN]: [token("t2")],
-      [TRACK]: [{ status: 200, body: result("IT") }],
-    });
-    const { base } = harness(fedex.http, fetchImpl, stored);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [token("t2")],
+          [TRACK]: [json(result("IT"), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(fedex.http, fetchImpl, { session: stored });
     await plugin.track(base, {}, SECRET, [CODE]);
     expect(calls.map((call) => call.key)).toEqual([TOKEN, TRACK]);
   });
@@ -104,32 +116,42 @@ describe("FedEx tracking", () => {
     const notFound = {
       output: { completeTrackResults: [{ trackResults: [{ error: { code: "NOTFOUND" } }] }] },
     };
-    const { fetchImpl } = scripted({
-      [TOKEN]: [token("t1")],
-      [TRACK]: [{ status: 200, body: notFound }],
-    });
-    const { base } = harness(fedex.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [token("t1")],
+          [TRACK]: [json(notFound, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(fedex.http, fetchImpl);
     expect((await plugin.track(base, {}, SECRET, [CODE])).snapshots).toEqual([]);
   });
 
   it("reports an unknown code", async () => {
-    const { fetchImpl } = scripted({
-      [TOKEN]: [token("t1")],
-      [TRACK]: [{ status: 200, body: result("ZZ") }],
-    });
-    const { base, unknown } = harness(fedex.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [token("t1")],
+          [TRACK]: [json(result("ZZ"), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(fedex.http, fetchImpl);
     expect((await plugin.track(base, {}, SECRET, [CODE])).snapshots[0]?.status).toBeNull();
     expect(unknown).toEqual(["status_code:ZZ"]);
   });
 
   it("asks for a new key only when FedEx refuses it, never on a network error", async () => {
-    const refused = scripted({ [TOKEN]: [{ status: 401, body: { errors: [] } }] });
-    const first = harness(fedex.http, refused.fetchImpl);
+    const refused = fakeNetwork([routeTable({ [TOKEN]: [json({ errors: [] }, 401)] }, "host")]);
+    const first = fakeContext(fedex.http, refused.fetchImpl);
     await expect(plugin.track(first.base, {}, SECRET, [CODE])).rejects.toBeInstanceOf(
       SignInRejectedError,
     );
-    const offline = scripted({ [TOKEN]: [new Error("socket hang up")] });
-    const second = harness(fedex.http, offline.fetchImpl);
+    const offline = fakeNetwork([routeTable({ [TOKEN]: [new Error("socket hang up")] }, "host")]);
+    const second = fakeContext(fedex.http, offline.fetchImpl);
     const error: unknown = await plugin
       .track(second.base, {}, SECRET, [CODE])
       .catch((e: unknown) => e);

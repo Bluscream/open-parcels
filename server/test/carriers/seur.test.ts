@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { seur } from "../../src/carriers/seur/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness, type Reply } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(seur);
 
 // Made-up values only.
 const EMAIL = "tester@example.invalid";
@@ -10,8 +17,8 @@ const TOKEN = "POST sso.seur.com/auth/realms/WEB_PUBLICA_PRO/protocol/openid-con
 const PROFILE = "POST www.seur.com/miseur-contratacion/backend/consultarDatosUsuario";
 const INBOX = "POST www.seur.com/miseur-contratacion/backend/consultarMisEnvios";
 
-const token = (n: number): Reply => ({ status: 200, body: { access_token: `at-${n}` } });
-const profile: Reply = { status: 200, body: { usuario: { uuid: "u-1", username: EMAIL } } };
+const token = (n: number): Answer => json({ access_token: `at-${n}` }, 200);
+const profile = (): Answer => json({ usuario: { uuid: "u-1", username: EMAIL } }, 200);
 
 function shipment(code: string, situations: [string, string][], extra: object = {}) {
   return {
@@ -24,16 +31,14 @@ function shipment(code: string, situations: [string, string][], extra: object = 
   };
 }
 
-const lists = (recibidos: unknown[], enviados: unknown[] = []): Reply => ({
-  status: 200,
-  body: { recibidos, enviados },
-});
+const lists = (recibidos: unknown[], enviados: unknown[] = []): Answer =>
+  json({ recibidos, enviados }, 200);
 
 describe("SEUR account", () => {
   it("signs in, stores the token and maps incoming and outgoing shipments", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
+    const { fetchImpl, calls } = network({
       [TOKEN]: [token(1)],
-      [PROFILE]: [profile],
+      [PROFILE]: [profile()],
       [INBOX]: [
         lists(
           [
@@ -47,7 +52,7 @@ describe("SEUR account", () => {
         ),
       ],
     });
-    const { plugin, base, saved } = harness(seur, fetchImpl);
+    const { base, saved } = fakeContext(seur.http, fetchImpl);
     const result = await plugin.fetchAccount(base, {}, secret);
     expect(result.complete).toBe(true);
     expect(result.snapshots[0]).toMatchObject({
@@ -76,65 +81,62 @@ describe("SEUR account", () => {
   });
 
   it("returns an empty list when the account has no shipments", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [TOKEN]: [token(1)],
-      [PROFILE]: [profile],
+      [PROFILE]: [profile()],
       [INBOX]: [lists([])],
     });
-    const { plugin, base } = harness(seur, fetchImpl);
+    const { base } = fakeContext(seur.http, fetchImpl);
     expect((await plugin.fetchAccount(base, {}, secret)).snapshots).toEqual([]);
   });
 
   it("reports an unknown situation code", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [TOKEN]: [token(1)],
-      [PROFILE]: [profile],
+      [PROFILE]: [profile()],
       [INBOX]: [lists([shipment("TEST0003", [["ZZ999", "2026-11-18T08:00:00Z"]])])],
     });
-    const { plugin, base, unknown } = harness(seur, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(seur.http, fetchImpl);
     const [parcel] = (await plugin.fetchAccount(base, {}, secret)).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual(["ZZ999"]);
   });
 
   it("raises SignInRejectedError when SEUR refuses the password", async () => {
-    const { fetchImpl } = fakeRoutes({
-      [TOKEN]: [{ status: 401, body: { error: "invalid_grant" } }],
+    const { fetchImpl } = network({
+      [TOKEN]: [json({ error: "invalid_grant" }, 401)],
     });
-    const { plugin, base } = harness(seur, fetchImpl);
+    const { base } = fakeContext(seur.http, fetchImpl);
     await expect(plugin.fetchAccount(base, {}, secret)).rejects.toBeInstanceOf(SignInRejectedError);
   });
 
   it("never signs in again after a network error", async () => {
     const stored = { accessToken: "at-0", uuid: "u-1", username: EMAIL };
-    const { fetchImpl, calls } = fakeRoutes({ [INBOX]: [new Error("socket hang up")] });
-    const { plugin, base } = harness(seur, fetchImpl, stored);
+    const { fetchImpl, calls } = network({ [INBOX]: [new Error("socket hang up")] });
+    const { base } = fakeContext(seur.http, fetchImpl, { session: stored });
     await expect(plugin.fetchAccount(base, {}, secret)).rejects.toBeInstanceOf(TransientError);
     expect(calls.map((c) => c.key)).toEqual([INBOX]);
   });
 
   it("renews a refused token exactly once", async () => {
     const stored = { accessToken: "at-0", uuid: "u-1", username: EMAIL };
-    const { fetchImpl, calls } = fakeRoutes({
-      [INBOX]: [
-        { status: 401, body: {} },
-        { status: 401, body: {} },
-      ],
+    const { fetchImpl, calls } = network({
+      [INBOX]: [json({}, 401), json({}, 401)],
       [TOKEN]: [token(2)],
-      [PROFILE]: [profile],
+      [PROFILE]: [profile()],
     });
-    const { plugin, base } = harness(seur, fetchImpl, stored);
+    const { base } = fakeContext(seur.http, fetchImpl, { session: stored });
     await expect(plugin.fetchAccount(base, {}, secret)).rejects.toBeInstanceOf(SignInRejectedError);
     expect(calls.filter((c) => c.key === TOKEN)).toHaveLength(1);
   });
 
   it("stops on a shipment list with the wrong shape", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [TOKEN]: [token(1)],
-      [PROFILE]: [profile],
-      [INBOX]: [{ status: 200, body: { recibidos: "nope" } }],
+      [PROFILE]: [profile()],
+      [INBOX]: [json({ recibidos: "nope" }, 200)],
     });
-    const { plugin, base } = harness(seur, fetchImpl);
+    const { base } = fakeContext(seur.http, fetchImpl);
     await expect(plugin.fetchAccount(base, {}, secret)).rejects.toThrow(/unexpected shape/);
   });
 });

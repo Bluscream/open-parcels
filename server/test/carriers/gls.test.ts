@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { gls } from "../../src/carriers/gls/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, raw } from "./harness.js";
 
 // Made-up codes, postcodes and names only.
 const CODE = "99000000001";
@@ -15,42 +15,30 @@ type Reply = { status: number; body: unknown; html?: boolean } | Error;
 /** Routes requests by host and the last path segment to scripted replies, used in order. */
 function fake(routes: Record<string, Reply[]>) {
   const calls: URL[] = [];
-  const fetchImpl: FetchLike = (url) => {
-    calls.push(url);
-    const segment = url.pathname.split("/").filter(Boolean);
-    const key =
-      url.hostname === "apm.gls.nl" ? `nl ${segment[3] ?? ""}` : segment.slice(-2).join("/");
-    const reply = routes[key]?.shift() ?? { status: 204, body: "" };
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    if (reply.status === 204) {
-      return Promise.resolve(new Response(null, { status: 204 }));
-    }
-    const body = reply.html === true ? "<html>Maintenance</html>" : JSON.stringify(reply.body);
-    return Promise.resolve(new Response(body, { status: reply.status }));
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      const url = call.url;
+      calls.push(url);
+      const segment = url.pathname.split("/").filter(Boolean);
+      const key =
+        url.hostname === "apm.gls.nl" ? `nl ${segment[3] ?? ""}` : segment.slice(-2).join("/");
+      const reply = routes[key]?.shift() ?? { status: 204, body: "" };
+      if (reply instanceof Error) {
+        return reply;
+      }
+      if (reply.status === 204) {
+        return new Response(null, { status: 204 });
+      }
+      const body = reply.html === true ? "<html>Maintenance</html>" : JSON.stringify(reply.body);
+      return raw(body, reply.status);
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const unknown: string[] = [];
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(gls.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: { load: () => null, save: () => Promise.resolve() },
-    reportUnknown: (_kind, key) => {
-      unknown.push(key);
-    },
-  };
-  return { base, unknown };
+  const { base, unknownKeys } = fakeContext(gls.http, fetchImpl);
+  return { base, unknown: unknownKeys };
 }
 
 function nlParcel(state: number, extra: Record<string, unknown> = {}) {

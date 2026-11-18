@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { sameday } from "../../src/carriers/sameday/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(sameday);
 
 // Made-up codes and values only.
 const AWB = "9XTEST000001";
@@ -19,21 +26,21 @@ const event = (statusStateId: number, statusDate: string, statusState: string) =
 
 describe("Sameday tracking", () => {
   it("reads the newest event as the status and keeps the history newest first", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
+    const { fetchImpl, calls } = network({
       [route(AWB)]: [
-        {
-          status: 200,
-          body: {
+        json(
+          {
             awbHistory: [
               event(1, "2026-11-16T10:00:00Z", "Comanda plasata"),
               event(4, "2026-11-18T08:00:00Z", "In livrare"),
               event(3, "2026-11-17T10:00:00Z", "In depozit"),
             ],
           },
-        },
+          200,
+        ),
       ],
     });
-    const { plugin, base } = harness(sameday, fetchImpl);
+    const { base } = fakeContext(sameday.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [AWB]);
     expect(result.complete).toBe(true);
     expect(result.snapshots[0]).toMatchObject({
@@ -55,12 +62,12 @@ describe("Sameday tracking", () => {
   });
 
   it("uses the configured country host and marks the locker as a pickup point", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [route(AWB, "hu")]: [
-        { status: 200, body: { awbHistory: [event(18, "2026-11-18T08:00:00Z", "Easybox")] } },
+        json({ awbHistory: [event(18, "2026-11-18T08:00:00Z", "Easybox")] }, 200),
       ],
     });
-    const { plugin, base } = harness(sameday, fetchImpl);
+    const { base } = fakeContext(sameday.http, fetchImpl);
     const [parcel] = (await plugin.track(base, { country: "hu" }, null, [AWB])).snapshots;
     expect(parcel).toMatchObject({
       status: "at_pickup_point",
@@ -70,36 +77,32 @@ describe("Sameday tracking", () => {
   });
 
   it("treats 404 and an empty history as not found and skips implausible codes", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
-      [route(AWB)]: [{ status: 404, body: { error: { code: 404 } } }],
-      [route(OTHER)]: [{ status: 200, body: { awbHistory: [] } }],
+    const { fetchImpl, calls } = network({
+      [route(AWB)]: [json({ error: { code: 404 } }, 404)],
+      [route(OTHER)]: [json({ awbHistory: [] }, 200)],
     });
-    const { plugin, base } = harness(sameday, fetchImpl);
+    const { base } = fakeContext(sameday.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [AWB, OTHER, "../x"]);
     expect(result.snapshots).toEqual([]);
     expect(calls).toHaveLength(2);
   });
 
   it("reports an unmapped status id and leaves the status null", async () => {
-    const { fetchImpl } = fakeRoutes({
-      [route(AWB)]: [
-        { status: 200, body: { awbHistory: [event(99, "2026-11-18T08:00:00Z", "Nou")] } },
-      ],
+    const { fetchImpl } = network({
+      [route(AWB)]: [json({ awbHistory: [event(99, "2026-11-18T08:00:00Z", "Nou")] }, 200)],
     });
-    const { plugin, base, unknown } = harness(sameday, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(sameday.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [AWB])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual(["99"]);
   });
 
   it("stops on server errors and on answers without a history", async () => {
-    const failing = fakeRoutes({ [route(AWB)]: [{ status: 500, body: {} }] });
-    const one = harness(sameday, failing.fetchImpl);
-    await expect(one.plugin.track(one.base, {}, null, [AWB])).rejects.toBeInstanceOf(
-      TransientError,
-    );
-    const odd = fakeRoutes({ [route(AWB)]: [{ status: 200, body: { something: 1 } }] });
-    const two = harness(sameday, odd.fetchImpl);
-    await expect(two.plugin.track(two.base, {}, null, [AWB])).rejects.toThrow(/AWB history/);
+    const failing = network({ [route(AWB)]: [json({}, 500)] });
+    const one = fakeContext(sameday.http, failing.fetchImpl);
+    await expect(plugin.track(one.base, {}, null, [AWB])).rejects.toBeInstanceOf(TransientError);
+    const odd = network({ [route(AWB)]: [json({ something: 1 }, 200)] });
+    const two = fakeContext(sameday.http, odd.fetchImpl);
+    await expect(plugin.track(two.base, {}, null, [AWB])).rejects.toThrow(/AWB history/);
   });
 });

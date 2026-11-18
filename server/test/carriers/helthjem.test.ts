@@ -2,16 +2,18 @@ import { describe, expect, it } from "vitest";
 import { helthjem } from "../../src/carriers/helthjem/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { keylessContext, scripted, type Reply } from "./keyless-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, json, raw, type Answer } from "./harness.js";
+
+/** Replies in order; once they run out, 500 with an empty body. */
+const scripted = (replies: Answer[]) => fakeNetwork([inOrder(...replies)], () => raw("", 500));
 
 // Made-up codes and values only.
 const CODE = "TEST00000001";
 const plugin = register(helthjem);
 
-function parcel(status: string, extra: Record<string, unknown> = {}): Reply {
-  return {
-    status: 200,
-    body: {
+function parcel(status: string, extra: Record<string, unknown> = {}): Answer {
+  return json(
+    {
       data: {
         getParcelTrackingDetails: {
           trackingNumber: CODE,
@@ -32,12 +34,13 @@ function parcel(status: string, extra: Record<string, unknown> = {}): Reply {
         },
       },
     },
-  };
+    200,
+  );
 }
 
-async function run(replies: Reply[]) {
+async function run(replies: Answer[]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = keylessContext(helthjem.http, fetchImpl);
+  const { base, unknownKeys: unknown } = fakeContext(helthjem.http, fetchImpl);
   const result = await plugin.track(base, {}, null, [CODE]);
   return { result, calls, unknown };
 }
@@ -69,9 +72,7 @@ describe("helthjem", () => {
   });
 
   it("returns nothing for an unknown reference", async () => {
-    const { result } = await run([
-      { status: 200, body: { data: { getParcelTrackingDetails: null } } },
-    ]);
+    const { result } = await run([json({ data: { getParcelTrackingDetails: null } }, 200)]);
     expect(result.snapshots).toEqual([]);
   });
 
@@ -83,12 +84,10 @@ describe("helthjem", () => {
 
   it("stops on GraphQL errors, HTTP errors and network errors", async () => {
     await expect(
-      run([{ status: 200, body: { errors: [{ message: "bad" }], data: null } }]),
+      run([json({ errors: [{ message: "bad" }], data: null }, 200)]),
     ).rejects.toBeInstanceOf(UnexpectedResponseError);
-    await expect(run([{ status: 200, text: "<html>" }])).rejects.toBeInstanceOf(
-      UnexpectedResponseError,
-    );
-    await expect(run([{ status: 500, text: "" }])).rejects.toBeInstanceOf(TransientError);
+    await expect(run([raw("<html>", 200)])).rejects.toBeInstanceOf(UnexpectedResponseError);
+    await expect(run([raw("", 500)])).rejects.toBeInstanceOf(TransientError);
     await expect(run([new Error("offline")])).rejects.toBeInstanceOf(TransientError);
   });
 });

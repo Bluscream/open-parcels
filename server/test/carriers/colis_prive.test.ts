@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { colisPrive } from "../../src/carriers/colis_prive/index.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { html, on, World } from "./kit-harness.js";
+import { html, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "TESTCP0000001";
@@ -26,7 +26,7 @@ describe("Colis Privé tracking", () => {
   it("reads status, the delivery day and history without the recipient block", async () => {
     const world = new World(colisPrive);
     world.routes = [
-      on(
+      onFragment(
         "detailColis.aspx",
         html(
           page("Your parcel is being delivered by the driver", [
@@ -57,7 +57,7 @@ describe("Colis Privé tracking", () => {
   it("treats a redirect to the start page as not found", async () => {
     const world = new World(colisPrive);
     world.routes = [
-      on(
+      onFragment(
         "detailColis.aspx",
         new Response(null, { status: 302, headers: { location: "/moncolis/Default.aspx" } }),
       ),
@@ -68,7 +68,7 @@ describe("Colis Privé tracking", () => {
   it("reports an unknown sentence and falls back to the furthest stage", async () => {
     const world = new World(colisPrive);
     world.routes = [
-      on(
+      onFragment(
         "detailColis.aspx",
         html(
           page("Something new", [["17/11/2026", "Your parcel was prepared by your webmerchant"]]),
@@ -82,7 +82,7 @@ describe("Colis Privé tracking", () => {
 
   it("stops on a page it does not recognise", async () => {
     const world = new World(colisPrive);
-    world.routes = [on("detailColis.aspx", html("<html>maintenance</html>"))];
+    world.routes = [onFragment("detailColis.aspx", html("<html>maintenance</html>"))];
     await expect(world.track([CODE], config, null)).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 });

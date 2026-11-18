@@ -26,7 +26,7 @@ function gatewayElement(barcode: string, last: Record<string, unknown>, delivere
 }
 
 function gateway(world: World, body: unknown, status = 200) {
-  world.routes.push((url) =>
+  world.routes.push(({ url }) =>
     url.hostname === "api-gw.dhlparcel.nl"
       ? typeof body === "string"
         ? new Response(body, { status })
@@ -119,7 +119,7 @@ describe("DHL tracking", () => {
     gateway(world, [
       gatewayElement(CODE_A, { category: "UNDERWAY", status: "PARCEL_SORTED_AT_HUB" }),
     ]);
-    world.routes.push((url) =>
+    world.routes.push(({ url }) =>
       url.hostname === "api-eu.dhl.com"
         ? json({
             shipments: [
@@ -170,7 +170,9 @@ describe("DHL tracking", () => {
   it("asks for a new key only when DHL refuses it, never on a network error", async () => {
     const refused = new World();
     gateway(refused, "Not found", 404);
-    refused.routes.push((url) => (url.hostname === "api-eu.dhl.com" ? json({}, 401) : undefined));
+    refused.routes.push(({ url }) =>
+      url.hostname === "api-eu.dhl.com" ? json({}, 401) : undefined,
+    );
     await expect(
       track(refused.context({ apiKey: "made-up-key" }), [CODE_A]),
     ).rejects.toBeInstanceOf(SignInRejectedError);
@@ -189,7 +191,7 @@ describe("DHL tracking", () => {
   it("paces requests to each host conservatively", async () => {
     const world = new World();
     gateway(world, "Not found", 404);
-    world.routes.push((url) => (url.hostname === "api-eu.dhl.com" ? json({}, 404) : undefined));
+    world.routes.push(({ url }) => (url.hostname === "api-eu.dhl.com" ? json({}, 404) : undefined));
     const start = world.clock.now().getTime();
     await track(world.context({ apiKey: "made-up-key" }), [CODE_A, CODE_B]);
     expect(world.hosts()).toEqual([

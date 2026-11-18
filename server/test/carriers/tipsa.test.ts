@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { tipsa } from "../../src/carriers/tipsa/index.js";
 import { register } from "../../src/engine/registry.js";
 import { CaptchaError, TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { fakeContext, fakeFetch, type Reply } from "./fake-carrier.js";
+import { fakeContext, fakeNetwork, raw, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with an empty body. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => raw("", 404));
 
 // Made-up values only.
 const AGENCY = "990001";
@@ -15,12 +19,12 @@ const DETAIL = "GET dinapaqweb.tipsa-dinapaq.com/dinapaqweb/detalle_envio.php";
 const plugin = register(tipsa);
 const config = { postalCode: "99 999" };
 
-function door(service: string, date: string): Reply {
+function door(service: string, date: string): Answer {
   const target = `https://dinapaqweb.tipsa-dinapaq.com/dinapaqweb/detalle_envio.php?servicio=${service}&fecha=${date}`;
-  return {
-    status: 200,
-    raw: `<html><head><meta http-equiv="refresh" content="0; url=${target}"></head></html>`,
-  };
+  return raw(
+    `<html><head><meta http-equiv="refresh" content="0; url=${target}"></head></html>`,
+    200,
+  );
 }
 
 const field = (label: string, value: string) =>
@@ -29,7 +33,7 @@ const field = (label: string, value: string) =>
 const row = (when: string, status: string, town: string) =>
   `<tr><td>${when}<span class="mdl-tooltip">${when}</span></td><td>${status}</td><td>${town}</td></tr>`;
 
-function page(status: string, rows: string[], code = CODE): Reply {
+function page(status: string, rows: string[], code = CODE): Answer {
   const html = `<html><body>
 <input id="envio-localizado" value="${code}"><input id="estado-localizado" value="${status}">
 <input id="CodAgeCargo" value="${AGENCY}"><input id="CodAgeOri" value="${ORIGIN}"><input id="Albaran" value="${WAYBILL}">
@@ -41,7 +45,7 @@ ${field("Destinatario", "P***** E*****")}${field("Dirección", "Calle Inventada 
 <div class="panel"><div class="panel-datos">DATOS DE LA ENTREGA</div>${field("Fecha", "18/11/26")}${field("Hora", "11:30")}</div>
 <table><thead><tr><th>Fecha/Hora</th><th>Estado</th><th>Población</th></tr></thead>
 <tbody>${rows.join("")}</tbody></table></body></html>`;
-  return { status: 200, raw: Buffer.from(html, "latin1") };
+  return raw(Buffer.from(html, "latin1"), 200);
 }
 
 const ROWS = [
@@ -52,11 +56,11 @@ const ROWS = [
 
 describe("TIPSA tracking", () => {
   it("passes the postcode gate and reads status, weight and history from the Latin-1 page", async () => {
-    const { fetchImpl, calls } = fakeFetch({
+    const { fetchImpl, calls } = network({
       [LOOKUP]: [door(SERVICE, "17/11/26")],
       [DETAIL]: [page("EN REPARTO", ROWS)],
     });
-    const { base, unknown } = fakeContext(tipsa.http, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(tipsa.http, fetchImpl);
     const result = await plugin.track(base, config, null, [CODE]);
     const parcel = result.snapshots[0];
     expect(parcel).toMatchObject({
@@ -84,7 +88,7 @@ describe("TIPSA tracking", () => {
   });
 
   it("takes the delivery time from the delivered history row", async () => {
-    const { fetchImpl } = fakeFetch({
+    const { fetchImpl } = network({
       [LOOKUP]: [door(SERVICE, "17/11/26")],
       [DETAIL]: [
         page("ENTREGADO", [row("18/11/26 11:31", "ENTREGADO", "PUEBLO INVENTADO"), ...ROWS]),
@@ -100,7 +104,7 @@ describe("TIPSA tracking", () => {
   });
 
   it("treats an empty refresh target as not found", async () => {
-    const { fetchImpl, calls } = fakeFetch({ [LOOKUP]: [door("", "")] });
+    const { fetchImpl, calls } = network({ [LOOKUP]: [door("", "")] });
     const { base } = fakeContext(tipsa.http, fetchImpl);
     expect(await plugin.track(base, config, null, [CODE])).toEqual({
       snapshots: [],
@@ -110,11 +114,11 @@ describe("TIPSA tracking", () => {
   });
 
   it("reports an unknown wording and falls back to the newest mapped row", async () => {
-    const { fetchImpl } = fakeFetch({
+    const { fetchImpl } = network({
       [LOOKUP]: [door(SERVICE, "17/11/26")],
       [DETAIL]: [page("ESTADO INVENTADO", ROWS)],
     });
-    const { base, unknown } = fakeContext(tipsa.http, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(tipsa.http, fetchImpl);
     const result = await plugin.track(base, config, null, [CODE]);
     expect(result.snapshots[0]).toMatchObject({
       status: "out_for_delivery",
@@ -124,19 +128,16 @@ describe("TIPSA tracking", () => {
   });
 
   it("stops fast on a refused postcode, a foreign address, another shipment or a bot check", async () => {
-    const { fetchImpl } = fakeFetch({
+    const { fetchImpl } = network({
       [LOOKUP]: [
-        { status: 200, raw: "<p>Error en el CP</p>" },
-        {
-          status: 200,
-          raw: '<meta http-equiv="refresh" content="0; url=https://example.invalid/x">',
-        },
+        raw("<p>Error en el CP</p>", 200),
+        raw('<meta http-equiv="refresh" content="0; url=https://example.invalid/x">', 200),
         door(SERVICE, "17/11/26"),
         door(SERVICE, "17/11/26"),
       ],
       [DETAIL]: [
         page("EN REPARTO", ROWS, "99000000000009"),
-        { status: 200, raw: "<title>Just a moment...</title>" },
+        raw("<title>Just a moment...</title>", 200),
       ],
     });
     const { base } = fakeContext(tipsa.http, fetchImpl);

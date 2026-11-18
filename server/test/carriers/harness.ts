@@ -1,18 +1,29 @@
+/**
+ * The one test harness for carrier plug-ins: a scripted fake network, a plug-in context over a
+ * fake clock and an in-memory session, and `World`, which wires both to a carrier. Fixtures used
+ * with it are always made up.
+ */
 import { register, type BaseContext, type RegisteredPlugin } from "../../src/engine/registry.js";
-import type { CarrierPlugin, FetchResult } from "../../src/plugin/api.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
+import type { CarrierPlugin, FetchResult, PluginContext } from "../../src/plugin/api.js";
+import { HostLimiter, PluginHttp, type FetchLike, type HttpPolicy } from "../../src/plugin/http.js";
 import { FakeClock } from "../helpers.js";
 
-/** One recorded request. */
+/** One recorded request. `key` is `METHOD host/path` (hostname, no port, no query). */
 export interface Call {
+  readonly key: string;
   readonly method: string;
   readonly url: URL;
   readonly headers: Headers;
+  /** The body as text: strings and form bodies; null for anything else. */
   readonly body: string | null;
+  readonly init: RequestInit;
 }
 
+/** A scripted answer: a response, or an error the fetch rejects with. */
+export type Answer = Response | Error;
+
 /** Answers a request; undefined falls through to the next route. */
-export type Route = (call: Call) => Response | Error | undefined;
+export type Route = (call: Call) => Answer | Promise<Answer> | undefined;
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -25,81 +36,257 @@ export function html(body: string, status = 200, headers: Record<string, string>
   return new Response(body, { status, headers: { "content-type": "text/html", ...headers } });
 }
 
-/** A route for "METHOD host/path" (query ignored) that hands out its replies in order. */
-export function on(key: string, ...replies: (Response | Error)[]): Route {
+/** A body sent as is, with only the headers given (no content type unless set). */
+export function raw(
+  body: string | Uint8Array,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
+  return new Response(body, { status, headers });
+}
+
+/** Answers requests whose key is exactly `METHOD host/path`, with the replies in order. */
+export function on(key: string, ...replies: Answer[]): Route {
+  return (call) => (call.key === key ? replies.shift() : undefined);
+}
+
+/** Like `on`, but the key only has to start with `prefix`. */
+export function onPrefix(prefix: string, ...replies: Answer[]): Route {
+  return (call) => (call.key.startsWith(prefix) ? replies.shift() : undefined);
+}
+
+/**
+ * Answers requests whose path and query contain `fragment`. Answers are used in order and the
+ * last one repeats, so a single answer serves every matching request.
+ */
+export function onFragment(fragment: string, ...answers: Answer[]): Route {
   return (call) => {
-    const target = `${call.method} ${call.url.hostname}${call.url.pathname}`;
-    return target === key ? replies.shift() : undefined;
+    if (!`${call.url.pathname}${call.url.search}`.includes(fragment)) {
+      return undefined;
+    }
+    const answer = answers.length > 1 ? answers.shift() : answers[0];
+    return answer instanceof Response ? answer.clone() : answer;
   };
 }
 
-/** A carrier wired to scripted HTTP answers, a fake clock and an in-memory session. */
-export class World {
-  readonly calls: Call[] = [];
-  readonly unknown: string[] = [];
-  readonly warnings: string[] = [];
-  readonly clock = new FakeClock();
-  readonly plugin: RegisteredPlugin;
-  routes: Route[] = [];
-  stored: unknown = null;
-  readonly #http: PluginHttp;
+/** Answers every request with the next reply, whatever it asks for. */
+export function inOrder(...replies: Answer[]): Route {
+  return () => replies.shift();
+}
 
-  constructor(plugin: RegisteredPlugin) {
-    this.plugin = plugin;
-    const fetchImpl: FetchLike = (url, init) => {
-      const call: Call = {
-        method: init.method ?? "GET",
-        url,
-        headers: new Headers(init.headers),
-        body:
-          typeof init.body === "string"
-            ? init.body
-            : init.body instanceof URLSearchParams
-              ? init.body.toString()
-              : null,
-      };
-      this.calls.push(call);
-      for (const route of this.routes) {
-        const answer = route(call);
-        if (answer instanceof Error) {
-          return Promise.reject(answer);
-        }
-        if (answer !== undefined) {
-          return Promise.resolve(answer);
-        }
-      }
-      return Promise.resolve(new Response("no route", { status: 599 }));
+/**
+ * Answers by a table of `METHOD <where>` keys, each with replies used in order. `where` is the
+ * hostname and path by default, `host` adds the port, `path` leaves the host out.
+ */
+export function routeTable(
+  table: Record<string, Answer[]>,
+  keyBy: "hostname" | "host" | "path" = "hostname",
+): Route {
+  return (call) => {
+    const where =
+      keyBy === "path"
+        ? call.url.pathname
+        : `${keyBy === "host" ? call.url.host : call.url.hostname}${call.url.pathname}`;
+    return table[`${call.method} ${where}`]?.shift();
+  };
+}
+
+function bodyText(body: RequestInit["body"]): string | null {
+  if (typeof body === "string") {
+    return body;
+  }
+  return body instanceof URLSearchParams ? body.toString() : null;
+}
+
+/** What an unanswered request gets. Default: HTTP 599 "no route", so nothing passes silently. */
+export type Fallback = () => Response;
+
+export const noRoute: Fallback = () => new Response("no route", { status: 599 });
+
+export interface FakeNetwork {
+  readonly fetchImpl: FetchLike;
+  readonly calls: Call[];
+  /** "METHOD host/path" of every request, in order. */
+  requests(): string[];
+}
+
+/** A fetch that records every request and asks the routes in order. */
+export function fakeNetwork(
+  routes: Route[] | (() => readonly Route[]),
+  fallback: Fallback = noRoute,
+): FakeNetwork {
+  const calls: Call[] = [];
+  const current = typeof routes === "function" ? routes : () => routes;
+  const fetchImpl: FetchLike = async (url, init) => {
+    const method = init.method ?? "GET";
+    const call: Call = {
+      key: `${method} ${url.hostname}${url.pathname}`,
+      method,
+      url,
+      headers: new Headers(init.headers),
+      body: bodyText(init.body),
+      init,
     };
-    const limiter = new HostLimiter(this.clock, (ms) => {
-      this.clock.advance(ms);
-      return Promise.resolve();
-    });
-    this.#http = new PluginHttp(this.plugin.http, limiter, this.clock, fetchImpl);
+    calls.push(call);
+    for (const route of current()) {
+      const answer = await route(call);
+      if (answer instanceof Error) {
+        throw answer;
+      }
+      if (answer !== undefined) {
+        return answer;
+      }
+    }
+    return fallback();
+  };
+  return { fetchImpl, calls, requests: () => calls.map((call) => call.key) };
+}
+
+export interface ContextOptions {
+  /** What the session store holds at the start. */
+  readonly session?: unknown;
+  readonly clock?: FakeClock;
+}
+
+export interface FakeContext {
+  readonly base: BaseContext;
+  readonly clock: FakeClock;
+  /** Every value the plug-in saved to its session, in order. */
+  readonly saved: unknown[];
+  /** Reported unknowns as `kind:key`. */
+  readonly unknown: string[];
+  /** Reported unknowns as the key alone. */
+  readonly unknownKeys: string[];
+  /** Reported unknowns as kind and key. */
+  readonly reports: { kind: string; key: string }[];
+  readonly warnings: string[];
+  /** What the session store holds now. */
+  stored(): unknown;
+  /** Replaces what the session store holds, as if saved earlier. */
+  restore(value: unknown): void;
+}
+
+/** A plug-in context over a fake clock whose limiter waits by advancing the clock. */
+export function fakeContext(
+  policy: HttpPolicy,
+  fetchImpl: FetchLike,
+  options: ContextOptions = {},
+): FakeContext {
+  const clock = options.clock ?? new FakeClock();
+  const limiter = new HostLimiter(clock, (ms) => {
+    clock.advance(ms);
+    return Promise.resolve();
+  });
+  const saved: unknown[] = [];
+  const unknown: string[] = [];
+  const unknownKeys: string[] = [];
+  const reports: { kind: string; key: string }[] = [];
+  const warnings: string[] = [];
+  let current: unknown = options.session ?? null;
+  const base: BaseContext = {
+    sourceId: "source-1",
+    http: new PluginHttp(policy, limiter, clock, fetchImpl),
+    clock,
+    logger: {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: (_context, message) => {
+        warnings.push(message);
+      },
+    },
+    session: {
+      load: () => current,
+      save: (value) => {
+        current = value;
+        saved.push(value);
+        return Promise.resolve();
+      },
+    },
+    reportUnknown: (kind, key) => {
+      unknown.push(`${kind}:${key}`);
+      unknownKeys.push(key);
+      reports.push({ kind, key });
+    },
+  };
+  return {
+    base,
+    clock,
+    saved,
+    unknown,
+    unknownKeys,
+    reports,
+    warnings,
+    stored: () => current,
+    restore: (value) => {
+      current = value;
+    },
+  };
+}
+
+/**
+ * A carrier wired to a fake network and context. `routes` can be set up front or changed between
+ * steps. `track` and `fetchAccount` go through the registry, which validates config and secret as
+ * the app does; `context` gives a typed context for calling the plug-in directly.
+ */
+export class World<Config = unknown, Secret = unknown> {
+  readonly plugin: RegisteredPlugin;
+  readonly carrier: CarrierPlugin<Config, Secret>;
+  routes: Route[];
+  readonly #network: FakeNetwork;
+  readonly #context: FakeContext;
+
+  constructor(
+    carrier: CarrierPlugin<Config, Secret>,
+    routes: Route[] = [],
+    options: ContextOptions = {},
+  ) {
+    this.carrier = carrier;
+    this.plugin = register(carrier);
+    this.routes = routes;
+    this.#network = fakeNetwork(() => this.routes);
+    this.#context = fakeContext(carrier.http, this.#network.fetchImpl, options);
+  }
+
+  get calls(): Call[] {
+    return this.#network.calls;
+  }
+
+  get clock(): FakeClock {
+    return this.#context.clock;
+  }
+
+  /** Reported unknowns as `kind:key`. */
+  get unknown(): string[] {
+    return this.#context.unknown;
+  }
+
+  get unknownKeys(): string[] {
+    return this.#context.unknownKeys;
+  }
+
+  get warnings(): string[] {
+    return this.#context.warnings;
+  }
+
+  get saved(): unknown[] {
+    return this.#context.saved;
+  }
+
+  /** What the session store holds now. */
+  get stored(): unknown {
+    return this.#context.stored();
+  }
+
+  set stored(value: unknown) {
+    this.#context.restore(value);
   }
 
   base(): BaseContext {
-    return {
-      sourceId: "source-1",
-      http: this.#http,
-      clock: this.clock,
-      logger: {
-        debug: () => undefined,
-        info: () => undefined,
-        warn: (_context, message) => {
-          this.warnings.push(message);
-        },
-      },
-      session: {
-        load: () => this.stored,
-        save: (value) => {
-          this.stored = value;
-          return Promise.resolve();
-        },
-      },
-      reportUnknown: (kind, key) => {
-        this.unknown.push(`${kind}:${key}`);
-      },
-    };
+    return this.#context.base;
+  }
+
+  context(config: Config, secret: Secret): PluginContext<Config, Secret> {
+    return { ...this.#context.base, config, secret };
   }
 
   track(
@@ -116,15 +303,16 @@ export class World {
 
   /** "METHOD host/path" of every request, in order. */
   requests(): string[] {
-    return this.calls.map((c) => `${c.method} ${c.url.hostname}${c.url.pathname}`);
+    return this.#network.requests();
   }
-}
-
-export function world<Config, Secret>(carrier: CarrierPlugin<Config, Secret>): World {
-  return new World(register(carrier));
 }
 
 /** Made-up secret values built from parts, so the pre-commit secret check stays quiet. */
 export function madeUp(...parts: string[]): string {
   return ["test", ...parts].join("-");
+}
+
+/** The form a request sent, for token and postback requests. */
+export function formOf(call: Call | undefined): URLSearchParams {
+  return new URLSearchParams(call?.body ?? "");
 }

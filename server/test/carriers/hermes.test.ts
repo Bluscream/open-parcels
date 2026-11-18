@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { hermes } from "../../src/carriers/hermes/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, html, json } from "./harness.js";
 
 // Made-up codes and values only.
 const ACTIVE = "99000000000001";
@@ -62,57 +62,29 @@ type Reply = { status: number; body: unknown; html?: boolean } | Error;
 /** Routes requests by "METHOD path" to scripted replies; each route's replies are used in order. */
 function fakeHermes(routes: Record<string, Reply[]>) {
   const calls: { key: string; auth: string | null; body: string | null }[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    const method = init.method ?? "GET";
-    const key = `${method} ${url.pathname.replace(/^\/api\/v12\//, "")}`;
-    const headers = new Headers(init.headers);
-    calls.push({
-      key,
-      auth: headers.get("authorization"),
-      body: typeof init.body === "string" ? init.body : null,
-    });
-    const reply = routes[key]?.shift() ?? { status: 404, body: [] };
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    const html = reply.html === true;
-    return Promise.resolve(
-      new Response(html ? "<html>blocked</html>" : JSON.stringify(reply.body), {
-        status: reply.status,
-        headers: { "content-type": html ? "text/html" : "application/json" },
-      }),
-    );
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      const key = `${call.method} ${call.url.pathname.replace(/^\/api\/v12\//, "")}`;
+      calls.push({
+        key,
+        auth: call.headers.get("authorization"),
+        body: typeof call.init.body === "string" ? call.init.body : null,
+      });
+      const reply = routes[key]?.shift() ?? { status: 404, body: [] };
+      if (reply instanceof Error) {
+        return reply;
+      }
+      return reply.html === true
+        ? html("<html>blocked</html>", reply.status)
+        : json(reply.body, reply.status);
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike, session: unknown = null) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const saved: unknown[] = [];
-  const unknown: string[] = [];
-  let current = session;
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(hermes.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: {
-      load: () => current,
-      save: (value) => {
-        current = value;
-        saved.push(value);
-        return Promise.resolve();
-      },
-    },
-    reportUnknown: (_kind, key) => {
-      unknown.push(key);
-    },
-  };
-  return { base, saved, unknown };
+  const { base, saved, unknownKeys } = fakeContext(hermes.http, fetchImpl, { session });
+  return { base, saved, unknown: unknownKeys };
 }
 
 const search = (code: string) => `GET /tnt/v2/shipments/search/${code}`;

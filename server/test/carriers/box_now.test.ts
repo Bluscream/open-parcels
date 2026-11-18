@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { boxNow } from "../../src/carriers/box_now/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up codes, lockers and values only.
 const CODE = "9000000001";
@@ -21,7 +21,7 @@ function found(state: string, ...events: ReturnType<typeof ev>[]) {
 
 describe("BOX NOW tracking", () => {
   it("falls back to the newest event and names the locker the parcel waits in", async () => {
-    const w = world(boxNow);
+    const w = new World(boxNow);
     w.routes = [
       on(
         GR,
@@ -58,7 +58,7 @@ describe("BOX NOW tracking", () => {
   });
 
   it("uses the configured country and reads delivery from the state", async () => {
-    const w = world(boxNow);
+    const w = new World(boxNow);
     w.routes = [on(BG, json(found("delivered", ev("delivered", "2026-11-18T12:00:00Z"))))];
     const [parcel] = (await w.track([CODE], { country: "bg" })).snapshots;
     expect(parcel).toMatchObject({
@@ -70,23 +70,23 @@ describe("BOX NOW tracking", () => {
   });
 
   it("treats an empty data list as not found", async () => {
-    const w = world(boxNow);
+    const w = new World(boxNow);
     w.routes = [on(GR, json({ data: [] }))];
     expect((await w.track([CODE])).snapshots).toEqual([]);
   });
 
   it("reports an unknown event type", async () => {
-    const w = world(boxNow);
+    const w = new World(boxNow);
     w.routes = [on(GR, json(found("delivered", ev("teleported", "2026-11-18T12:00:00Z"))))];
     await w.track([CODE]);
     expect(w.unknown).toEqual(["status_code:event:teleported"]);
   });
 
   it("stops on a malformed item and passes network errors on", async () => {
-    const odd = world(boxNow);
+    const odd = new World(boxNow);
     odd.routes = [on(GR, json({ data: ["x"] }))];
     await expect(odd.track([CODE])).rejects.toBeInstanceOf(UnexpectedResponseError);
-    const offline = world(boxNow);
+    const offline = new World(boxNow);
     offline.routes = [on(GR, new Error("offline"))];
     await expect(offline.track([CODE])).rejects.toBeInstanceOf(TransientError);
   });

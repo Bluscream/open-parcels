@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { slovakParcelService } from "../../src/carriers/slovak_parcel_service/index.js";
 import { slovakTime } from "../../src/carriers/slovak_parcel_service/parse.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness, type Reply } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(slovakParcelService);
 
 // Made-up codes and values only.
 const CODE = "TEST00000001";
@@ -15,14 +22,12 @@ const state = (statusCode: string, status: number, time: string, statusDescr: st
   statusDescr,
 });
 
-const found = (states: unknown[], extra: object = {}): Reply => ({
-  status: 200,
-  body: { status: true, code: 200, data: { shipmentNr: CODE, states, ...extra } },
-});
+const found = (states: unknown[], extra: object = {}): Answer =>
+  json({ status: true, code: 200, data: { shipmentNr: CODE, states, ...extra } }, 200);
 
 describe("Slovak Parcel Service tracking", () => {
   it("reads the current scan, Slovak local times and the history", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
+    const { fetchImpl, calls } = network({
       [ROUTE]: [
         found(
           [
@@ -34,7 +39,7 @@ describe("Slovak Parcel Service tracking", () => {
         ),
       ],
     });
-    const { plugin, base } = harness(slovakParcelService, fetchImpl);
+    const { base } = fakeContext(slovakParcelService.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [CODE]);
     expect(result.snapshots[0]).toMatchObject({
       carrier: "slovak_parcel_service",
@@ -55,53 +60,53 @@ describe("Slovak Parcel Service tracking", () => {
   });
 
   it("honours the shipment-level delivered flag", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [ROUTE]: [
         found([state("DELY", 40, "2026-07-01 12:00:00", "Dorucene")], {
           shipmentStatus: "delivered",
         }),
       ],
     });
-    const { plugin, base } = harness(slovakParcelService, fetchImpl);
+    const { base } = fakeContext(slovakParcelService.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     // July is CEST, two hours ahead of UTC.
     expect(parcel).toMatchObject({ delivered: true, deliveredAt: "2026-07-01T10:00:00.000Z" });
   });
 
   it("treats a false status envelope as not found", async () => {
-    const { fetchImpl } = fakeRoutes({
-      [ROUTE]: [{ status: 200, body: { status: false, code: 404, data: null } }],
+    const { fetchImpl } = network({
+      [ROUTE]: [json({ status: false, code: 404, data: null }, 200)],
     });
-    const { plugin, base } = harness(slovakParcelService, fetchImpl);
+    const { base } = fakeContext(slovakParcelService.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE, "../x"])).snapshots).toEqual([]);
   });
 
   it("reports unknown codes but not the known no-movement ones", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [ROUTE]: [
         found([state("ZZZZ", 77, "2026-11-18 08:00:00", "Nove")]),
         found([state("DDSP", 38, "2026-11-18 08:00:00", "Upresnenie")]),
       ],
     });
-    const { plugin, base, unknown } = harness(slovakParcelService, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(slovakParcelService.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [CODE, CODE]);
     expect(result.snapshots.map((p) => p.status)).toEqual([null, null]);
     expect(unknown).toEqual(["ZZZZ"]);
   });
 
   it("stops when the transport key is refused or the server fails", async () => {
-    const refused = harness(
-      slovakParcelService,
-      fakeRoutes({ [ROUTE]: [{ status: 401, body: {} }] }).fetchImpl,
+    const refused = fakeContext(
+      slovakParcelService.http,
+      network({ [ROUTE]: [json({}, 401)] }).fetchImpl,
     );
-    await expect(refused.plugin.track(refused.base, {}, null, [CODE])).rejects.toBeInstanceOf(
+    await expect(plugin.track(refused.base, {}, null, [CODE])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );
-    const failing = harness(
-      slovakParcelService,
-      fakeRoutes({ [ROUTE]: [{ status: 500, body: {} }] }).fetchImpl,
+    const failing = fakeContext(
+      slovakParcelService.http,
+      network({ [ROUTE]: [json({}, 500)] }).fetchImpl,
     );
-    await expect(failing.plugin.track(failing.base, {}, null, [CODE])).rejects.toBeInstanceOf(
+    await expect(plugin.track(failing.base, {}, null, [CODE])).rejects.toBeInstanceOf(
       TransientError,
     );
   });

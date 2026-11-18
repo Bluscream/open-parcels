@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { correos } from "../../src/carriers/correos/index.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "PQ00000000000000000T";
@@ -22,7 +22,7 @@ describe("Correos tracking", () => {
   it("reads status, weight, pickup office and history in Spanish time", async () => {
     const world = new World(correos);
     world.routes = [
-      on(
+      onFragment(
         `/eventos_envio_servicio/${CODE}`,
         json([
           {
@@ -56,7 +56,7 @@ describe("Correos tracking", () => {
   it("treats a non-zero error code as not found", async () => {
     const world = new World(correos);
     world.routes = [
-      on("/eventos_envio_servicio/", json([{ error: { codError: "1", desError: "x" } }])),
+      onFragment("/eventos_envio_servicio/", json([{ error: { codError: "1", desError: "x" } }])),
     ];
     expect((await world.track([CODE], {}, null)).snapshots).toEqual([]);
   });
@@ -64,7 +64,7 @@ describe("Correos tracking", () => {
   it("reports an unmapped event code", async () => {
     const world = new World(correos);
     world.routes = [
-      on(
+      onFragment(
         "/eventos_envio_servicio/",
         json([
           {
@@ -81,7 +81,7 @@ describe("Correos tracking", () => {
 
   it("stops on an answer without an envelope", async () => {
     const world = new World(correos);
-    world.routes = [on("/eventos_envio_servicio/", json([]))];
+    world.routes = [onFragment("/eventos_envio_servicio/", json([]))];
     await expect(world.track([CODE], {}, null)).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 });

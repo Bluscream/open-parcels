@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { postnord } from "../../src/carriers/postnord/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./post-harness.js";
+import { json, onPrefix, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "00370000000000000001";
@@ -40,7 +40,7 @@ function shipment(status: string, events: unknown[], extra: Record<string, unkno
 describe("PostNord tracking", () => {
   it("maps the shipment, honours the out-for-delivery event and keeps the history", async () => {
     const world = new World(postnord, [
-      on(
+      onPrefix(
         API,
         shipment("EN_ROUTE", [
           event("INFORMED", "2026-11-16T09:00:00"),
@@ -71,7 +71,7 @@ describe("PostNord tracking", () => {
 
   it("reports a finished return as delivered with its time", async () => {
     const world = new World(postnord, [
-      on(
+      onPrefix(
         API,
         shipment("RETURNED", [
           event("RETURNED", "2026-11-17T09:00:00"),
@@ -90,24 +90,24 @@ describe("PostNord tracking", () => {
 
   it("treats an empty shipment list as not found", async () => {
     const world = new World(postnord, [
-      on(API, json({ TrackingInformationResponse: { shipments: [] } })),
+      onPrefix(API, json({ TrackingInformationResponse: { shipments: [] } })),
     ]);
     expect((await world.track([CODE, "../x"])).snapshots).toEqual([]);
     expect(world.calls).toHaveLength(1);
   });
 
   it("reports an unknown shipment status", async () => {
-    const world = new World(postnord, [on(API, shipment("TELEPORTED", []))]);
+    const world = new World(postnord, [onPrefix(API, shipment("TELEPORTED", []))]);
     const [parcel] = (await world.track([CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(world.unknown).toEqual(["status_code:TELEPORTED"]);
   });
 
   it("stops on a refused web tag and on a network error", async () => {
-    const refused = new World(postnord, [on(API, json({}, 403))]);
+    const refused = new World(postnord, [onPrefix(API, json({}, 403))]);
     await expect(refused.track([CODE, OTHER])).rejects.toBeInstanceOf(TransientError);
     expect(refused.calls).toHaveLength(1);
-    const offline = new World(postnord, [on(API, new TypeError("offline"))]);
+    const offline = new World(postnord, [onPrefix(API, new TypeError("offline"))]);
     await expect(offline.track([CODE])).rejects.toBeInstanceOf(TransientError);
   });
 });

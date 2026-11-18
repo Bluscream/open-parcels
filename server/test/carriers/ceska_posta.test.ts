@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ceskaPosta } from "../../src/carriers/ceska_posta/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const A = "DR0000000001X";
@@ -17,14 +17,14 @@ describe("Česká pošta tracking", () => {
   it("ranks events, reads the delivery day and merges the Balíkovna details", async () => {
     const world = new World(ceskaPosta);
     world.routes = [
-      on(
+      onFragment(
         "getDataAsJson",
         json([
           history(state("-L", "2026-11-16"), state("51", "2026-11-17"), state("53", "2026-11-18")),
           history(state("-3", "2026-11-18")),
         ]),
       ),
-      on(
+      onFragment(
         `/package/${A}`,
         json({
           sender: "Example Shop",
@@ -55,7 +55,7 @@ describe("Česká pošta tracking", () => {
   it("keeps delivered when a designation record follows it and reports unknown codes", async () => {
     const world = new World(ceskaPosta);
     world.routes = [
-      on(
+      onFragment(
         "getDataAsJson",
         json([
           history(
@@ -65,7 +65,7 @@ describe("Česká pošta tracking", () => {
           ),
         ]),
       ),
-      on("/package/", json({}, 500)),
+      onFragment("/package/", json({}, 500)),
     ];
     const [parcel] = (await world.track([A], {}, null)).snapshots;
     expect(parcel).toMatchObject({ status: "delivered", delivered: true });
@@ -74,7 +74,7 @@ describe("Česká pošta tracking", () => {
 
   it("fails the run when the history service fails", async () => {
     const world = new World(ceskaPosta);
-    world.routes = [on("getDataAsJson", json({}, 503))];
+    world.routes = [onFragment("getDataAsJson", json({}, 503))];
     await expect(world.track([A], {}, null)).rejects.toBeInstanceOf(TransientError);
   });
 });

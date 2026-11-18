@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { earlyBird } from "../../src/carriers/early_bird/index.js";
 import { register } from "../../src/engine/registry.js";
 import { CaptchaError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, raw, routeTable } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "EBTEST000001";
@@ -17,22 +17,27 @@ function timeline(...events: { text: string; occurredAt: string }[]) {
 
 describe("Early Bird tracking", () => {
   it("classifies the newest sentence, skips neutral ones and reads local times", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: timeline(
-            event("We have scheduled a new attempt for tomorrow.", "2026-11-18T07:00:00"),
-            event(
-              "Your package is now ready for collection from the parcel locker at X.",
-              "2026-11-17T18:00:00",
+          [ROUTE]: [
+            json(
+              timeline(
+                event("We have scheduled a new attempt for tomorrow.", "2026-11-18T07:00:00"),
+                event(
+                  "Your package is now ready for collection from the parcel locker at X.",
+                  "2026-11-17T18:00:00",
+                ),
+                event("Early Bird has received your package.", "2026-11-17T06:00:00"),
+              ),
+              200,
             ),
-            event("Early Bird has received your package.", "2026-11-17T06:00:00"),
-          ),
+          ],
         },
-      ],
-    });
-    const { base, unknown } = harness(earlyBird.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(earlyBird.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ trackingNumber: CODE, locale: "en" });
     expect(found).toMatchObject({
@@ -51,46 +56,64 @@ describe("Early Bird tracking", () => {
   });
 
   it("dates a delivery from the delivering event", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: timeline(event("The package has been delivered.", "2026-11-18T05:30:00")),
+          [ROUTE]: [
+            json(timeline(event("The package has been delivered.", "2026-11-18T05:30:00")), 200),
+          ],
         },
-      ],
-    });
-    const { base } = harness(earlyBird.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(earlyBird.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(found).toMatchObject({ status: "delivered", deliveredAt: "2026-11-18T04:30:00.000Z" });
   });
 
   it("treats tracking_not_found as not found", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [{ status: 404, body: { code: "tracking_not_found" } }],
-    });
-    const { base } = harness(earlyBird.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json({ code: "tracking_not_found" }, 404)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(earlyBird.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots).toEqual([]);
   });
 
   it("reports an unknown sentence", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
-        { status: 200, body: timeline(event("Something new happened.", "2026-11-18T05:30:00")) },
-      ],
-    });
-    const { base, unknown } = harness(earlyBird.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json(timeline(event("Something new happened.", "2026-11-18T05:30:00")), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(earlyBird.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(found?.status).toBeNull();
     expect(unknown).toEqual(["status_text:Something new happened."]);
   });
 
   it("pauses on a browser challenge instead of retrying", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
-        { status: 403, raw: "<html></html>", headers: { "x-vercel-mitigated": "challenge" } },
-      ],
-    });
-    const { base } = harness(earlyBird.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [
+            raw("<html></html>", 403, {
+              "content-type": "application/json",
+              "x-vercel-mitigated": "challenge",
+            }),
+          ],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(earlyBird.http, fetchImpl);
     await expect(plugin.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(CaptchaError);
   });
 });

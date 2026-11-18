@@ -11,8 +11,6 @@ import {
   type FetchResult,
   type PluginContext,
 } from "../../src/plugin/api.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
 import {
   BARCODE_IN,
   BARCODE_IN2,
@@ -24,74 +22,68 @@ import {
   LOGIN_PAGE_REJECTED,
   PORTAL_DASHBOARD,
 } from "./dpd-fixtures.js";
+import { fakeContext, fakeNetwork, html, json } from "./harness.js";
 
 type Reply = Response | Error | ((body: string) => Response | Error);
 
 /** A scripted DPD: replies per `METHOD host/path`, served in order, the last one repeating. */
 class FakeDpd {
   readonly routes = new Map<string, Reply[]>();
-  readonly requests: string[] = [];
-  readonly bodies: string[] = [];
+  readonly #network = fakeNetwork([
+    (call) => {
+      const queue = this.routes.get(call.key) ?? [];
+      const next = queue.length > 1 ? queue.shift() : queue[0];
+      if (next === undefined) {
+        return new Error(`unexpected request ${call.key}`);
+      }
+      const reply = typeof next === "function" ? next(call.body ?? "") : next;
+      return reply instanceof Error ? reply : reply.clone();
+    },
+  ]);
+  readonly fetch = this.#network.fetchImpl;
 
   on(key: string, ...replies: Reply[]): this {
     this.routes.set(key, replies);
     return this;
   }
 
-  readonly fetch: FetchLike = (url, init) => {
-    const key = `${init.method ?? "GET"} ${url.hostname}${url.pathname}`;
-    this.requests.push(key);
-    const raw = init.body;
-    const body =
-      typeof raw === "string" ? raw : raw instanceof URLSearchParams ? raw.toString() : "";
-    this.bodies.push(body);
-    const queue = this.routes.get(key) ?? [];
-    const next = queue.length > 1 ? queue.shift() : queue[0];
-    if (next === undefined) {
-      return Promise.reject(new Error(`unexpected request ${key}`));
-    }
-    const reply = typeof next === "function" ? next(body) : next;
-    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply.clone());
-  };
+  get requests(): string[] {
+    return this.#network.requests();
+  }
+
+  /** Drops the requests recorded so far. */
+  forget(): void {
+    this.#network.calls.length = 0;
+  }
+
+  get bodies(): string[] {
+    return this.#network.calls.map((call) => call.body ?? "");
+  }
 }
 
-const html = (body: string, headers: Record<string, string> = {}): Response =>
-  new Response(body, { status: 200, headers: { "content-type": "text/html", ...headers } });
 const redirect = (location: string): Response =>
   new Response(null, { status: 302, headers: { location } });
-const json = (body: unknown): Response =>
-  new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
 const USERNAME = "someone@example.invalid";
 const credentials = { username: USERNAME, password: ["made", "up", "words"].join("-") };
 
 function context(fake: FakeDpd, options: { publicTracking?: boolean; saved?: unknown } = {}) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
+  const fakeCtx = fakeContext(dpd.http, fake.fetch, { session: options.saved ?? null });
   const unknowns: string[] = [];
-  let saved: unknown = options.saved ?? null;
   const ctx: PluginContext<{ publicTracking: boolean }, typeof credentials | null> = {
-    sourceId: "source-1",
-    config: { publicTracking: options.publicTracking ?? true },
-    secret: credentials,
-    http: new PluginHttp(dpd.http, limiter, clock, fake.fetch),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: {
-      load: () => saved,
-      save: (value) => {
-        saved = JSON.parse(JSON.stringify(value)) as unknown;
-        return Promise.resolve();
-      },
-    },
+    ...fakeCtx.base,
     reportUnknown: (kind, key) => {
       unknowns.push(`${kind}=${key}`);
     },
+    config: { publicTracking: options.publicTracking ?? true },
+    secret: credentials,
+    session: {
+      load: () => fakeCtx.base.session.load(),
+      // A copy, as the encrypted store would keep it.
+      save: (value) => fakeCtx.base.session.save(JSON.parse(JSON.stringify(value)) as unknown),
+    },
   };
-  return { ctx, unknowns, saved: () => saved };
+  return { ctx, unknowns, saved: () => fakeCtx.stored() };
 }
 
 type Ctx = ReturnType<typeof context>["ctx"];
@@ -170,7 +162,7 @@ describe("DPD Germany account", () => {
     const { ctx, saved } = context(fake);
     await fetchAccount(ctx);
     const again = context(fake, { saved: saved() });
-    fake.requests.length = 0;
+    fake.forget();
 
     const result = await fetchAccount(again.ctx);
 
@@ -211,7 +203,7 @@ describe("DPD Germany account", () => {
     await expect(fetchAccount(first.ctx)).rejects.toBeInstanceOf(TransientError);
     fake.on(`GET ${PORTAL}`, redirect(`https://${LOGIN}?lng=DEU`));
     const second = context(fake, { saved: first.saved() });
-    fake.requests.length = 0;
+    fake.forget();
     await expect(fetchAccount(second.ctx)).rejects.toBeInstanceOf(TransientError);
     expect(fake.requests).not.toContain(`POST ${LOGIN}`);
   });

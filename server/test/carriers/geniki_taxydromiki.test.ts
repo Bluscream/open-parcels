@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { genikiTaxydromiki } from "../../src/carriers/geniki_taxydromiki/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { keylessContext, scripted, type Reply } from "./keyless-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, json, raw, type Answer } from "./harness.js";
+
+/** Replies in order; once they run out, 500 with an empty body. */
+const scripted = (replies: Answer[]) => fakeNetwork([inOrder(...replies)], () => raw("", 500));
 
 // Made-up codes and values only.
 const CODE = "ZZ00000001";
@@ -12,21 +15,21 @@ function scan(StatusCode: string, StatusDate: string, Status = `Scan ${StatusCod
   return { Status, StatusCode, StatusDate, Shop: "TEST HUB" };
 }
 
-function found(scans: unknown[], extra: Record<string, unknown> = {}): Reply {
-  return {
-    status: 200,
-    body: {
+function found(scans: unknown[], extra: Record<string, unknown> = {}): Answer {
+  return json(
+    {
       success: true,
       [CODE]: {
         TrackAndTraceResult: { Result: 0, Checkpoints: { Checkpoint: scans }, ...extra },
       },
     },
-  };
+    200,
+  );
 }
 
-async function run(replies: Reply[]) {
+async function run(replies: Answer[]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = keylessContext(genikiTaxydromiki.http, fetchImpl);
+  const { base, unknownKeys: unknown } = fakeContext(genikiTaxydromiki.http, fetchImpl);
   const result = await plugin.track(base, {}, null, [CODE]);
   return { result, calls, unknown };
 }
@@ -83,7 +86,7 @@ describe("geniki taxydromiki", () => {
 
   it("returns nothing for an unknown code or a code without scans", async () => {
     const unknownCode = await run([
-      { status: 200, body: { success: true, [CODE]: { TrackAndTraceResult: { Result: 9 } } } },
+      json({ success: true, [CODE]: { TrackAndTraceResult: { Result: 9 } } }, 200),
     ]);
     expect(unknownCode.result.snapshots).toEqual([]);
     const noScans = await run([found([])]);
@@ -100,13 +103,11 @@ describe("geniki taxydromiki", () => {
   });
 
   it("stops on a wrong envelope and on HTTP errors", async () => {
-    await expect(run([{ status: 200, body: { success: false } }])).rejects.toBeInstanceOf(
+    await expect(run([json({ success: false }, 200)])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );
-    await expect(run([{ status: 200, text: "<html>" }])).rejects.toBeInstanceOf(
-      UnexpectedResponseError,
-    );
-    await expect(run([{ status: 502, text: "" }])).rejects.toBeInstanceOf(TransientError);
+    await expect(run([raw("<html>", 200)])).rejects.toBeInstanceOf(UnexpectedResponseError);
+    await expect(run([raw("", 502)])).rejects.toBeInstanceOf(TransientError);
     await expect(run([new Error("offline")])).rejects.toBeInstanceOf(TransientError);
   });
 });

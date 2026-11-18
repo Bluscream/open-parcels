@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { novaPost } from "../../src/carriers/nova_post/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, raw, type Answer } from "./harness.js";
 
 // Made-up codes and values only.
 const ACTIVE = "20400000000001";
@@ -34,47 +34,29 @@ function payload(
   };
 }
 
-type Reply = { status: number; body: unknown } | Error;
-
-function fakeApi(routes: Record<string, Reply[]>) {
+/** Answers by the waybill number at the end of the path; unscripted ones are not found. */
+function fakeApi(routes: Record<string, Answer[]>) {
   const calls: string[] = [];
-  const fetchImpl: FetchLike = (url) => {
-    const code = url.pathname.split("/").at(-1) ?? "";
-    calls.push(code);
-    const reply = routes[code]?.shift() ?? { status: 404, body: { errorMessage: "not_found" } };
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    return Promise.resolve(new Response(JSON.stringify(reply.body), { status: reply.status }));
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      const code = call.url.pathname.split("/").at(-1) ?? "";
+      calls.push(code);
+      return routes[code]?.shift() ?? raw(JSON.stringify({ errorMessage: "not_found" }), 404);
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const unknown: string[] = [];
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(novaPost.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: { load: () => null, save: () => Promise.resolve() },
-    reportUnknown: (_kind, key) => {
-      unknown.push(key);
-    },
-  };
-  return { base, unknown };
+  const { base, unknownKeys } = fakeContext(novaPost.http, fetchImpl);
+  return { base, unknown: unknownKeys };
 }
 
 describe("Nova Post tracking", () => {
   it("maps the newest hop and reads the estimate, weight, places and history", async () => {
     const { fetchImpl } = fakeApi({
       [ACTIVE]: [
-        { status: 200, body: payload(ACTIVE, hop("7", "2026-11-18 08:00:00", "Prybulo")) },
+        raw(JSON.stringify(payload(ACTIVE, hop("7", "2026-11-18 08:00:00", "Prybulo"))), 200),
       ],
     });
     const { base, unknown } = context(fetchImpl);
@@ -106,7 +88,7 @@ describe("Nova Post tracking", () => {
   it("takes the delivery time from the newest received hop", async () => {
     const { fetchImpl } = fakeApi({
       [DELIVERED]: [
-        { status: 200, body: payload(DELIVERED, hop("9", "2026-11-18 09:30:00", "Otrymano")) },
+        raw(JSON.stringify(payload(DELIVERED, hop("9", "2026-11-18 09:30:00", "Otrymano"))), 200),
       ],
     });
     const { base } = context(fetchImpl);
@@ -129,7 +111,9 @@ describe("Nova Post tracking", () => {
 
   it("reports an unmapped code and keeps the status open", async () => {
     const { fetchImpl } = fakeApi({
-      [ACTIVE]: [{ status: 200, body: payload(ACTIVE, hop("777", "2026-11-18 08:00:00", "Nove")) }],
+      [ACTIVE]: [
+        raw(JSON.stringify(payload(ACTIVE, hop("777", "2026-11-18 08:00:00", "Nove"))), 200),
+      ],
     });
     const { base, unknown } = context(fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [ACTIVE])).snapshots;
@@ -144,12 +128,12 @@ describe("Nova Post tracking", () => {
     ).rejects.toBeInstanceOf(TransientError);
     expect(network.calls).toEqual([ACTIVE]);
 
-    const server = fakeApi({ [ACTIVE]: [{ status: 502, body: {} }] });
+    const server = fakeApi({ [ACTIVE]: [raw(JSON.stringify({}), 502)] });
     await expect(
       plugin.track(context(server.fetchImpl).base, {}, null, [ACTIVE]),
     ).rejects.toBeInstanceOf(TransientError);
 
-    const shape = fakeApi({ [ACTIVE]: [{ status: 200, body: [1, 2] }] });
+    const shape = fakeApi({ [ACTIVE]: [raw(JSON.stringify([1, 2]), 200)] });
     await expect(
       plugin.track(context(shape.fetchImpl).base, {}, null, [ACTIVE]),
     ).rejects.toBeInstanceOf(UnexpectedResponseError);

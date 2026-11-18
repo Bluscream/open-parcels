@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { matkahuolto } from "../../src/carriers/matkahuolto/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, scripted, trackingContext, type Reply } from "./public-tracking-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, json, raw, type Answer } from "./harness.js";
+
+const JSON_TYPE = { "content-type": "application/json" };
+/** Replies in order; once they run out, 404 with an empty body. */
+const scripted = (replies: Answer[]) =>
+  fakeNetwork([inOrder(...replies)], () => raw("", 404, JSON_TYPE));
 
 // Made-up codes and values only.
 const CODE = "MH0000000001";
@@ -12,9 +17,9 @@ function event(date: string, time: string, description: string, place = "Esimerk
   return { date, time, description, place };
 }
 
-async function run(replies: Reply[], codes = [CODE]) {
+async function run(replies: Answer[], codes = [CODE]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = trackingContext(matkahuolto.http, fetchImpl);
+  const { base, unknown } = fakeContext(matkahuolto.http, fetchImpl);
   const result = await plugin.track(base, {}, null, codes);
   return { result, calls, unknown };
 }
@@ -81,7 +86,7 @@ describe("matkahuolto tracking", () => {
 
   it("stops on an answer that is not tracking data", async () => {
     await expect(run([json({ other: 1 })])).rejects.toThrow(UnexpectedResponseError);
-    await expect(run([{ status: 200, body: "<html>", type: "text/html" }])).rejects.toThrow(
+    await expect(run([raw("<html>", 200, { "content-type": "text/html" })])).rejects.toThrow(
       UnexpectedResponseError,
     );
     await expect(run([json({}, 502)])).rejects.toThrow(TransientError);

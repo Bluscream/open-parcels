@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canpar } from "../../src/carriers/canpar/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "TESTCP000000001";
@@ -25,7 +25,7 @@ describe("Canpar tracking", () => {
   it("reads status, the day window in Eastern time and history", async () => {
     const world = new World(canpar);
     world.routes = [
-      on(
+      onFragment(
         "trackByBarcodeV2",
         json({
           error: null,
@@ -57,7 +57,7 @@ describe("Canpar tracking", () => {
 
   it("returns nothing for an empty result", async () => {
     const world = new World(canpar);
-    world.routes = [on("trackByBarcodeV2", json({ error: null, result: [] }))];
+    world.routes = [onFragment("trackByBarcodeV2", json({ error: null, result: [] }))];
     expect((await world.track([CODE, "x"], {}, null)).snapshots).toEqual([]);
     expect(world.calls).toHaveLength(1);
   });
@@ -65,7 +65,7 @@ describe("Canpar tracking", () => {
   it("reports an unmapped event code", async () => {
     const world = new World(canpar);
     world.routes = [
-      on(
+      onFragment(
         "trackByBarcodeV2",
         json({ result: [parcel(CODE, [{ code: "ZZZ", at: "20261118 080000" }])] }),
       ),
@@ -77,9 +77,9 @@ describe("Canpar tracking", () => {
 
   it("stops on an error envelope or a 5xx", async () => {
     const world = new World(canpar);
-    world.routes = [on("trackByBarcodeV2", json({ error: "bad" }))];
+    world.routes = [onFragment("trackByBarcodeV2", json({ error: "bad" }))];
     await expect(world.track([CODE], {}, null)).rejects.toBeInstanceOf(UnexpectedResponseError);
-    world.routes = [on("trackByBarcodeV2", json({}, 500))];
+    world.routes = [onFragment("trackByBarcodeV2", json({}, 500))];
     await expect(world.track([CODE], {}, null)).rejects.toBeInstanceOf(TransientError);
   });
 });

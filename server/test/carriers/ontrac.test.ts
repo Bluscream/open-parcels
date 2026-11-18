@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ontrac } from "../../src/carriers/ontrac/index.js";
-import { register, type BaseContext } from "../../src/engine/registry.js";
+import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { HostLimiter, PluginHttp, type FetchLike } from "../../src/plugin/http.js";
-import { FakeClock } from "../helpers.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, json, type Answer } from "./harness.js";
 
 // Made-up codes and values only.
 const ACTIVE = "D10000000000001";
@@ -12,45 +12,22 @@ const MISSING = "D10000000000003";
 
 const plugin = register(ontrac);
 
-type Reply = { status: number; body: unknown } | Error;
-
-function fakeOnTrac(routes: Record<string, Reply[]>) {
+/** Answers by the code at the end of the path; unscripted codes are not found. */
+function fakeOnTrac(routes: Record<string, Answer[]>) {
   const calls: string[] = [];
-  const fetchImpl: FetchLike = (url) => {
-    const code = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
-    calls.push(code);
-    const reply = routes[code]?.shift() ?? { status: 404, body: { Title: "Not Found" } };
-    if (reply instanceof Error) {
-      return Promise.reject(reply);
-    }
-    return Promise.resolve(
-      new Response(JSON.stringify(reply.body), {
-        status: reply.status,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-  };
+  const { fetchImpl } = fakeNetwork([
+    (call) => {
+      const code = decodeURIComponent(call.url.pathname.split("/").at(-1) ?? "");
+      calls.push(code);
+      return routes[code]?.shift() ?? json({ Title: "Not Found" }, 404);
+    },
+  ]);
   return { fetchImpl, calls };
 }
 
 function context(fetchImpl: FetchLike) {
-  const clock = new FakeClock();
-  const limiter = new HostLimiter(clock, (ms) => {
-    clock.advance(ms);
-    return Promise.resolve();
-  });
-  const unknown: string[] = [];
-  const base: BaseContext = {
-    sourceId: "s1",
-    http: new PluginHttp(ontrac.http, limiter, clock, fetchImpl),
-    clock,
-    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    session: { load: () => null, save: () => Promise.resolve() },
-    reportUnknown: (_kind, key) => {
-      unknown.push(key);
-    },
-  };
-  return { base, unknown };
+  const { base, unknownKeys } = fakeContext(ontrac.http, fetchImpl);
+  return { base, unknown: unknownKeys };
 }
 
 function pkg(code: string, events: [string, string][], extra: Record<string, unknown> = {}) {
@@ -76,9 +53,8 @@ describe("OnTrac public tracking", () => {
   it("maps the newest event and reads the expected delivery and history", async () => {
     const { fetchImpl } = fakeOnTrac({
       [ACTIVE]: [
-        {
-          status: 200,
-          body: pkg(
+        json(
+          pkg(
             ACTIVE,
             [
               ["EXRL", "2026-11-16T10:00:00"],
@@ -87,7 +63,8 @@ describe("OnTrac public tracking", () => {
             ],
             { UtcExpectedDeliveryDateTime: "2026-11-18T22:00:00Z" },
           ),
-        },
+          200,
+        ),
       ],
     });
     const { base } = context(fetchImpl);
@@ -114,13 +91,13 @@ describe("OnTrac public tracking", () => {
   it("reports delivered with its time and no window", async () => {
     const { fetchImpl } = fakeOnTrac({
       [DELIVERED]: [
-        {
-          status: 200,
-          body: pkg(DELIVERED, [["DLVD", "2026-11-18T09:00:00Z"]], {
+        json(
+          pkg(DELIVERED, [["DLVD", "2026-11-18T09:00:00Z"]], {
             UtcDeliveryDateTime: "2026-11-18T09:00:00Z",
             UtcExpectedDeliveryDateTime: "2026-11-18T22:00:00Z",
           }),
-        },
+          200,
+        ),
       ],
     });
     const { base } = context(fetchImpl);
@@ -134,8 +111,8 @@ describe("OnTrac public tracking", () => {
 
   it("treats the structured 404 and an empty package list as not found", async () => {
     const { fetchImpl, calls } = fakeOnTrac({
-      [MISSING]: [{ status: 404, body: { Title: "Not Found", Status: 404 } }],
-      [ACTIVE]: [{ status: 200, body: { Packages: [] } }],
+      [MISSING]: [json({ Title: "Not Found", Status: 404 }, 404)],
+      [ACTIVE]: [json({ Packages: [] }, 200)],
     });
     const { base } = context(fetchImpl);
     const result = await plugin.track(base, {}, null, [MISSING, ACTIVE, "../x"]);
@@ -146,13 +123,13 @@ describe("OnTrac public tracking", () => {
   it("reports an unmapped code once and keeps the status null", async () => {
     const { fetchImpl } = fakeOnTrac({
       [ACTIVE]: [
-        {
-          status: 200,
-          body: pkg(ACTIVE, [
+        json(
+          pkg(ACTIVE, [
             ["NFRP", "2026-11-18T08:00:00Z"],
             ["NFRP", "2026-11-18T07:00:00Z"],
           ]),
-        },
+          200,
+        ),
       ],
     });
     const { base, unknown } = context(fetchImpl);
@@ -168,12 +145,12 @@ describe("OnTrac public tracking", () => {
     ).rejects.toBeInstanceOf(TransientError);
     expect(network.calls).toEqual([ACTIVE]);
 
-    const server = fakeOnTrac({ [ACTIVE]: [{ status: 502, body: {} }] });
+    const server = fakeOnTrac({ [ACTIVE]: [json({}, 502)] });
     await expect(
       plugin.track(context(server.fetchImpl).base, {}, null, [ACTIVE]),
     ).rejects.toBeInstanceOf(TransientError);
 
-    const odd = fakeOnTrac({ [ACTIVE]: [{ status: 404, body: { message: "gone" } }] });
+    const odd = fakeOnTrac({ [ACTIVE]: [json({ message: "gone" }, 404)] });
     await expect(
       plugin.track(context(odd.fetchImpl).base, {}, null, [ACTIVE]),
     ).rejects.toBeInstanceOf(UnexpectedResponseError);

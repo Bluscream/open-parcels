@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { nzPost } from "../../src/carriers/nz_post/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./nz-at-harness.js";
+import { register } from "../../src/engine/registry.js";
+import type { CarrierPlugin } from "../../src/plugin/api.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, inOrder, json, type Answer } from "./harness.js";
+
+/** Replies in order; once they run out, 500 with an empty JSON object. */
+const scripted = (replies: Answer[]) => fakeNetwork([inOrder(...replies)], () => json({}, 500));
+
+function harness<C, S>(plugin: CarrierPlugin<C, S>, fetchImpl: FetchLike) {
+  const { base, unknownKeys } = fakeContext(plugin.http, fetchImpl);
+  return { registered: register(plugin), base, unknown: unknownKeys };
+}
 
 // Made-up codes and values only.
 const CODE = "TS000000001NZ";
@@ -21,14 +32,14 @@ const result = (events: unknown[]) => ({
 describe("NZ Post tracking", () => {
   it("maps the newest event and keeps the history newest first", async () => {
     const { fetchImpl, calls } = scripted([
-      {
-        status: 200,
-        body: result([
+      json(
+        result([
           step("2026-11-18T08:00:00+13:00", "With courier for delivery"),
           step("2026-11-16T10:00:00+13:00", "Label created"),
           step("2026-11-17T10:00:00+13:00", null, "5000"),
         ]),
-      },
+        200,
+      ),
     ]);
     const { registered, base, unknown } = harness(nzPost, fetchImpl);
     const out = await registered.track(base, {}, null, [CODE]);
@@ -55,7 +66,7 @@ describe("NZ Post tracking", () => {
 
   it("reads delivered with its time", async () => {
     const { fetchImpl } = scripted([
-      { status: 200, body: result([step("2026-11-18T09:00:00Z", "Delivered")]) },
+      json(result([step("2026-11-18T09:00:00Z", "Delivered")]), 200),
     ]);
     const { registered, base } = harness(nzPost, fetchImpl);
     const [parcel] = (await registered.track(base, {}, null, [CODE])).snapshots;
@@ -64,9 +75,9 @@ describe("NZ Post tracking", () => {
 
   it("treats status_code 2, empty results and result errors as not found", async () => {
     const { fetchImpl, calls } = scripted([
-      { status: 200, body: { status_code: 2 } },
-      { status: 200, body: { results: [] } },
-      { status: 200, body: { results: [{ errors: [{ message: "x" }] }] } },
+      json({ status_code: 2 }, 200),
+      json({ results: [] }, 200),
+      json({ results: [{ errors: [{ message: "x" }] }] }, 200),
     ]);
     const { registered, base } = harness(nzPost, fetchImpl);
     const out = await registered.track(base, {}, null, [CODE, CODE, CODE, "../x"]);
@@ -76,13 +87,13 @@ describe("NZ Post tracking", () => {
 
   it("reports an unknown status once and leaves it unmapped", async () => {
     const { fetchImpl } = scripted([
-      {
-        status: 200,
-        body: result([
+      json(
+        result([
           step("2026-11-18T08:00:00Z", "Something new"),
           step("2026-11-17T08:00:00Z", "Something new"),
         ]),
-      },
+        200,
+      ),
     ]);
     const { registered, base, unknown } = harness(nzPost, fetchImpl);
     const [parcel] = (await registered.track(base, {}, null, [CODE])).snapshots;
@@ -91,11 +102,7 @@ describe("NZ Post tracking", () => {
   });
 
   it("fails transiently on network errors, HTTP errors and wrong shapes", async () => {
-    const { fetchImpl } = scripted([
-      new Error("offline"),
-      { status: 502, body: {} },
-      { status: 200, body: [] },
-    ]);
+    const { fetchImpl } = scripted([new Error("offline"), json({}, 502), json([], 200)]);
     const { registered, base } = harness(nzPost, fetchImpl);
     await expect(registered.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(TransientError);
     await expect(registered.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(TransientError);

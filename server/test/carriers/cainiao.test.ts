@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cainiao } from "../../src/carriers/cainiao/index.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const A = "TESTCN0000001";
@@ -24,7 +24,7 @@ describe("Cainiao tracking", () => {
   it("batches codes and reads status, window and history", async () => {
     const world = new World(cainiao);
     world.routes = [
-      on(
+      onFragment(
         "/global/detail.json",
         json({
           success: true,
@@ -53,7 +53,7 @@ describe("Cainiao tracking", () => {
   it("reports an unmapped action code", async () => {
     const world = new World(cainiao);
     world.routes = [
-      on("/global/detail.json", json({ success: true, module: [entry(A, "NEW_THING")] })),
+      onFragment("/global/detail.json", json({ success: true, module: [entry(A, "NEW_THING")] })),
     ];
     const [parcel] = (await world.track([A], {}, null)).snapshots;
     expect(parcel?.status).toBeNull();
@@ -62,7 +62,7 @@ describe("Cainiao tracking", () => {
 
   it("stops on an unsuccessful envelope", async () => {
     const world = new World(cainiao);
-    world.routes = [on("/global/detail.json", json({ success: false, module: [] }))];
+    world.routes = [onFragment("/global/detail.json", json({ success: false, module: [] }))];
     await expect(world.track([A], {}, null)).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 });

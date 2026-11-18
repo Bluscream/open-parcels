@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dynalogic } from "../../src/carriers/dynalogic/index.js";
 import { InvalidSourceConfigError, register } from "../../src/engine/registry.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up order numbers, postcodes and values only.
 const CODE = "990000001";
@@ -28,10 +28,15 @@ function order(scenario: string, step: number, code: number) {
 
 describe("Dynalogic tracking", () => {
   it("derives the status from scenario, step and result and reads the activities", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [{ status: 200, body: order("DEL_DEF", 4, 0) }],
-    });
-    const { base, unknown } = harness(dynalogic.http, fetchImpl);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json(order("DEL_DEF", 4, 0), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(dynalogic.http, fetchImpl);
     const [found] = (await plugin.track(base, CONFIG, null, [CODE])).snapshots;
     expect(calls).toHaveLength(1);
     expect(found).toMatchObject({
@@ -58,13 +63,15 @@ describe("Dynalogic tracking", () => {
   });
 
   it("maps a failed scenario to a problem and an early step to registered", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
-        { status: 200, body: order("DEL_FAIL", 3, 9) },
-        { status: 200, body: order("DEL_DEF", 1, 1) },
-      ],
-    });
-    const { base } = harness(dynalogic.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json(order("DEL_FAIL", 3, 9), 200), json(order("DEL_DEF", 1, 1), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(dynalogic.http, fetchImpl);
     expect((await plugin.track(base, CONFIG, null, [CODE])).snapshots[0]?.status).toBe("problem");
     expect((await plugin.track(base, CONFIG, null, [CODE])).snapshots[0]?.status).toBe(
       "registered",
@@ -72,22 +79,24 @@ describe("Dynalogic tracking", () => {
   });
 
   it("treats 404 as not found", async () => {
-    const { fetchImpl } = scripted({ [ROUTE]: [{ status: 404, body: {} }] });
-    const { base } = harness(dynalogic.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([routeTable({ [ROUTE]: [json({}, 404)] }, "host")]);
+    const { base } = fakeContext(dynalogic.http, fetchImpl);
     expect((await plugin.track(base, CONFIG, null, [CODE])).snapshots).toEqual([]);
   });
 
   it("reports an unknown scenario and result code", async () => {
-    const { fetchImpl } = scripted({ [ROUTE]: [{ status: 200, body: order("XX_NEW", 2, 999) }] });
-    const { base, unknown } = harness(dynalogic.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable({ [ROUTE]: [json(order("XX_NEW", 2, 999), 200)] }, "host"),
+    ]);
+    const { base, unknown } = fakeContext(dynalogic.http, fetchImpl);
     const [found] = (await plugin.track(base, CONFIG, null, [CODE])).snapshots;
     expect(found?.status).toBe("in_transit");
     expect(unknown).toEqual(["status:scenario:XX_NEW", "status:result:999"]);
   });
 
   it("refuses a source without a valid postcode", async () => {
-    const { fetchImpl } = scripted({});
-    const { base } = harness(dynalogic.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([routeTable({}, "host")]);
+    const { base } = fakeContext(dynalogic.http, fetchImpl);
     await expect(plugin.track(base, { postalCode: "x" }, null, [CODE])).rejects.toBeInstanceOf(
       InvalidSourceConfigError,
     );

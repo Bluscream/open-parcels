@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eltaCourier } from "../../src/carriers/elta_courier/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, raw, routeTable } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "EL000000001GR";
@@ -23,18 +23,24 @@ function reply(...events: ReturnType<typeof event>[]) {
 
 describe("ELTA Courier tracking", () => {
   it("reads Greek local times, maps the newest sentence and keeps the place", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          raw: reply(
-            event("17-11-2026", "10:00", "Δημιουργία ΣΥ.ΔΕ.ΤΑ."),
-            event("18-11-2026", "08:30", "Σε διανομέα προς παράδοση"),
-          ),
+          [ROUTE]: [
+            raw(
+              reply(
+                event("17-11-2026", "10:00", "Δημιουργία ΣΥ.ΔΕ.ΤΑ."),
+                event("18-11-2026", "08:30", "Σε διανομέα προς παράδοση"),
+              ),
+              200,
+              { "content-type": "application/json" },
+            ),
+          ],
         },
-      ],
-    });
-    const { base, unknown } = harness(eltaCourier.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(eltaCourier.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(calls[0]?.body).toBe(`number=${CODE}`);
     expect(found).toMatchObject({
@@ -53,13 +59,20 @@ describe("ELTA Courier tracking", () => {
   });
 
   it("dates a delivery and treats an empty result as not found", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
-        { status: 200, raw: reply(event("18-11-2026", "12:00", "Αποστολή παραδόθηκε")) },
-        { status: 200, body: { result: [] } },
-      ],
-    });
-    const { base } = harness(eltaCourier.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [
+            raw(reply(event("18-11-2026", "12:00", "Αποστολή παραδόθηκε")), 200, {
+              "content-type": "application/json",
+            }),
+            json({ result: [] }, 200),
+          ],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(eltaCourier.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots[0]).toMatchObject({
       status: "delivered",
       deliveredAt: "2026-11-18T10:00:00.000Z",
@@ -68,13 +81,20 @@ describe("ELTA Courier tracking", () => {
   });
 
   it("reports an unknown sentence and fails transiently on a server error", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
-        { status: 200, raw: reply(event("18-11-2026", "12:00", "Κάτι νέο")) },
-        { status: 500, raw: "" },
-      ],
-    });
-    const { base, unknown } = harness(eltaCourier.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [
+            raw(reply(event("18-11-2026", "12:00", "Κάτι νέο")), 200, {
+              "content-type": "application/json",
+            }),
+            raw("", 500, { "content-type": "application/json" }),
+          ],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(eltaCourier.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots[0]?.status).toBeNull();
     expect(unknown).toEqual(["status:Κάτι νέο"]);
     await expect(plugin.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(TransientError);

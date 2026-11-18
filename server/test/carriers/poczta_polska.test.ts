@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pocztaPolska } from "../../src/carriers/poczta_polska/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { html, json, on, World } from "./post-harness.js";
+import { html, json, onPrefix, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "TE000000001PL";
@@ -9,9 +9,9 @@ const OTHER = "TE000000002PL";
 const KEY = ["made", "up", "key"].join("-");
 const PORTAL = `<div id="widgetTracking" data-urltracking="https://uss.poczta-polska.pl/uss/v2.0/tracking" data-apikey="${KEY}"></div>`;
 
-const portal = () => on("GET emonitoring.poczta-polska.pl/", html(PORTAL));
+const portal = () => onPrefix("GET emonitoring.poczta-polska.pl/", html(PORTAL));
 const api = (...replies: Response[]) =>
-  on("POST uss.poczta-polska.pl/uss/v2.0/tracking/checkmailex", ...replies);
+  onPrefix("POST uss.poczta-polska.pl/uss/v2.0/tracking/checkmailex", ...replies);
 
 function payload(latest: string, extra: Record<string, unknown> = {}) {
   return {
@@ -75,7 +75,7 @@ describe("Poczta Polska tracking", () => {
     const grouped = payload("P_D", { components: [{ number: OTHER }] });
     const world = new World(pocztaPolska, [portal(), api(json({ mailStatus: -1 }), json(grouped))]);
     expect((await world.track([CODE, OTHER, "../x"])).snapshots).toEqual([]);
-    expect(world.paths().filter((p) => p.startsWith("POST"))).toHaveLength(2);
+    expect(world.requests().filter((p) => p.startsWith("POST"))).toHaveLength(2);
   });
 
   it("reports an unknown scan code and keeps the status empty", async () => {
@@ -87,23 +87,28 @@ describe("Poczta Polska tracking", () => {
 
   it("re-reads the key once on a 401 and gives up on the second", async () => {
     const world = new World(pocztaPolska, [
-      on("GET emonitoring.poczta-polska.pl/", html(PORTAL), html(PORTAL)),
+      onPrefix("GET emonitoring.poczta-polska.pl/", html(PORTAL), html(PORTAL)),
       api(json({}, 401), json({}, 401)),
     ]);
     await expect(world.track([CODE])).rejects.toBeInstanceOf(TransientError);
-    expect(world.paths().filter((p) => p.startsWith("GET"))).toHaveLength(2);
+    expect(world.requests().filter((p) => p.startsWith("GET"))).toHaveLength(2);
   });
 
   it("never sends the key to an endpoint the portal did not advertise as expected", async () => {
     const moved = PORTAL.replace("uss.poczta-polska.pl", "elsewhere.example");
-    const world = new World(pocztaPolska, [on("GET emonitoring.poczta-polska.pl/", html(moved))]);
+    const world = new World(pocztaPolska, [
+      onPrefix("GET emonitoring.poczta-polska.pl/", html(moved)),
+    ]);
     await expect(world.track([CODE])).rejects.toBeInstanceOf(UnexpectedResponseError);
     expect(world.calls).toHaveLength(1);
   });
 
   it("stops on a network error without retrying", async () => {
-    const failing = new World(pocztaPolska, [portal(), on("POST uss", new TypeError("offline"))]);
+    const failing = new World(pocztaPolska, [
+      portal(),
+      onPrefix("POST uss", new TypeError("offline")),
+    ]);
     await expect(failing.track([CODE, OTHER])).rejects.toBeInstanceOf(TransientError);
-    expect(failing.paths().filter((p) => p.startsWith("POST"))).toHaveLength(1);
+    expect(failing.requests().filter((p) => p.startsWith("POST"))).toHaveLength(1);
   });
 });

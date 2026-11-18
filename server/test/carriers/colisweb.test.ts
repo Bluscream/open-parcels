@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { colisweb } from "../../src/carriers/colisweb/index.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "TESTCW000001";
@@ -10,7 +10,7 @@ describe("Colisweb tracking", () => {
   it("reads status, the slot and the milestones", async () => {
     const world = new World(colisweb);
     world.routes = [
-      on(
+      onFragment(
         "/api/search",
         json({
           searchValue: CODE,
@@ -39,14 +39,14 @@ describe("Colisweb tracking", () => {
 
   it("treats 404 as not found", async () => {
     const world = new World(colisweb);
-    world.routes = [on("/api/search", json({}, 404))];
+    world.routes = [onFragment("/api/search", json({}, 404))];
     expect((await world.track([CODE], {}, null)).snapshots).toEqual([]);
   });
 
   it("reports an unknown step and falls back to the milestones", async () => {
     const world = new World(colisweb);
     world.routes = [
-      on(
+      onFragment(
         "/api/search",
         json({ searchValue: CODE, step: "TELEPORTED", pickedUpDate: "2026-11-18T07:00:00Z" }),
       ),
@@ -58,7 +58,7 @@ describe("Colisweb tracking", () => {
 
   it("stops when the reply is for another number", async () => {
     const world = new World(colisweb);
-    world.routes = [on("/api/search", json({ searchValue: "OTHER" }))];
+    world.routes = [onFragment("/api/search", json({ searchValue: "OTHER" }))];
     await expect(world.track([CODE], {}, null)).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 });

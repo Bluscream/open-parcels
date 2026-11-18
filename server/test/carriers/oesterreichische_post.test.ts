@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { oesterreichischePost } from "../../src/carriers/oesterreichische_post/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./nz-at-harness.js";
+import { register } from "../../src/engine/registry.js";
+import type { CarrierPlugin } from "../../src/plugin/api.js";
+import type { FetchLike } from "../../src/plugin/http.js";
+import { fakeContext, fakeNetwork, inOrder, json, type Answer } from "./harness.js";
+
+/** Replies in order; once they run out, 500 with an empty JSON object. */
+const scripted = (replies: Answer[]) => fakeNetwork([inOrder(...replies)], () => json({}, 500));
+
+function harness<C, S>(plugin: CarrierPlugin<C, S>, fetchImpl: FetchLike) {
+  const { base, unknownKeys } = fakeContext(plugin.http, fetchImpl);
+  return { registered: register(plugin), base, unknown: unknownKeys };
+}
 
 // Made-up codes and values only.
 const CODE = "1000000000000000000001";
@@ -30,9 +41,8 @@ const shipment = (events: unknown[], extra: Record<string, unknown> = {}) => ({
 describe("Austrian Post tracking", () => {
   it("maps the newest event, reads the window in Vienna time and keeps the history", async () => {
     const { fetchImpl, calls } = scripted([
-      {
-        status: 200,
-        body: shipment(
+      json(
+        shipment(
           [
             event("2026-11-16T10:00:00", "aviso", "Announced"),
             event("2026-11-18T07:00:00", "inDelivery", "Out for delivery"),
@@ -47,7 +57,8 @@ describe("Austrian Post tracking", () => {
             },
           },
         ),
-      },
+        200,
+      ),
     ]);
     const { registered, base, unknown } = harness(oesterreichischePost, fetchImpl);
     const out = await registered.track(base, { language: "en" }, null, [CODE]);
@@ -73,7 +84,7 @@ describe("Austrian Post tracking", () => {
 
   it("reads a parcel left at the safe place as delivered", async () => {
     const { fetchImpl } = scripted([
-      { status: 200, body: shipment([event("2026-11-18T10:00:00+01:00", "deliveryParked", "x")]) },
+      json(shipment([event("2026-11-18T10:00:00+01:00", "deliveryParked", "x")]), 200),
     ]);
     const { registered, base } = harness(oesterreichischePost, fetchImpl);
     const [parcel] = (await registered.track(base, {}, null, [CODE])).snapshots;
@@ -87,11 +98,8 @@ describe("Austrian Post tracking", () => {
 
   it("treats a null shipment and a malformed-code rejection as not found", async () => {
     const { fetchImpl, calls } = scripted([
-      { status: 200, body: { data: { einzelsendung: null } } },
-      {
-        status: 400,
-        body: { errors: [{ extensions: { code: "INVALID_ARGUMENT_IDENTITY_CODE" } }] },
-      },
+      json({ data: { einzelsendung: null } }, 200),
+      json({ errors: [{ extensions: { code: "INVALID_ARGUMENT_IDENTITY_CODE" } }] }, 400),
     ]);
     const { registered, base } = harness(oesterreichischePost, fetchImpl);
     const out = await registered.track(base, {}, null, [CODE, CODE, "../x"]);
@@ -101,7 +109,7 @@ describe("Austrian Post tracking", () => {
 
   it("reports an unknown state key", async () => {
     const { fetchImpl } = scripted([
-      { status: 200, body: shipment([event("2026-11-18T10:00:00Z", "somethingNew", "x")]) },
+      json(shipment([event("2026-11-18T10:00:00Z", "somethingNew", "x")]), 200),
     ]);
     const { registered, base, unknown } = harness(oesterreichischePost, fetchImpl);
     const [parcel] = (await registered.track(base, {}, null, [CODE])).snapshots;
@@ -112,8 +120,8 @@ describe("Austrian Post tracking", () => {
   it("fails transiently on network errors, HTTP errors and GraphQL faults", async () => {
     const { fetchImpl } = scripted([
       new Error("offline"),
-      { status: 500, body: {} },
-      { status: 200, body: { errors: [{ message: "boom" }] } },
+      json({}, 500),
+      json({ errors: [{ message: "boom" }] }, 200),
     ]);
     const { registered, base } = harness(oesterreichischePost, fetchImpl);
     await expect(registered.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(TransientError);

@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { magyarPosta } from "../../src/carriers/magyar_posta/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, scripted, trackingContext, type Reply } from "./public-tracking-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, json, raw, type Answer } from "./harness.js";
+
+const JSON_TYPE = { "content-type": "application/json" };
+/** Replies in order; once they run out, 404 with an empty body. */
+const scripted = (replies: Answer[]) =>
+  fakeNetwork([inOrder(...replies)], () => raw("", 404, JSON_TYPE));
 
 // Made-up codes and values only.
 const CODE = "ZZ000000001HU";
@@ -21,9 +26,9 @@ function row(category: string, detail: string, description: string, epoch: numbe
   };
 }
 
-async function run(replies: Reply[], codes = [CODE]) {
+async function run(replies: Answer[], codes = [CODE]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = trackingContext(magyarPosta.http, fetchImpl);
+  const { base, unknown } = fakeContext(magyarPosta.http, fetchImpl);
   const result = await plugin.track(base, {}, null, codes);
   return { result, calls, unknown };
 }
@@ -93,7 +98,7 @@ describe("magyar_posta tracking", () => {
   });
 
   it("stops on an answer that is not tracking data", async () => {
-    await expect(run([{ status: 200, body: "<html></html>", type: "text/html" }])).rejects.toThrow(
+    await expect(run([raw("<html></html>", 200, { "content-type": "text/html" })])).rejects.toThrow(
       UnexpectedResponseError,
     );
     await expect(run([json({ [CODE]: "x" })])).rejects.toThrow(UnexpectedResponseError);

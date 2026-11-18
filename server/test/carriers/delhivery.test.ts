@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { delhivery } from "../../src/carriers/delhivery/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up waybills and values only.
 const CODE = "9900000000001";
@@ -38,10 +38,15 @@ function parcel(hqStatus: string | null, extra: Record<string, unknown> = {}) {
 
 describe("Delhivery tracking", () => {
   it("maps hqStatus, reads the promised date in Indian time and builds the history", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [{ status: 200, body: { statusCode: 200, data: [parcel("In Transit")] } }],
-    });
-    const { base, unknown } = harness(delhivery.http, fetchImpl);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json({ statusCode: 200, data: [parcel("In Transit")] }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(delhivery.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [CODE]);
     expect(calls[0]?.headers.get("origin")).toBe("https://www.delhivery.com");
     expect(calls[0]?.url.searchParams.get("wbn")).toBe(CODE);
@@ -77,8 +82,10 @@ describe("Delhivery tracking", () => {
       trackingStates: [...parcel(null).trackingStates, { label: "Delivered", scans: [] }],
       status: { statusDateTime: "2026-11-18T11:00:00" },
     });
-    const { fetchImpl } = scripted({ [ROUTE]: [{ status: 200, body: { data: [delivered] } }] });
-    const { base } = harness(delhivery.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable({ [ROUTE]: [json({ data: [delivered] }, 200)] }, "host"),
+    ]);
+    const { base } = fakeContext(delhivery.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(found).toMatchObject({
       status: "delivered",
@@ -89,28 +96,38 @@ describe("Delhivery tracking", () => {
   });
 
   it("treats an empty data list as not found and never sends implausible codes", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [{ status: 200, body: { statusCode: 200, message: "invalid", data: [] } }],
-    });
-    const { base } = harness(delhivery.http, fetchImpl);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json({ statusCode: 200, message: "invalid", data: [] }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(delhivery.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [CODE, "not a code"]);
     expect(result).toEqual({ snapshots: [], complete: true });
     expect(calls).toHaveLength(1);
   });
 
   it("reports an unknown status once and leaves the status empty", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [{ status: 200, body: { data: [parcel("Teleported")] } }],
-    });
-    const { base, unknown } = harness(delhivery.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json({ data: [parcel("Teleported")] }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(delhivery.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(found).toMatchObject({ status: null, rawStatus: "Teleported" });
     expect(unknown).toEqual(["status:Teleported"]);
   });
 
   it("fails transiently on a refused request instead of reporting the parcel gone", async () => {
-    const { fetchImpl } = scripted({ [ROUTE]: [{ status: 401, body: {} }] });
-    const { base } = harness(delhivery.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([routeTable({ [ROUTE]: [json({}, 401)] }, "host")]);
+    const { base } = fakeContext(delhivery.http, fetchImpl);
     await expect(plugin.track(base, {}, null, [CODE])).rejects.toBeInstanceOf(TransientError);
   });
 });

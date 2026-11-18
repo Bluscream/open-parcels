@@ -3,7 +3,7 @@ import { dao } from "../../src/carriers/dao/index.js";
 import { register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
 import { FakeClock } from "../helpers.js";
-import { harness, scripted, type Reply } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up tracking ids, tokens and names only.
 const ACTIVE = "00000000000000000001";
@@ -15,10 +15,8 @@ const DETAIL = `${LIST}/${ACTIVE}`;
 const POINT = `GET apiv2.dao.as/consumer/shipment/pickup-point/v1/pickup-points/${PICKUP_ID}`;
 const plugin = register(dao);
 
-const tokens = (n: number): Reply => ({
-  status: 200,
-  body: { access_token: `at-${n}`, refresh_token: `rt-${n}`, expires_in: 300 },
-});
+const tokens = (n: number): Response =>
+  json({ access_token: `at-${n}`, refresh_token: `rt-${n}`, expires_in: 300 }, 200);
 
 const status = (statusType: string, statusCode: number, statusText: string) => ({
   statusType,
@@ -46,19 +44,21 @@ const events = {
 
 describe("DAO account", () => {
   it("renews the session, lists both directions and adds history and the pickup point", async () => {
-    const { fetchImpl, calls } = scripted({
-      [TOKEN]: [tokens(1)],
-      [LIST]: [
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: { items: [parcel(ACTIVE, status("STATUS_IN_TRANSIT", 12, "På vej"))] },
+          [TOKEN]: [tokens(1)],
+          [LIST]: [
+            json({ items: [parcel(ACTIVE, status("STATUS_IN_TRANSIT", 12, "På vej"))] }, 200),
+            json({ items: [] }, 200),
+          ],
+          [DETAIL]: [json(events, 200)],
+          [POINT]: [json({ name: "Example Shop Point" }, 200)],
         },
-        { status: 200, body: { items: [] } },
-      ],
-      [DETAIL]: [{ status: 200, body: events }],
-      [POINT]: [{ status: 200, body: { name: "Example Shop Point" } }],
-    });
-    const { base, saved, unknown } = harness(dao.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, saved, unknown } = fakeContext(dao.http, fetchImpl);
     const result = await plugin.fetchAccount(base, {}, SECRET);
     expect(result.complete).toBe(true);
     expect(
@@ -84,15 +84,20 @@ describe("DAO account", () => {
   });
 
   it("splits STATUS_OK by code and pickup point and marks outgoing parcels", async () => {
-    const { fetchImpl } = scripted({
-      [TOKEN]: [tokens(1)],
-      [LIST]: [
-        { status: 200, body: [parcel("A1", status("STATUS_OK", 51, "Udleveret"))] },
-        { status: 200, body: { data: [parcel("B1", status("STATUS_OK", 32, "Klar"))] } },
-      ],
-      [POINT]: [{ status: 200, body: { data: { name: "Point" } } }],
-    });
-    const { base } = harness(dao.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [tokens(1)],
+          [LIST]: [
+            json([parcel("A1", status("STATUS_OK", 51, "Udleveret"))], 200),
+            json({ data: [parcel("B1", status("STATUS_OK", 32, "Klar"))] }, 200),
+          ],
+          [POINT]: [json({ data: { name: "Point" } }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(dao.http, fetchImpl);
     const { snapshots } = await plugin.fetchAccount(base, {}, SECRET);
     expect(snapshots.map((s) => [s.barcode, s.status, s.direction])).toEqual([
       ["A1", "delivered", "incoming"],
@@ -102,41 +107,47 @@ describe("DAO account", () => {
   });
 
   it("returns a complete empty list when the account has no parcels", async () => {
-    const { fetchImpl } = scripted({
-      [TOKEN]: [tokens(1)],
-      [LIST]: [
-        { status: 200, body: { items: [] } },
-        { status: 200, body: { items: [] } },
-      ],
-    });
-    const { base } = harness(dao.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [tokens(1)],
+          [LIST]: [json({ items: [] }, 200), json({ items: [] }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(dao.http, fetchImpl);
     expect(await plugin.fetchAccount(base, {}, SECRET)).toEqual({ snapshots: [], complete: true });
   });
 
   it("reports an unknown status type and code", async () => {
     const odd = parcel(ACTIVE, status("STATUS_NEW", 77, "Noget nyt"), { delivery: {} });
-    const { fetchImpl } = scripted({
-      [TOKEN]: [tokens(1)],
-      [LIST]: [
-        { status: 200, body: { items: [odd] } },
-        { status: 200, body: { items: [] } },
-      ],
-      [DETAIL]: [{ status: 200, body: { events: [] } }],
-    });
-    const { base, unknown } = harness(dao.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [tokens(1)],
+          [LIST]: [json({ items: [odd] }, 200), json({ items: [] }, 200)],
+          [DETAIL]: [json({ events: [] }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(dao.http, fetchImpl);
     const [found] = (await plugin.fetchAccount(base, {}, SECRET)).snapshots;
     expect(found?.status).toBeNull();
     expect(unknown).toEqual(["status_type:STATUS_NEW", "status_code:77"]);
   });
 
   it("asks for a new sign-in only when DAO refuses the token, never on a network error", async () => {
-    const refused = scripted({ [TOKEN]: [{ status: 400, body: { error: "invalid_grant" } }] });
+    const refused = fakeNetwork([
+      routeTable({ [TOKEN]: [json({ error: "invalid_grant" }, 400)] }, "host"),
+    ]);
     await expect(
-      plugin.fetchAccount(harness(dao.http, refused.fetchImpl).base, {}, SECRET),
+      plugin.fetchAccount(fakeContext(dao.http, refused.fetchImpl).base, {}, SECRET),
     ).rejects.toBeInstanceOf(SignInRejectedError);
-    const offline = scripted({ [TOKEN]: [new Error("socket hang up")] });
+    const offline = fakeNetwork([routeTable({ [TOKEN]: [new Error("socket hang up")] }, "host")]);
     const error: unknown = await plugin
-      .fetchAccount(harness(dao.http, offline.fetchImpl).base, {}, SECRET)
+      .fetchAccount(fakeContext(dao.http, offline.fetchImpl).base, {}, SECRET)
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TransientError);
     expect(offline.calls).toHaveLength(1);
@@ -149,14 +160,16 @@ describe("DAO account", () => {
       accessToken: "at-0",
       expiresAt: Date.parse("2027-01-01"),
     };
-    const { fetchImpl, calls } = scripted({
-      [TOKEN]: [tokens(1), tokens(2)],
-      [LIST]: [
-        { status: 401, body: {} },
-        { status: 401, body: {} },
-      ],
-    });
-    const { base } = harness(dao.http, fetchImpl, stored);
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
+        {
+          [TOKEN]: [tokens(1), tokens(2)],
+          [LIST]: [json({}, 401), json({}, 401)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(dao.http, fetchImpl, { session: stored });
     await expect(plugin.fetchAccount(base, {}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
     expect(calls.filter((call) => call.key === TOKEN).length).toBeLessThanOrEqual(2);
   });
@@ -167,8 +180,8 @@ describe("DAO account", () => {
     const address = new URL(url);
     expect(address.searchParams.get("code_challenge_method")).toBe("S256");
     expect(address.searchParams.get("client_id")).toBe("dao-app");
-    const { fetchImpl, calls } = scripted({ [TOKEN]: [tokens(5)] });
-    const { base } = harness(dao.http, fetchImpl);
+    const { fetchImpl, calls } = fakeNetwork([routeTable({ [TOKEN]: [tokens(5)] }, "host")]);
+    const { base } = fakeContext(dao.http, fetchImpl);
     const expected = address.searchParams.get("state") ?? "";
     await expect(
       plugin.finishSignIn(base.http, clock, state, "daoapp://auth-callback?code=c&state=wrong"),

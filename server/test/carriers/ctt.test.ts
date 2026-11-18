@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ctt } from "../../src/carriers/ctt/index.js";
 import { resetPortal } from "../../src/carriers/ctt/portal.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { bodyOf, json, on, World, type Route } from "./kit-harness.js";
+import { json, onFragment, World, type Route } from "./harness.js";
 
 // Made-up codes and values only.
 const S10 = "RR000000000PT";
@@ -12,9 +12,9 @@ const SCRIPT_PATH = "/CustomerArea/scripts/CustomerArea.CustomerArea.PublicArea_
 /** The keyless version endpoints and a script naming both actions' versions. */
 function versionRoutes(): Route[] {
   return [
-    on("/moduleversioninfo", json({ versionToken: "mv-1" })),
-    on("/moduleinfo", json({ manifest: { urlVersions: { [SCRIPT_PATH]: "sv-1" } } })),
-    on(
+    onFragment("/moduleversioninfo", json({ versionToken: "mv-1" })),
+    onFragment("/moduleinfo", json({ manifest: { urlVersions: { [SCRIPT_PATH]: "sv-1" } } })),
+    onFragment(
       ".mvc.js",
       new Response(
         'controller.callDataAction("DataActionGetObjectEventsByInputObjectCode", "x", "api-1");' +
@@ -60,7 +60,7 @@ describe("CTT tracking", () => {
     const world = new World(ctt);
     world.routes = [
       ...versionRoutes(),
-      on(
+      onFragment(
         "DataActionGetObjectEventsByInputObjectCode",
         bootstrap(),
         json(
@@ -83,7 +83,7 @@ describe("CTT tracking", () => {
     const headers = new Headers(retry?.init.headers);
     expect(headers.get("x-csrftoken")).toBe("token+abc");
     expect(headers.get("user-agent")).toContain("Mozilla");
-    expect(JSON.parse(bodyOf(retry))).toMatchObject({
+    expect(JSON.parse(retry?.body ?? "")).toMatchObject({
       versionInfo: { moduleVersion: "mv-1", apiVersion: "api-1" },
     });
   });
@@ -92,8 +92,8 @@ describe("CTT tracking", () => {
     const world = new World(ctt);
     world.routes = [
       ...versionRoutes(),
-      on("ObjectCode", json({ data: { ObjectEventsFromQuery: { Found: false } } })),
-      on(
+      onFragment("ObjectCode", json({ data: { ObjectEventsFromQuery: { Found: false } } })),
+      onFragment(
         "CheckIPLocked",
         json({ data: { IsMaintenance: false } }),
         json({ data: { IsMaintenance: true } }),
@@ -107,7 +107,7 @@ describe("CTT tracking", () => {
     const world = new World(ctt);
     world.routes = [
       ...versionRoutes(),
-      on("ObjectCode", json(record([[99, "Novo", "2026-11-18T08:00:00Z"]]))),
+      onFragment("ObjectCode", json(record([[99, "Novo", "2026-11-18T08:00:00Z"]]))),
     ];
     const [parcel] = (await world.track([S10], {}, null)).snapshots;
     expect(parcel?.status).toBeNull();
@@ -117,7 +117,7 @@ describe("CTT tracking", () => {
   it("routes all-digit codes to CTT Express and reads its revised date", async () => {
     const world = new World(ctt);
     world.routes = [
-      on(
+      onFragment(
         "p_track_redis_v2.php",
         json({
           error: null,
@@ -153,7 +153,7 @@ describe("CTT tracking", () => {
 
   it("treats an empty CTT Express answer as not found", async () => {
     const world = new World(ctt);
-    world.routes = [on("p_track_redis_v2.php", new Response(""))];
+    world.routes = [onFragment("p_track_redis_v2.php", new Response(""))];
     expect((await world.track([EXPRESS], {}, null)).snapshots).toEqual([]);
   });
 });

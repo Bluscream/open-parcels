@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { icsCourier } from "../../src/carriers/ics_courier/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { scripted, trackingContext, type Reply } from "./public-tracking-harness-2.js";
+import { fakeContext, fakeNetwork, inOrder, raw, type Answer } from "./harness.js";
+
+const JSON_TYPE = { "content-type": "application/json" };
+/** Replies in order; once they run out, 404 with an empty body. */
+const scripted = (replies: Answer[]) =>
+  fakeNetwork([inOrder(...replies)], () => raw("", 404, JSON_TYPE));
 
 // Made-up codes and values only.
 const CODE = "ICS000000001";
@@ -17,21 +22,20 @@ function record(sequence: number, code: string, status: string, date: string): s
   );
 }
 
-function soap(...records: string[]): Reply {
-  return {
-    status: 200,
-    type: "text/xml",
-    body:
-      '<?xml version="1.0"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">' +
+function soap(...records: string[]): Answer {
+  return raw(
+    '<?xml version="1.0"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">' +
       "<soap:Body><TracePackgeWithSequenceResponse><TracePackgeWithSequenceResult>" +
       `<TrackingInfoWithSeq>${records.join("")}</TrackingInfoWithSeq>` +
       "</TracePackgeWithSequenceResult></TracePackgeWithSequenceResponse></soap:Body></soap:Envelope>",
-  };
+    200,
+    { "content-type": "text/xml" },
+  );
 }
 
-async function run(replies: Reply[]) {
+async function run(replies: Answer[]) {
   const { fetchImpl, calls } = scripted(replies);
-  const { base, unknown } = trackingContext(icsCourier.http, fetchImpl);
+  const { base, unknown } = fakeContext(icsCourier.http, fetchImpl);
   const result = await plugin.track(base, {}, null, [CODE]);
   return { result, calls, unknown };
 }
@@ -79,16 +83,17 @@ describe("ics_courier tracking", () => {
   });
 
   it("stops on faults, odd bodies and network errors", async () => {
-    const fault: Reply = {
-      status: 200,
-      body: '<soap:Envelope xmlns:soap="x"><soap:Body><soap:Fault><faultstring>no</faultstring></soap:Fault></soap:Body></soap:Envelope>',
-    };
+    const fault: Answer = raw(
+      '<soap:Envelope xmlns:soap="x"><soap:Body><soap:Fault><faultstring>no</faultstring></soap:Fault></soap:Body></soap:Envelope>',
+      200,
+      JSON_TYPE,
+    );
     await expect(run([fault])).rejects.toThrow(UnexpectedResponseError);
-    await expect(run([{ status: 200, body: "<html>blocked</html>" }])).rejects.toThrow(
+    await expect(run([raw("<html>blocked</html>", 200, JSON_TYPE)])).rejects.toThrow(
       UnexpectedResponseError,
     );
     await expect(run([soap()])).rejects.toThrow(UnexpectedResponseError);
-    await expect(run([{ status: 500, body: "" }])).rejects.toThrow(TransientError);
+    await expect(run([raw("", 500, JSON_TYPE)])).rejects.toThrow(TransientError);
     await expect(run([new Error("offline")])).rejects.toThrow(TransientError);
   });
 });

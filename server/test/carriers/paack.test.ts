@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { paack } from "../../src/carriers/paack/index.js";
 import { register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { keylessContext, scripted } from "./keyless-harness.js";
+import { fakeContext, fakeNetwork, inOrder, raw, type Answer } from "./harness.js";
 
 // Made-up codes and values only.
 const CODE = "TEST000000001";
@@ -29,12 +29,16 @@ function page(label: string, extra: Record<string, unknown> = {}): string {
   return `<html><script>window.__remixContext = ${JSON.stringify(context)};</script></html>`;
 }
 
-const html = (body: string) => ({ status: 200, body, type: "text/html" });
+const html = (body: string) => raw(body, 200, { "content-type": "text/html" });
+const JSON_TYPE = { "content-type": "application/json" };
+/** Replies in order; once they run out, 404 with an empty body. */
+const scripted = (replies: Answer[]) =>
+  fakeNetwork([inOrder(...replies)], () => raw("", 404, JSON_TYPE));
 
 describe("Paack public tracking", () => {
   it("reads status, window and history from the embedded route data", async () => {
     const { fetchImpl, calls } = scripted([html(page("inDelivery"))]);
-    const { base } = keylessContext(paack.http, fetchImpl);
+    const { base } = fakeContext(paack.http, fetchImpl);
     const result = await plugin.track(base, config, null, [CODE]);
     const [parcel] = result.snapshots;
     expect(parcel).toMatchObject({
@@ -56,25 +60,25 @@ describe("Paack public tracking", () => {
 
   it("treats a redirect, a 404 and an error page as not found", async () => {
     const { fetchImpl } = scripted([
-      { status: 302, body: "", headers: { location: "/error" } },
-      { status: 404, body: "" },
+      raw("", 302, { ...JSON_TYPE, location: "/error" }),
+      raw("", 404, JSON_TYPE),
       html("<html>Order not found</html>"),
     ]);
-    const { base } = keylessContext(paack.http, fetchImpl);
+    const { base } = fakeContext(paack.http, fetchImpl);
     const result = await plugin.track(base, config, null, [CODE, CODE, CODE]);
     expect(result.snapshots).toEqual([]);
   });
 
   it("skips codes without a postcode", async () => {
     const { fetchImpl, calls } = scripted([]);
-    const { base } = keylessContext(paack.http, fetchImpl);
+    const { base } = fakeContext(paack.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots).toEqual([]);
     expect(calls).toHaveLength(0);
   });
 
   it("reports an unknown label and leaves the status null", async () => {
     const { fetchImpl } = scripted([html(page("somethingNew"))]);
-    const { base, unknown } = keylessContext(paack.http, fetchImpl);
+    const { base, reports: unknown } = fakeContext(paack.http, fetchImpl);
     const [parcel] = (await plugin.track(base, config, null, [CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual([{ kind: "status_code", key: "somethingNew" }]);
@@ -83,11 +87,11 @@ describe("Paack public tracking", () => {
   it("fails transiently on network errors and stops on a page without route data", async () => {
     const network = scripted([new Error("offline")]);
     await expect(
-      plugin.track(keylessContext(paack.http, network.fetchImpl).base, config, null, [CODE]),
+      plugin.track(fakeContext(paack.http, network.fetchImpl).base, config, null, [CODE]),
     ).rejects.toBeInstanceOf(TransientError);
     const odd = scripted([html("<html>maintenance</html>")]);
     await expect(
-      plugin.track(keylessContext(paack.http, odd.fetchImpl).base, config, null, [CODE]),
+      plugin.track(fakeContext(paack.http, odd.fetchImpl).base, config, null, [CODE]),
     ).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 });

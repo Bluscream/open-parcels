@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { sunyou } from "../../src/carriers/sunyou/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { fakeRoutes, harness, type Reply } from "./route-harness.js";
+import { register } from "../../src/engine/registry.js";
+import { fakeContext, fakeNetwork, json, raw, routeTable, type Answer } from "./harness.js";
+
+/** Routes by `METHOD host/path`; anything unscripted answers 404 with {}. */
+const network = (table: Record<string, Answer[]>) =>
+  fakeNetwork([routeTable(table)], () => json({}, 404));
+
+const plugin = register(sunyou);
 
 // Made-up codes only.
 const CODE = "SYTEST00000001";
@@ -14,11 +21,8 @@ const item = (status: string, eventCode: string, createTime: string, timeZone = 
   timeZone,
 });
 
-const jsonp = (entry: object): Reply => ({
-  status: 200,
-  contentType: "text/javascript",
-  body: `searchCallback(${JSON.stringify({ data: [entry], message: "success", status: 1 })})`,
-});
+const jsonp = (entry: object): Answer =>
+  raw(`searchCallback(${JSON.stringify({ data: [entry], message: "success", status: 1 })})`, 200);
 
 const found = (items: unknown[]) =>
   jsonp({
@@ -31,7 +35,7 @@ const found = (items: unknown[]) =>
 
 describe("SunYou tracking", () => {
   it("reads the newest event with its own offset and keeps the history", async () => {
-    const { fetchImpl, calls } = fakeRoutes({
+    const { fetchImpl, calls } = network({
       [ROUTE]: [
         found([
           item("101", "PreAlert", "2026-11-10 10:00:00"),
@@ -40,7 +44,7 @@ describe("SunYou tracking", () => {
         ]),
       ],
     });
-    const { plugin, base } = harness(sunyou, fetchImpl);
+    const { base } = fakeContext(sunyou.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel).toMatchObject({
       carrier: "sunyou",
@@ -61,38 +65,35 @@ describe("SunYou tracking", () => {
   });
 
   it("treats has:false as not found", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [ROUTE]: [jsonp({ has: false, orderNo: CODE, displayStatus: "0" })],
     });
-    const { plugin, base } = harness(sunyou, fetchImpl);
+    const { base } = fakeContext(sunyou.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE, "a,b"])).snapshots).toEqual([]);
   });
 
   it("reports an unknown status code", async () => {
-    const { fetchImpl } = fakeRoutes({
+    const { fetchImpl } = network({
       [ROUTE]: [found([item("999", "Mystery", "2026-11-18 08:00:00")])],
     });
-    const { plugin, base, unknown } = harness(sunyou, fetchImpl);
+    const { base, unknownKeys: unknown } = fakeContext(sunyou.http, fetchImpl);
     const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(parcel?.status).toBeNull();
     expect(unknown).toEqual(["999"]);
   });
 
   it("stops on a missing wrapper, an empty data list or a server error", async () => {
-    const plain = harness(
-      sunyou,
-      fakeRoutes({ [ROUTE]: [{ status: 200, body: "oops" }] }).fetchImpl,
-    );
-    await expect(plain.plugin.track(plain.base, {}, null, [CODE])).rejects.toBeInstanceOf(
+    const plain = fakeContext(sunyou.http, network({ [ROUTE]: [raw("oops", 200)] }).fetchImpl);
+    await expect(plugin.track(plain.base, {}, null, [CODE])).rejects.toBeInstanceOf(
       UnexpectedResponseError,
     );
-    const empty = harness(
-      sunyou,
-      fakeRoutes({ [ROUTE]: [{ status: 200, body: 'searchCallback({"data":[]})' }] }).fetchImpl,
+    const empty = fakeContext(
+      sunyou.http,
+      network({ [ROUTE]: [raw('searchCallback({"data":[]})', 200)] }).fetchImpl,
     );
-    await expect(empty.plugin.track(empty.base, {}, null, [CODE])).rejects.toThrow(/data entry/);
-    const failing = harness(sunyou, fakeRoutes({ [ROUTE]: [{ status: 502, body: "" }] }).fetchImpl);
-    await expect(failing.plugin.track(failing.base, {}, null, [CODE])).rejects.toBeInstanceOf(
+    await expect(plugin.track(empty.base, {}, null, [CODE])).rejects.toThrow(/data entry/);
+    const failing = fakeContext(sunyou.http, network({ [ROUTE]: [raw("", 502)] }).fetchImpl);
+    await expect(plugin.track(failing.base, {}, null, [CODE])).rejects.toBeInstanceOf(
       TransientError,
     );
   });

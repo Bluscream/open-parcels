@@ -25,7 +25,7 @@ const REFRESH = ["refresh", "made", "up"].join("-");
 const TOKEN_URL = "https://login.dhl.de/tenant/login/token";
 
 function discovery(world: World): void {
-  world.routes.push((url) =>
+  world.routes.push(({ url }) =>
     url.pathname.endsWith("/.well-known/openid-configuration")
       ? json({
           authorization_endpoint: "https://login.dhl.de/tenant/login/authorize",
@@ -37,7 +37,7 @@ function discovery(world: World): void {
 
 /** Token endpoint answering from a script; each entry is used once. */
 function tokens(world: World, script: (Response | Error)[]): void {
-  world.routes.push((url) => {
+  world.routes.push(({ url }) => {
     if (url.toString() !== TOKEN_URL) {
       return undefined;
     }
@@ -59,7 +59,7 @@ function tokenResponse(tag: string, refresh: string | null = null) {
 }
 
 function inbox(world: World, answers: (Response | ((url: URL) => Response))[]): void {
-  world.routes.push(((url) => {
+  world.routes.push((({ url }) => {
     if (url.hostname !== "www.dhl.de") {
       return undefined;
     }

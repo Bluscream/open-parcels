@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fanCourier } from "../../src/carriers/fan_courier/index.js";
 import { register } from "../../src/engine/registry.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up AWBs and values only.
 const CODE = "9900000000001";
@@ -21,18 +21,23 @@ function awb(...events: ReturnType<typeof event>[]) {
 
 describe("FAN Courier tracking", () => {
   it("maps the newest code, reads Romanian local times and the weight", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: awb(
-            event("C0", "2026-11-17 09:00:00", "Expeditie preluata"),
-            event("S1", "2026-11-18 08:00:00", "In livrare"),
-          ),
+          [ROUTE]: [
+            json(
+              awb(
+                event("C0", "2026-11-17 09:00:00", "Expeditie preluata"),
+                event("S1", "2026-11-18 08:00:00", "In livrare"),
+              ),
+              200,
+            ),
+          ],
         },
-      ],
-    });
-    const { base, unknown } = harness(fanCourier.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(fanCourier.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [CODE])).snapshots;
     expect(new URLSearchParams(calls[0]?.body ?? "").get("awb")).toBe(CODE);
     expect(found).toMatchObject({
@@ -52,16 +57,18 @@ describe("FAN Courier tracking", () => {
   });
 
   it("recognises a locker and a delivery", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: awb(event("H99", "2026-11-18 08:00:00", "Disponibil in FANbox", "Box 1")),
+          [ROUTE]: [
+            json(awb(event("H99", "2026-11-18 08:00:00", "Disponibil in FANbox", "Box 1")), 200),
+            json(awb(event("S2", "2026-11-18 12:00:00", "Livrat")), 200),
+          ],
         },
-        { status: 200, body: awb(event("S2", "2026-11-18 12:00:00", "Livrat")) },
-      ],
-    });
-    const { base } = harness(fanCourier.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(fanCourier.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots[0]).toMatchObject({
       status: "at_pickup_point",
       pickupPoint: "Box 1",
@@ -73,16 +80,23 @@ describe("FAN Courier tracking", () => {
   });
 
   it("treats an error answer as not found", async () => {
-    const { fetchImpl } = scripted({ [ROUTE]: [{ status: 200, body: { error: "AWB invalid" } }] });
-    const { base } = harness(fanCourier.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable({ [ROUTE]: [json({ error: "AWB invalid" }, 200)] }, "host"),
+    ]);
+    const { base } = fakeContext(fanCourier.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots).toEqual([]);
   });
 
   it("reports an unknown code", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [{ status: 200, body: awb(event("X9", "2026-11-18 08:00:00", "Ceva nou")) }],
-    });
-    const { base, unknown } = harness(fanCourier.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json(awb(event("X9", "2026-11-18 08:00:00", "Ceva nou")), 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(fanCourier.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [CODE])).snapshots[0]?.status).toBeNull();
     expect(unknown).toEqual(["status_code:X9"]);
   });

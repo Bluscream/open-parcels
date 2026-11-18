@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { budbee } from "../../src/carriers/budbee/index.js";
 import { TransientError } from "../../src/plugin/errors.js";
-import { json, on, World } from "./kit-harness.js";
+import { json, onFragment, World } from "./harness.js";
 
 // Made-up codes and values only.
 const meta = (type: string) => ({ status: "SUCCESS", payload: { type, brand: "BUDBEE" } });
@@ -10,8 +10,8 @@ describe("Budbee tracking", () => {
   it("reads a door delivery with status and window", async () => {
     const world = new World(budbee);
     world.routes = [
-      on("/v3/orders/TESTBB01/meta", json(meta("DELIVERY"))),
-      on(
+      onFragment("/v3/orders/TESTBB01/meta", json(meta("DELIVERY"))),
+      onFragment(
         "/v3/orders/TESTBB01",
         json({
           payload: {
@@ -45,8 +45,8 @@ describe("Budbee tracking", () => {
   it("treats Delivered on a locker order as waiting in the locker", async () => {
     const world = new World(budbee);
     world.routes = [
-      on("/meta", json(meta("BOX"))),
-      on(
+      onFragment("/meta", json(meta("BOX"))),
+      onFragment(
         "/box/TESTBB02",
         json({
           token: "TESTBB02",
@@ -68,7 +68,7 @@ describe("Budbee tracking", () => {
 
   it("returns nothing for an unknown code", async () => {
     const world = new World(budbee);
-    world.routes = [on("/meta", json({ status: "FAILED", errorCode: "ORDER_NOT_FOUND" }))];
+    world.routes = [onFragment("/meta", json({ status: "FAILED", errorCode: "ORDER_NOT_FOUND" }))];
     const result = await world.track(["TESTBB03", "../x"], {}, null);
     expect(result.snapshots).toEqual([]);
     expect(world.calls).toHaveLength(1);
@@ -77,8 +77,8 @@ describe("Budbee tracking", () => {
   it("reports an unmapped status", async () => {
     const world = new World(budbee);
     world.routes = [
-      on("/meta", json(meta("BOX"))),
-      on("/box/TESTBB04", json({ token: "TESTBB04", status: "Teleported" })),
+      onFragment("/meta", json(meta("BOX"))),
+      onFragment("/box/TESTBB04", json({ token: "TESTBB04", status: "Teleported" })),
     ];
     const [parcel] = (await world.track(["TESTBB04"], {}, null)).snapshots;
     expect(parcel?.status).toBeNull();
@@ -87,7 +87,7 @@ describe("Budbee tracking", () => {
 
   it("fails the run on a 5xx", async () => {
     const world = new World(budbee);
-    world.routes = [on("/meta", json({}, 502))];
+    world.routes = [onFragment("/meta", json({}, 502))];
     await expect(world.track(["TESTBB05"], {}, null)).rejects.toBeInstanceOf(TransientError);
   });
 });

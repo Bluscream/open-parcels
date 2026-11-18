@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { airmee } from "../../src/carriers/airmee/index.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
-import { json, madeUp, on, world } from "./harness.js";
+import { json, madeUp, on, World } from "./harness.js";
 
 // Made-up tokens and values only.
 const TOKEN = "linktoken-000001";
@@ -22,7 +22,7 @@ function order(...timeline: ReturnType<typeof event>[]) {
 
 describe("Airmee tracking", () => {
   it("reads the newest stage, the history and sends the hash with the token", async () => {
-    const w = world(airmee);
+    const w = new World(airmee);
     w.routes = [
       on(
         ROUTE,
@@ -53,7 +53,7 @@ describe("Airmee tracking", () => {
   });
 
   it("marks delivery with the drop-off time and ignores order edits", async () => {
-    const w = world(airmee);
+    const w = new World(airmee);
     w.routes = [
       on(ROUTE, json(order(event("SCAN", 0), event("DROPOFF_CONFIRMED", 90), event("EDIT", 95)))),
     ];
@@ -67,13 +67,13 @@ describe("Airmee tracking", () => {
   });
 
   it("treats an empty order list as not found", async () => {
-    const w = world(airmee);
+    const w = new World(airmee);
     w.routes = [on(ROUTE, json({ order_details: [] }))];
     expect((await w.track([TOKEN], {}, secret)).snapshots).toEqual([]);
   });
 
   it("reports an unknown stage and falls back to the newest earlier one", async () => {
-    const w = world(airmee);
+    const w = new World(airmee);
     w.routes = [on(ROUTE, json(order(event("PICKUP_CONFIRMED", 0), event("TELEPORTED", 30))))];
     const [parcel] = (await w.track([TOKEN], {}, secret)).snapshots;
     expect(parcel?.status).toBe("in_transit");
@@ -81,11 +81,11 @@ describe("Airmee tracking", () => {
   });
 
   it("tells a refused hash apart from a network error", async () => {
-    const refused = world(airmee);
+    const refused = new World(airmee);
     refused.routes = [on(ROUTE, json({}, 403))];
     await expect(refused.track([TOKEN], {}, secret)).rejects.toBeInstanceOf(SignInRejectedError);
 
-    const offline = world(airmee);
+    const offline = new World(airmee);
     offline.routes = [on(ROUTE, new Error("offline"))];
     const failure = offline.track([TOKEN], {}, secret);
     await expect(failure).rejects.toBeInstanceOf(TransientError);

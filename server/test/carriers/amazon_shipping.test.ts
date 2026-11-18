@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { amazonShipping } from "../../src/carriers/amazon_shipping/index.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { json, on, world } from "./harness.js";
+import { json, on, World } from "./harness.js";
 
 // Made-up codes and values only.
 const UK = "UK0000000001";
@@ -37,7 +37,7 @@ const served = (summary: Record<string, unknown>, extra: Record<string, unknown>
 
 describe("Amazon Shipping tracking", () => {
   it("reads status, London-time history and the expected delivery", async () => {
-    const w = world(amazonShipping);
+    const w = new World(amazonShipping);
     const body = envelope(
       served({ status: "InTransit" }, { expectedDeliveryDate: "Nov 20, 2026" }),
       [
@@ -66,7 +66,7 @@ describe("Amazon Shipping tracking", () => {
   });
 
   it("reads a Departed scan right after OutForDelivery at the depot as the van leaving", async () => {
-    const w = world(amazonShipping);
+    const w = new World(amazonShipping);
     const body = envelope(served({}), [
       ev("Received", "Nov 18, 2026, 6:00:00 AM"),
       ev("OutForDelivery", "Nov 18, 2026, 8:00:00 AM"),
@@ -78,7 +78,7 @@ describe("Amazon Shipping tracking", () => {
   });
 
   it("marks delivery from the Delivered event", async () => {
-    const w = world(amazonShipping);
+    const w = new World(amazonShipping);
     const body = envelope(
       served({ status: "Delivered" }, { expectedDeliveryDate: "Nov 18, 2026" }),
       [
@@ -97,7 +97,7 @@ describe("Amazon Shipping tracking", () => {
   });
 
   it("treats numbers the tracker does not serve as not found", async () => {
-    const w = world(amazonShipping);
+    const w = new World(amazonShipping);
     const notServed = envelope(
       { trackerSource: "UNKNOWN", errors: [{ errorCode: "TRACKING_ID_NOT_FOUND" }] },
       [],
@@ -108,7 +108,7 @@ describe("Amazon Shipping tracking", () => {
   });
 
   it("reports unmapped codes and only guesses from wording", async () => {
-    const w = world(amazonShipping);
+    const w = new World(amazonShipping);
     const body = envelope(served({ status: "Mystery" }), [
       ev("Received", "Nov 18, 2026, 6:00:00 AM"),
       ev("ReturnInitiated", "Nov 18, 2026, 9:00:00 AM"),
@@ -121,7 +121,7 @@ describe("Amazon Shipping tracking", () => {
   });
 
   it("keeps US local times out of the history but still orders them", async () => {
-    const w = world(amazonShipping);
+    const w = new World(amazonShipping);
     const body = envelope(served({}), [
       ev("Received", "Nov 18, 2026, 6:00:00 AM"),
       ev("OutForDelivery", "Nov 18, 2026, 8:00:00 AM"),
@@ -132,11 +132,11 @@ describe("Amazon Shipping tracking", () => {
   });
 
   it("stops on a broken nested field and passes network errors on", async () => {
-    const broken = world(amazonShipping);
+    const broken = new World(amazonShipping);
     broken.routes = [on(ROUTE_UK, json({ progressTracker: "{not json" }))];
     await expect(broken.track([UK])).rejects.toBeInstanceOf(UnexpectedResponseError);
 
-    const offline = world(amazonShipping);
+    const offline = new World(amazonShipping);
     offline.routes = [on(ROUTE_UK, new Error("offline"))];
     await expect(offline.track([UK])).rejects.toBeInstanceOf(TransientError);
   });

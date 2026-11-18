@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { econt } from "../../src/carriers/econt/index.js";
 import { register } from "../../src/engine/registry.js";
 import { UnexpectedResponseError } from "../../src/plugin/errors.js";
-import { harness, scripted } from "./kit-harness-3.js";
+import { fakeContext, fakeNetwork, json, routeTable } from "./harness.js";
 
 // Made-up shipment numbers and values only.
 const ACTIVE = "9900000000001";
@@ -30,15 +30,20 @@ function shipment(number: string, extra: Record<string, unknown> = {}) {
 
 describe("Econt tracking", () => {
   it("looks codes up in one batch and reads status, day window, weight and history", async () => {
-    const { fetchImpl, calls } = scripted({
-      [ROUTE]: [
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: { shipmentStatuses: [{ status: shipment(ACTIVE) }, { error: { message: "x" } }] },
+          [ROUTE]: [
+            json(
+              { shipmentStatuses: [{ status: shipment(ACTIVE) }, { error: { message: "x" } }] },
+              200,
+            ),
+          ],
         },
-      ],
-    });
-    const { base, unknown } = harness(econt.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(econt.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [ACTIVE, MISSING]);
     expect(calls).toHaveLength(1);
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ shipmentNumbers: [ACTIVE, MISSING] });
@@ -63,10 +68,15 @@ describe("Econt tracking", () => {
       shortDeliveryStatusEn: "Something",
       deliveryTime: "2026-11-18T10:00:00+02:00",
     });
-    const { fetchImpl } = scripted({
-      [ROUTE]: [{ status: 200, body: { shipmentStatuses: [{ status: delivered }] } }],
-    });
-    const { base } = harness(econt.http, fetchImpl);
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [ROUTE]: [json({ shipmentStatuses: [{ status: delivered }] }, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(econt.http, fetchImpl);
     const [found] = (await plugin.track(base, {}, null, [ACTIVE])).snapshots;
     expect(found).toMatchObject({
       status: "delivered",
@@ -76,18 +86,23 @@ describe("Econt tracking", () => {
   });
 
   it("reports an unknown status and stops on an answer for another code", async () => {
-    const { fetchImpl } = scripted({
-      [ROUTE]: [
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
         {
-          status: 200,
-          body: {
-            shipmentStatuses: [{ status: shipment(ACTIVE, { shortDeliveryStatusEn: "Odd" }) }],
-          },
+          [ROUTE]: [
+            json(
+              {
+                shipmentStatuses: [{ status: shipment(ACTIVE, { shortDeliveryStatusEn: "Odd" }) }],
+              },
+              200,
+            ),
+            json({ shipmentStatuses: [{ status: shipment(MISSING) }] }, 200),
+          ],
         },
-        { status: 200, body: { shipmentStatuses: [{ status: shipment(MISSING) }] } },
-      ],
-    });
-    const { base, unknown } = harness(econt.http, fetchImpl);
+        "host",
+      ),
+    ]);
+    const { base, unknown } = fakeContext(econt.http, fetchImpl);
     expect((await plugin.track(base, {}, null, [ACTIVE])).snapshots[0]?.status).toBeNull();
     expect(unknown).toEqual(["status:Odd"]);
     await expect(plugin.track(base, {}, null, [ACTIVE])).rejects.toBeInstanceOf(
