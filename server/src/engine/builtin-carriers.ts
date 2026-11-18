@@ -23,6 +23,13 @@ import { paack } from "../carriers/paack/index.js";
 import { packeta } from "../carriers/packeta/index.js";
 import { pdnExpress } from "../carriers/pdn_express/index.js";
 import { planzer } from "../carriers/planzer/index.js";
+import { pocztaPolska } from "../carriers/poczta-polska/index.js";
+import { postaSlovenije } from "../carriers/posta-slovenije/index.js";
+import { posteItaliane } from "../carriers/poste-italiane/index.js";
+import { posti } from "../carriers/posti/index.js";
+import { postnl } from "../carriers/postnl/index.js";
+import { postnord } from "../carriers/postnord/index.js";
+import { quickpac } from "../carriers/quickpac/index.js";
 import { tipsa } from "../carriers/tipsa/index.js";
 import { trunkrs } from "../carriers/trunkrs/index.js";
 import { ukrposhta } from "../carriers/ukrposhta/index.js";
@@ -61,6 +68,13 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(packeta),
   register(pdnExpress),
   register(planzer),
+  register(pocztaPolska),
+  register(postaSlovenije),
+  register(posteItaliane),
+  register(posti),
+  register(postnl),
+  register(postnord),
+  register(quickpac),
   register(tipsa),
   register(trunkrs),
   register(ukrposhta),
