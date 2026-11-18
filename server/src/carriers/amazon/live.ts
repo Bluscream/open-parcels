@@ -43,18 +43,29 @@ export function stopsFromCallout(callout: string | null): number | null {
 }
 
 const coordinate = z.number();
+/** The map sends the stop count as a string ("2"); a bare number is accepted too. */
+const stopCount = z.union([
+  z.number().int().min(0),
+  z
+    .string()
+    .regex(/^\d{1,3}$/)
+    .transform(Number),
+]);
 const mapAnswerSchema = z.object({
   success: z.boolean(),
   packageLocationDetails: z
     .object({
       trackingObjectState: z.string(),
-      stopsRemaining: z.number().int().min(0).nullable().optional(),
+      stopsRemaining: stopCount.nullable().optional(),
       transporterDetails: z
         .object({
           geoLocation: z
             .object({
               latitude: coordinate.min(-90).max(90),
               longitude: coordinate.min(-180).max(180),
+              accuracy: z.number().min(0).nullable().optional(),
+              /** Epoch seconds. */
+              locationTime: z.number().positive().nullable().optional(),
             })
             .nullable()
             .optional(),
@@ -104,10 +115,13 @@ export async function readLive(
     method: "POST",
     headers: {
       accept: "application/json",
-      "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+      "content-type": "application/json",
       "x-requested-with": "XMLHttpRequest",
     },
-    body: new URLSearchParams({ trackingId: ref.data.trackingId, csrfToken: ref.data.csrfToken }),
+    // The page's own map sends every field wrapped in an array under `formData`.
+    body: JSON.stringify({
+      formData: { trackingId: [ref.data.trackingId], csrfToken: [ref.data.csrfToken] },
+    }),
     jar: session.jar,
     redirect: "manual",
   });
@@ -139,8 +153,11 @@ export async function readLive(
     stopsAway: details.stopsRemaining ?? stopsFromCallout(ref.data.callout),
     latitude: fix?.latitude ?? null,
     longitude: fix?.longitude ?? null,
-    accuracy: null,
-    positionAt: null,
+    accuracy: fix?.accuracy ?? null,
+    positionAt:
+      fix?.locationTime === undefined || fix.locationTime === null
+        ? null
+        : new Date(fix.locationTime * 1000).toISOString(),
     message: ref.data.callout,
   };
 }

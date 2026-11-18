@@ -477,6 +477,46 @@ describe("Amazon courier map", () => {
     });
   });
 
+  it("reads the map's string stop count and fix time, and posts the page's JSON body", async () => {
+    let sent: unknown = null;
+    const h = harness(
+      (_url, init) => {
+        expect(typeof init.body).toBe("string");
+        sent = JSON.parse(init.body as string);
+        return json({
+          success: true,
+          responseCode: "SUCCESS",
+          packageLocationDetails: {
+            trackingObjectState: "PICKED_UP",
+            stopsRemaining: "2",
+            transporterDetails: {
+              transporterSessionState: "ACTIVE",
+              geoLocation: {
+                latitude: 10.5,
+                longitude: 20.25,
+                accuracy: 12,
+                locationTime: 1_800_000_000,
+              },
+            },
+          },
+        });
+      },
+      await seeded(),
+    );
+    await expect(readLive(h.context, target)).resolves.toEqual({
+      state: "en_route",
+      stopsAway: 2,
+      latitude: 10.5,
+      longitude: 20.25,
+      accuracy: 12,
+      positionAt: new Date(1_800_000_000_000).toISOString(),
+      message: "4 Stopps entfernt",
+    });
+    expect(sent).toEqual({
+      formData: { trackingId: ["DE0000000001"], csrfToken: ["made-up-csrf-token"] },
+    });
+  });
+
   it("never hands out a position once the courier is next", async () => {
     const h = harness(() => json(answer("YOU_ARE_NEXT", { stopsRemaining: 0 })), await seeded());
     await expect(readLive(h.context, target)).resolves.toMatchObject({
