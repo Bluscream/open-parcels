@@ -4,6 +4,11 @@ import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { dragonfly } from "../carriers/dragonfly/index.js";
 import { dynalogic } from "../carriers/dynalogic/index.js";
+import { earlyBird } from "../carriers/early-bird/index.js";
+import { econt } from "../carriers/econt/index.js";
+import { ecoscooting } from "../carriers/ecoscooting/index.js";
+import { eltaCourier } from "../carriers/elta-courier/index.js";
+import { fanCourier } from "../carriers/fan-courier/index.js";
 import { hermes } from "../carriers/hermes/index.js";
 import { register, type RegisteredPlugin } from "./registry.js";
 
@@ -18,5 +23,10 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(dpd),
   register(dragonfly),
   register(dynalogic),
+  register(earlyBird),
+  register(econt),
+  register(ecoscooting),
+  register(eltaCourier),
+  register(fanCourier),
   register(hermes),
 ];
