@@ -1,0 +1,144 @@
+import { trackingUrl as rulesTrackingUrl, loadRules } from "open-parcels-rules";
+import { z } from "zod";
+import {
+  defineCarrier,
+  snapshot,
+  type ParcelSnapshot,
+  type PluginContext,
+  type SnapshotEvent,
+} from "../../plugin/api.js";
+import { asObject, num, objects, text, type Json } from "../../plugin/kit/json.js";
+import { epoch, isoTime, newestFirst } from "../../plugin/kit/time.js";
+import {
+  lookUpStatus,
+  trackEach,
+  unknownReporter,
+  type StatusTable,
+} from "../../plugin/kit/track.js";
+import { FedExSession, HOST } from "./api.js";
+
+const CARRIER_ID = "fedex";
+const POUND_KG = 0.45359237;
+
+/** The user's own FedEx developer API key (client id and secret), stored encrypted. */
+const secretSchema = z.object({ clientId: z.string().min(1), clientSecret: z.string().min(1) });
+type Secret = z.infer<typeof secretSchema>;
+
+/** FedEx status and scan event codes. */
+const CODES: StatusTable = {
+  OC: "registered",
+  DO: "registered",
+  IN: "registered",
+  PD: "problem",
+  CA: "problem",
+  DD: "problem",
+  SE: "problem",
+  CD: "problem",
+  DE: "problem",
+  ...Object.fromEntries(
+    ["IP", "DS", "US", "TR", "DR", "PM", "MD", "CH", "AC", "OX", "CP", "EA", "AE", "AO", "DY"]
+      .concat(["AR", "AF", "DP", "CC", "PU", "IT"])
+      .map((code) => [code, "in_transit"]),
+  ),
+  HP: "at_pickup_point",
+  OD: "out_for_delivery",
+  DL: "delivered",
+};
+
+const PLAUSIBLE = /^\d{10,22}$/;
+
+function place(location: unknown): string | null {
+  const block = asObject(location);
+  const parts = [block["city"], block["stateOrProvinceCode"], block["countryCode"]]
+    .map(text)
+    .filter((part) => part !== null);
+  return parts.length === 0 ? null : parts.join(", ");
+}
+
+function history(raw: Json): SnapshotEvent[] {
+  const events: SnapshotEvent[] = [];
+  for (const event of objects(raw["scanEvents"])) {
+    const at = isoTime(event["date"], null);
+    const code = text(event["eventType"]) ?? text(event["derivedStatusCode"]);
+    const rawStatus = text(event["eventDescription"]) ?? code;
+    if (at !== null && rawStatus !== null) {
+      events.push({
+        at,
+        rawStatus,
+        status: lookUpStatus(CODES, code),
+        location: place(event["scanLocation"]),
+      });
+    }
+  }
+  return newestFirst(events);
+}
+
+function weightKg(raw: Json): number | null {
+  const weights = objects(
+    asObject(asObject(raw["packageDetails"])["weightAndDimensions"])["weight"],
+  );
+  const kg = num(weights.find((weight) => weight["unit"] === "KG")?.["value"]);
+  const lb = num(weights.find((weight) => weight["unit"] === "LB")?.["value"]);
+  return kg ?? (lb === null ? null : Math.round(lb * POUND_KG * 1000) / 1000);
+}
+
+function deliveredAt(raw: Json): string | null {
+  const actual = asObject(raw["deliveryDetails"])["actualDeliveryTimestamp"];
+  const dated = objects(raw["dateAndTimes"]).find((entry) => entry["type"] === "ACTUAL_DELIVERY");
+  return isoTime(actual, null) ?? isoTime(dated?.["dateTime"], null);
+}
+
+function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): ParcelSnapshot {
+  const latest = asObject(raw["latestStatusDetail"]);
+  const code = text(latest["code"]) ?? text(latest["derivedCode"]);
+  const status = lookUpStatus(CODES, code);
+  if (code !== null && status === null) {
+    report(code);
+  }
+  const delivered = status === "delivered";
+  const window = asObject(asObject(raw["estimatedDeliveryTimeWindow"])["window"]);
+  const from = isoTime(window["begins"], null);
+  const to = isoTime(window["ends"], null);
+  return snapshot({
+    carrier: CARRIER_ID,
+    barcode,
+    status,
+    rawStatus: text(latest["statusByLocale"]) ?? text(latest["description"]) ?? code,
+    deliveredAt: delivered ? deliveredAt(raw) : null,
+    plannedFrom: delivered ? null : from,
+    plannedTo: delivered || epoch(to) === epoch(from) ? null : to,
+    pickup: status === "at_pickup_point",
+    pickupPoint: status === "at_pickup_point" ? place(latest["scanLocation"]) : null,
+    url:
+      rulesTrackingUrl(loadRules(), CARRIER_ID, barcode) ??
+      `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(barcode)}`,
+    weightKg: weightKg(raw),
+    history: history(raw),
+    raw,
+  });
+}
+
+async function track(context: PluginContext<unknown, Secret>, barcodes: readonly string[]) {
+  const session = new FedExSession(context, context.secret);
+  const report = unknownReporter(context, "status_code");
+  return trackEach(barcodes, { plausible: PLAUSIBLE }, async (code, tracked) => {
+    const raw = await session.track(code);
+    return raw === null ? null : toSnapshot(raw, tracked, report);
+  });
+}
+
+/** FedEx: the official Track API, with the user's own developer API key. */
+export const fedex = defineCarrier<unknown, Secret>({
+  id: CARRIER_ID,
+  name: "FedEx",
+  countries: ["*"],
+  sourceKinds: ["tracking"],
+  configSchema: z.looseObject({}),
+  secretSchema,
+  signIn: { type: "api_key" },
+  // The free API tier allows far more; a household never needs it.
+  http: {
+    limits: { [HOST]: { intervalMs: 3_000, burst: 3 }, "*": { intervalMs: 10_000, burst: 1 } },
+  },
+  track,
+});

@@ -9,8 +9,19 @@ import { colisprive } from "../carriers/colisprive/index.js";
 import { colisweb } from "../carriers/colisweb/index.js";
 import { correos } from "../carriers/correos/index.js";
 import { ctt } from "../carriers/ctt/index.js";
+import { dao } from "../carriers/dao/index.js";
+import { delhivery } from "../carriers/delhivery/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
+import { dragonfly } from "../carriers/dragonfly/index.js";
+import { dynalogic } from "../carriers/dynalogic/index.js";
+import { earlyBird } from "../carriers/early-bird/index.js";
+import { econt } from "../carriers/econt/index.js";
+import { ecoscooting } from "../carriers/ecoscooting/index.js";
+import { eltaCourier } from "../carriers/elta-courier/index.js";
+import { evri } from "../carriers/evri/index.js";
+import { fanCourier } from "../carriers/fan-courier/index.js";
+import { fedex } from "../carriers/fedex/index.js";
 import { genikiTaxydromiki } from "../carriers/geniki_taxydromiki/index.js";
 import { gls } from "../carriers/gls/index.js";
 import { gobolt } from "../carriers/gobolt/index.js";
@@ -74,8 +85,19 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(colisweb),
   register(correos),
   register(ctt),
+  register(dao),
+  register(delhivery),
   register(dhl),
   register(dpd),
+  register(dragonfly),
+  register(dynalogic),
+  register(earlyBird),
+  register(econt),
+  register(ecoscooting),
+  register(eltaCourier),
+  register(evri),
+  register(fanCourier),
+  register(fedex),
   register(genikiTaxydromiki),
   register(gls),
   register(gobolt),
