@@ -25,6 +25,8 @@ export interface SchedulerDeps {
   readonly clock: Clock;
   readonly logger: Logger;
   readonly timeZone: string;
+  /** Night-time quiet window, defaults to on. */
+  readonly quietWindow?: boolean;
   readonly installId: string;
   readonly concurrency?: number;
   /** Called after each successful run with the parcels the carrier can show on a courier map. */
@@ -147,6 +149,7 @@ export class Scheduler {
       const next = nextRunAfterSuccess({
         now,
         timeZone: this.deps.timeZone,
+        quietWindow: this.deps.quietWindow ?? true,
         kind: source.kind,
         staggerMinutes: staggerMinutes(`${this.deps.installId}:${source.id}`),
         active: await this.#activeParcels(source.id),
