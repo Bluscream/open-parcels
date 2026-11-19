@@ -7,6 +7,7 @@ import { CarrierLogo, useCarrierName } from "../components/CarrierLogo";
 import { SplitContainer } from "../components/SplitContainer";
 import { ErrorNotice, Spinner } from "../components/ui";
 import {
+  describeLookup,
   formatDateTime,
   formatRelative,
   formatWindow,
@@ -26,10 +27,7 @@ function Facts({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
       "Carrier lookup",
       <>
         <LookupBadge state={parcel.lookup.state} />{" "}
-        <span className="muted">
-          since {formatRelative(parcel.lookup.since)}, asked{" "}
-          {formatRelative(parcel.lookup.checked_at)}
-        </span>
+        <span className="muted">{describeLookup(parcel.lookup)}</span>
       </>,
     ],
     ["Pickup point", parcel.pickup_point ?? (parcel.pickup ? "Yes" : "—")],

@@ -158,6 +158,7 @@ describe("migrations", () => {
         "0003-sign-in-attempts",
         "0004-lookup-state",
         "0005-archive-reason",
+        "0006-auto-created-sources",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

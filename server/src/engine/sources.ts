@@ -39,6 +39,46 @@ export async function appendSourceRemoved(
   });
 }
 
+/**
+ * Removes those of `sourceIds` that the app created on its own (keyless tracking sources made
+ * when a code was added by hand) and that no parcel links to any more, firing `source.removed`
+ * for each inside the caller's transaction. Sources the user made or imported are never touched,
+ * and neither is one that has gained sign-in data since. Returns how many were removed.
+ */
+export async function removeOrphanedAutoSources(
+  trx: Kysely<Database>,
+  clock: Clock,
+  sourceIds: readonly string[],
+): Promise<number> {
+  if (sourceIds.length === 0) {
+    return 0;
+  }
+  const orphans = await trx
+    .selectFrom("sources")
+    .select(["id", "plugin", "label", "kind"])
+    .where("id", "in", sourceIds)
+    .where("auto_created", "=", 1)
+    .where("kind", "=", "tracking")
+    .where("secret_blob", "is", null)
+    .where("session_blob", "is", null)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("parcel_sources")
+            .select("parcel_sources.parcel_id")
+            .whereRef("parcel_sources.source_id", "=", "sources.id"),
+        ),
+      ),
+    )
+    .execute();
+  for (const orphan of orphans) {
+    await trx.deleteFrom("sources").where("id", "=", orphan.id).execute();
+    await appendSourceRemoved(trx, clock, orphan, null);
+  }
+  return orphans.length;
+}
+
 /** Associated data for a source's encrypted blobs: a blob copied to another row fails to decrypt. */
 export const secretAad = (sourceId: string): string => `source:${sourceId}:secret`;
 export const sessionAad = (sourceId: string): string => `source:${sourceId}:session`;

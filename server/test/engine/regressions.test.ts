@@ -77,20 +77,63 @@ describe("deletions reach clients", () => {
       direction: "incoming",
       label: null,
     });
-    const sourceId = parcel.sources[0]?.source_id ?? "";
     expect(await context.services.parcels.delete(parcel.id)).toBe(true);
     expect(await context.services.parcels.delete(parcel.id)).toBe(false);
     const deleted = await outbox("parcel.deleted");
     expect(deleted).toHaveLength(1);
     expect(deleted[0]?.["parcel"]).toMatchObject({ id: parcel.id });
 
+    const sourceId = await addSource("fakepost", "tracking");
     expect(await context.services.sources.delete(sourceId)).toBe(true);
+    // The first removal is the auto-created tracking source going with its only parcel.
     const removed = await outbox("source.removed");
-    expect(removed).toHaveLength(1);
-    expect(removed[0]).toMatchObject({
+    expect(removed).toHaveLength(2);
+    expect(removed[1]).toMatchObject({
       source: { id: sourceId, plugin: "fakepost" },
       merged_into: null,
     });
+  });
+});
+
+describe("auto-created tracking sources", () => {
+  const add = (barcode: string) =>
+    context.services.parcels.create({
+      carrier: "fakepost",
+      barcode,
+      direction: "incoming",
+      label: null,
+    });
+
+  it("go with the last parcel deleted, firing source.removed", async () => {
+    const first = await add("FP7101");
+    const second = await add("FP7102");
+    const sourceId = first.sources[0]?.source_id ?? "";
+    expect(second.sources[0]?.source_id).toBe(sourceId);
+
+    await context.services.parcels.delete(first.id);
+    expect(await context.services.sources.get(sourceId)).toBeDefined();
+    expect(await outbox("source.removed")).toEqual([]);
+
+    await context.services.parcels.delete(second.id);
+    expect(await context.services.sources.get(sourceId)).toBeUndefined();
+    expect(await outbox("source.removed")).toEqual([
+      expect.objectContaining({
+        source: expect.objectContaining({ id: sourceId, kind: "tracking" }) as unknown,
+        merged_into: null,
+      }),
+    ]);
+    // Needed again: made again.
+    const third = await add("FP7103");
+    expect(third.sources[0]?.source_id).toBeDefined();
+  });
+
+  it("never remove a tracking source the user made", async () => {
+    const own = await addSource("fakepost", "tracking");
+    const parcel = await add("FP7104");
+    expect(parcel.sources[0]?.source_id).toBe(own);
+    await context.services.parcels.delete(parcel.id);
+    expect(await context.services.sources.get(own)).toBeDefined();
+    expect(await outbox("source.removed")).toEqual([]);
   });
 });
 
@@ -254,6 +297,23 @@ describe("source states", () => {
       ["account", "account"],
       ["Fake Post tracking", "tracking"],
     ]);
-    expect(after?.lookup.state).toBe("found");
+    // Found since the account first listed it, never "since never".
+    expect(after?.lookup).toMatchObject({ state: "found", since: parcel?.first_seen_at });
+    expect(after?.lookup.since).not.toBeNull();
+  });
+
+  it("dates a found parcel without a recorded start from when it was first seen", async () => {
+    const parcel = await context.services.parcels.create({
+      carrier: "fakepost",
+      barcode: "FP7005",
+      direction: "incoming",
+      label: null,
+    });
+    await context.services.db
+      .updateTable("parcels")
+      .set({ lookup_state: "found", lookup_since: null })
+      .execute();
+    const after = await context.services.parcels.repository.get(parcel.id);
+    expect(after?.lookup).toMatchObject({ state: "found", since: parcel.first_seen_at });
   });
 });

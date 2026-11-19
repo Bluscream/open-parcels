@@ -311,11 +311,16 @@ export class ParcelRepository {
       order: row.order_id === null ? null : (related.orders.get(row.order_id) ?? null),
       sources: related.sources.get(row.id) ?? [],
       // Another source of the same carrier (an account) listing the parcel means the carrier
-      // found it, whatever its public tracking answered.
+      // found it, whatever its public tracking answered. It has been found since the app first
+      // saw it, which is when a source first listed it.
       lookup:
         row.lookup_state === "not_found" && listed
-          ? { state: "found", since: null, checked_at: row.lookup_checked_at }
-          : { state: row.lookup_state, since: row.lookup_since, checked_at: row.lookup_checked_at },
+          ? { state: "found", since: row.first_seen_at, checked_at: row.lookup_checked_at }
+          : {
+              state: row.lookup_state,
+              since: row.lookup_since ?? (row.lookup_state === "found" ? row.first_seen_at : null),
+              checked_at: row.lookup_checked_at,
+            },
       first_seen_at: row.first_seen_at,
       updated_at: row.updated_at,
     };

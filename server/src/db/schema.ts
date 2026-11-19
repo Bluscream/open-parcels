@@ -62,6 +62,8 @@ export interface SourceTable {
   next_run_at: Timestamp | null;
   last_run_at: Timestamp | null;
   last_ok_at: Timestamp | null;
+  /** 1 when the app made this keyless tracking source on its own; see migration 0006. */
+  auto_created: Generated<number>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

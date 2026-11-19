@@ -46,6 +46,8 @@ export function trackingSourceIn(
         state: "ok",
         state_detail: null,
         next_run_at: now,
+        // Made by the app, not the user: removed again once its last parcel is deleted.
+        auto_created: 1,
         created_at: now,
         updated_at: now,
       })

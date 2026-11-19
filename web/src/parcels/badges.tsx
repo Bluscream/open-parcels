@@ -23,6 +23,16 @@ export function LookupBadge({ state }: { readonly state: LookupState }): ReactNo
   return <span className={`badge lookup-${state}`}>{LOOKUP_LABELS[state]}</span>;
 }
 
-export function SourceStateBadge({ state }: { readonly state: SourceState }): ReactNode {
-  return <span className={`badge source-${state}`}>{SOURCE_STATE_LABELS[state]}</span>;
+/**
+ * A source the server calls OK but that never had a successful run has not been judged yet: it
+ * shows a neutral "Not run yet" rather than claiming OK.
+ */
+export function SourceStateBadge(props: {
+  readonly state: SourceState;
+  readonly lastOkAt: string | null;
+}): ReactNode {
+  if (props.state === "ok" && props.lastOkAt === null) {
+    return <span className="badge source-pending">Not run yet</span>;
+  }
+  return <span className={`badge source-${props.state}`}>{SOURCE_STATE_LABELS[props.state]}</span>;
 }

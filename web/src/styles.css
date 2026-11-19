@@ -840,6 +840,7 @@ tbody tr:hover {
 
 .lookup-pending,
 .source-disabled,
+.source-pending,
 .status-unknown,
 .badge.archived {
   color: var(--muted);

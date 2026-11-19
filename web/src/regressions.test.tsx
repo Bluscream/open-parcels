@@ -1,8 +1,9 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { CalendarEntry, Source } from "./api/types";
 import { toCalendarEvent } from "./calendar/events";
+import { describeLookup } from "./lib/format";
 import { isSecretField } from "./sources/schema";
 import { mockApi, parcel, renderApp, SIGNED_IN } from "./test/helpers";
 
@@ -105,6 +106,20 @@ describe("sources", () => {
     expect(screen.queryByRole("button", { name: /Sign in/ })).not.toBeInTheDocument();
   });
 
+  it("shows a source that never had a successful run as not run yet, never OK", async () => {
+    mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/sources": () => ({
+        body: [{ ...disabled, state: "ok", state_detail: "Not run yet." }],
+      }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    renderApp("/sources");
+    await screen.findByRole("heading", { name: "DHL account" });
+    expect(screen.getByText("Not run yet", { selector: ".badge" })).toBeInTheDocument();
+    expect(screen.queryByText("OK", { selector: ".badge" })).not.toBeInTheDocument();
+  });
+
   it("masks only real secrets", () => {
     for (const name of ["postalCode", "postal_code", "countryCode", "trackingCode", "keyword"]) {
       expect(isSecretField(name), name).toBe(false);
@@ -112,6 +127,62 @@ describe("sources", () => {
     for (const name of ["password", "apiKey", "api_key", "refreshToken", "pinCode", "otp"]) {
       expect(isSecretField(name), name).toBe(true);
     }
+  });
+});
+
+describe("carrier lookup wording", () => {
+  const now = Date.parse("2026-11-18T12:00:00.000Z");
+
+  it("leaves out an unknown start instead of saying 'since never'", () => {
+    const text = describeLookup(
+      { state: "found", since: null, checked_at: "2026-11-18T11:00:00.000Z" },
+      now,
+    );
+    expect(text).toBe("Found by the carrier, last asked 1 hour ago");
+    expect(text).not.toContain("never");
+  });
+
+  it("names a known start and a parcel never asked", () => {
+    expect(
+      describeLookup(
+        { state: "not_found", since: "2026-11-16T12:00:00.000Z", checked_at: null },
+        now,
+      ),
+    ).toBe("Not found by the carrier 2 days ago, not asked yet");
+  });
+});
+
+describe("API tokens", () => {
+  const token = {
+    id: "00000000-0000-4000-8000-0000000000c1",
+    name: "Made-up client",
+    scopes: ["read"],
+    created_at: "2026-11-18T09:00:00.000Z",
+    expires_at: null,
+  };
+
+  it("re-reads 'last used' when the window regains focus and shows it", async () => {
+    let used: string | null = null;
+    const calls = mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/tokens": () => ({ body: [{ ...token, last_used_at: used }] }),
+    });
+    renderApp("/tokens");
+    const row = (await screen.findByText("Made-up client")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("never")).toBeInTheDocument();
+    const before = calls.filter((call) => call.path === "/api/v1/tokens").length;
+
+    used = new Date(Date.now() - 60_000).toISOString();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(calls.filter((call) => call.path === "/api/v1/tokens").length).toBeGreaterThan(before);
+    });
+    const updated = (await screen.findByText("Made-up client")).closest("tr") as HTMLElement;
+    await waitFor(() => {
+      expect(within(updated).queryByText("never")).not.toBeInTheDocument();
+    });
+    expect(within(updated).getByText("1 minute ago")).toBeInTheDocument();
   });
 });
 

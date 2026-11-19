@@ -3,6 +3,7 @@
  * mutations invalidate the same entries.
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   deleteApiV1ParcelsId,
   deleteApiV1SourcesId,
@@ -75,14 +76,32 @@ export function useSources() {
 /** Tokens are used by other clients, so "last used" changes without any event: re-read it. */
 export const TOKENS_REFRESH_MS = 30_000;
 
+/**
+ * The interval pauses while the tab is in the background, so coming back to it re-reads at once:
+ * TanStack's focus manager reports the tab becoming visible, and the window regaining focus (a
+ * visible tab in an unfocused window) is caught here.
+ */
 export function useTokens() {
-  return useQuery({
+  const query = useQuery({
     queryKey: keys.tokens,
     queryFn: ({ signal }) => getApiV1Tokens({ signal }),
     staleTime: 0,
     refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
     refetchInterval: TOKENS_REFRESH_MS,
   });
+  const { refetch } = query;
+  useEffect(() => {
+    const onFocus = (): void => {
+      void refetch();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refetch]);
+  return query;
 }
 
 export function useCalendar(from: string, to: string) {

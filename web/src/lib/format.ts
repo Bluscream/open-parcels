@@ -92,3 +92,29 @@ export function formatRelative(value: string | null | undefined, now = Date.now(
   }
   return "just now";
 }
+
+const LOOKUP_PHRASES: Readonly<Record<LookupState, string>> = {
+  pending: "Waiting for the carrier",
+  found: "Found by the carrier",
+  not_found: "Not found by the carrier",
+};
+
+/**
+ * "Found by the carrier 2 days ago, last asked 1 hour ago". Unknown times are left out rather
+ * than called "never"; a parcel never asked says so.
+ */
+export function describeLookup(
+  lookup: {
+    readonly state: LookupState;
+    readonly since: string | null;
+    readonly checked_at: string | null;
+  },
+  now = Date.now(),
+): string {
+  const since = lookup.since === null ? "" : ` ${formatRelative(lookup.since, now)}`;
+  const asked =
+    lookup.checked_at === null
+      ? "not asked yet"
+      : `last asked ${formatRelative(lookup.checked_at, now)}`;
+  return `${LOOKUP_PHRASES[lookup.state]}${since}, ${asked}`;
+}

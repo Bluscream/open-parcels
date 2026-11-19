@@ -182,6 +182,11 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
       if (updated === undefined) {
         throw notFound("The source");
       }
+      if (body.enabled === true) {
+        // Enabling makes the source due at once; without a wake the run waited for the next
+        // timer, up to minutes, while the card claimed it was due "just now".
+        services.scheduler.wake();
+      }
       return toBody(updated);
     },
   );

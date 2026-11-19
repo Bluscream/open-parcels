@@ -3,6 +3,7 @@ import { isoNow, type Clock } from "../clock.js";
 import type { Database, ParcelUpdate } from "../db/schema.js";
 import { type Direction, type Parcel, type ParcelStatus } from "../domain/parcel.js";
 import { deriveEvents, type EventView } from "../engine/rules.js";
+import { removeOrphanedAutoSources } from "../engine/sources.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
 import { ParcelRepository, RAW_PRESENTATION, type Presentation } from "./repository.js";
@@ -148,7 +149,10 @@ export class ParcelService {
     return this.#mustGet(id);
   }
 
-  /** Deletes the parcel and fires `parcel.deleted`, so clients drop it at once. */
+  /**
+   * Deletes the parcel and fires `parcel.deleted`, so clients drop it at once. A tracking source
+   * the app created for it alone goes too, with `source.removed`.
+   */
   async delete(id: string): Promise<boolean> {
     const deleted = await this.db.transaction().execute(async (trx) => {
       const parcel = await new ParcelRepository(trx, this.presentation).get(id);
@@ -161,6 +165,11 @@ export class ParcelService {
         parcelId: id,
         payload: parcelEventPayload({ ...parcel, history: [] }),
       });
+      await removeOrphanedAutoSources(
+        trx,
+        this.clock,
+        parcel.sources.map((source) => source.source_id),
+      );
       return true;
     });
     if (deleted) {

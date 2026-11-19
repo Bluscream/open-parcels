@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "../../src/api/app.js";
 import { renderIcs } from "../../src/calendar/ics.js";
 import { isPlausibleOrder } from "../../src/domain/order.js";
 import { repairOrderShops } from "../../src/engine/order-repair.js";
 import { orderOf } from "../../src/mail/interpret.js";
+import { FakeWorld, fakePost } from "../fakes/carriers.js";
 import { createTestContext, signIn, type TestContext } from "../helpers.js";
 
 /* Regressions found by a live end-to-end run. Every code, label and order number is made up. */
@@ -55,6 +56,36 @@ async function calendar(): Promise<Entry[]> {
   expect(response.statusCode).toBe(200);
   return response.json<Entry[]>();
 }
+
+describe("enabling a source", () => {
+  it("wakes the scheduler, so the run it is due for happens now", async () => {
+    await context.close();
+    context = await createTestContext({ plugins: [fakePost(new FakeWorld())] });
+    app = await context.app();
+    const session = await signIn(context, app);
+    headers = { cookie: session.cookie, "x-csrf-token": session.csrf };
+    const source = await context.services.sources.create({
+      plugin: "fakepost",
+      kind: "tracking",
+      label: "Made-up tracking",
+      config: {},
+      secret: null,
+    });
+    const url = `/api/v1/sources/${source.id}`;
+    const off = await app.inject({ method: "PATCH", url, headers, payload: { enabled: false } });
+    expect(off.statusCode).toBe(200);
+    const wake = vi.spyOn(context.services.scheduler, "wake");
+    const on = await app.inject({ method: "PATCH", url, headers, payload: { enabled: true } });
+    expect(on.statusCode).toBe(200);
+    expect(wake).toHaveBeenCalled();
+    // Never run, so never called a success.
+    expect(on.json()).toMatchObject({
+      state: "ok",
+      last_ok_at: null,
+      state_detail: "Not run yet.",
+    });
+  });
+});
 
 describe("date-only calendar entries", () => {
   it("make a delivery known only by its day an all-day entry on that local day", async () => {
