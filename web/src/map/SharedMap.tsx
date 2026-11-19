@@ -2,19 +2,16 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, type ReactNode } from "react";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
+import { LayerControl } from "./LayerControl";
+import { tileUrl, useMapStyle, type MapLayer } from "./layers";
 import type { LatLng } from "./mapIcons";
 
-const ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
 /**
- * OpenStreetMap tiles through this server's own cache (`/tiles/…`): the tile servers refuse
- * browsers that strip the Referer, and the server identifies itself and caches as OSM's tile
- * usage policy asks. Resolved against the base URI so it also works under HA ingress. Dark mode
- * is a CSS filter on the tile pane (see `.map-dark`).
+ * Tiles come through this server's own cache (`/tiles/<layer>/…`, see `layers.ts`): the tile
+ * servers refuse browsers that strip the Referer, and the server identifies itself and caches as
+ * their usage policies ask. Dark mode is a CSS filter on the tile pane (see `.map-dark`), left
+ * off for satellite imagery, where inverted colours make no sense.
  */
-const TILE_URL = `${new URL("tiles/", document.baseURI).toString()}{z}/{x}/{y}.png`;
-
 function prefersDark(): boolean {
   const forced = document.documentElement.dataset["theme"];
   return forced === undefined
@@ -94,10 +91,16 @@ export function SharedMap(props: {
   readonly zoom?: number;
   readonly label: string;
   readonly children?: ReactNode;
+  /** Fixed styles for a preview; no layer menu then. */
+  readonly style?: { readonly base: MapLayer; readonly overlay: MapLayer | null };
 }): ReactNode {
+  const chosen = useMapStyle();
+  const base = props.style?.base ?? chosen.base;
+  const overlay = props.style === undefined ? chosen.overlay : props.style.overlay;
+  const dark = prefersDark() && !base.satellite;
   return (
     <div
-      className={prefersDark() ? "map-frame map-dark" : "map-frame"}
+      className={dark ? "map-frame map-dark" : "map-frame"}
       role="region"
       aria-label={props.label}
     >
@@ -115,9 +118,35 @@ export function SharedMap(props: {
         style={{ height: "100%", width: "100%", borderRadius: "12px", zIndex: 0 }}
       >
         <MapResizer bounds={props.bounds} maxZoom={props.fitMaxZoom ?? 13} />
-        <TileLayer attribution={ATTRIBUTION} url={TILE_URL} maxZoom={19} />
+        {/* Keyed by layer: react-leaflet does not swap a TileLayer's URL or attribution. */}
+        <TileLayer
+          key={base.id}
+          attribution={base.attribution}
+          url={tileUrl(base.id)}
+          maxNativeZoom={base.max_zoom}
+          maxZoom={19}
+        />
+        {overlay === null ? null : (
+          <TileLayer
+            key={`overlay-${overlay.id}`}
+            attribution={overlay.attribution}
+            url={tileUrl(overlay.id)}
+            maxNativeZoom={overlay.max_zoom}
+            maxZoom={19}
+            className="map-overlay-tiles"
+            zIndex={2}
+          />
+        )}
         {props.children}
       </MapContainer>
+      {props.style === undefined ? (
+        <LayerControl
+          layers={chosen.layers}
+          base={base}
+          overlay={overlay}
+          onChoose={chosen.choose}
+        />
+      ) : null}
     </div>
   );
 }

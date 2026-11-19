@@ -8101,9 +8101,142 @@
         }
       }
     },
+    "/api/v1/map/layers": {
+      "get": {
+        "summary": "The map styles this server proxies, without their upstream addresses or keys.",
+        "tags": [
+          "map"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "layers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "base",
+                              "overlay"
+                            ]
+                          },
+                          "max_zoom": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "attribution": {
+                            "type": "string",
+                            "description": "HTML for the map's attribution control."
+                          },
+                          "satellite": {
+                            "type": "boolean",
+                            "description": "Photographic imagery: no dark-mode filter."
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "kind",
+                          "max_zoom",
+                          "attribution",
+                          "satellite"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "default_base": {
+                      "type": "string",
+                      "description": "Base layer shown until the user picks one."
+                    },
+                    "default_overlay": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "layers",
+                    "default_base",
+                    "default_overlay"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tiles/{layer}/{z}/{x}/{y}": {
+      "get": {
+        "summary": "A map tile of one of the listed layers, fetched and cached by this server.",
+        "tags": [
+          "map"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{1,32}$"
+            },
+            "in": "path",
+            "name": "layer",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 22
+            },
+            "in": "path",
+            "name": "z",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4194303
+            },
+            "in": "path",
+            "name": "x",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4194303
+            },
+            "in": "path",
+            "name": "y",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/tiles/{z}/{x}/{y}.png": {
       "get": {
-        "summary": "An OpenStreetMap tile, fetched and cached by this server.",
+        "summary": "An OpenStreetMap tile (older clients; same as layer osm).",
         "tags": [
           "map"
         ],

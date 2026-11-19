@@ -34,6 +34,7 @@ import type { Presentation } from "./parcels/repository.js";
 import { ParcelService } from "./parcels/service.js";
 import { OrderService } from "./orders/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
+import { availableLayers } from "./tiles/layers.js";
 import { TileProxy } from "./tiles/proxy.js";
 import { Geocoder } from "./geo/geocoder.js";
 import { ConfigSettings } from "./settings/config-settings.js";
@@ -217,6 +218,8 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   const tiles = new TileProxy({
     cacheDir: path.join(deps.config.dataDir, "tiles"),
     userAgent: USER_AGENT,
+    // Read per request: a custom provider saved in the UI applies at once.
+    layers: () => availableLayers(deps.config.map.custom),
   });
   const geocoder = new Geocoder({
     userAgent: USER_AGENT,

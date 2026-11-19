@@ -1,6 +1,13 @@
 import path from "node:path";
 import { z } from "zod";
 import { isValidTimeZone } from "./engine/tz.js";
+import {
+  BASE_LAYER_CHOICES,
+  OVERLAY_CHOICES,
+  templateProblem,
+  type CustomProvider,
+} from "./tiles/layers.js";
+import { TILE_MAX_ZOOM_ANY } from "./tiles/proxy.js";
 
 const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace"] as const;
 
@@ -187,6 +194,68 @@ export const SETTINGS = {
     apply: "live",
     kind: "number",
   }),
+  OPENPARCELS_MAP_BASE_LAYER: setting({
+    group: "Map",
+    description:
+      "Map style shown until a user picks another on the map: map, topographic, satellite, borders only, or the custom provider.",
+    schema: z.enum(BASE_LAYER_CHOICES),
+    default: "osm",
+    apply: "live",
+    kind: "string",
+    choices: BASE_LAYER_CHOICES,
+  }),
+  OPENPARCELS_MAP_OVERLAY: setting({
+    group: "Map",
+    description: "Overlay drawn over the map style by default; labels suit satellite imagery.",
+    schema: z.enum(OVERLAY_CHOICES),
+    default: "none",
+    apply: "live",
+    kind: "string",
+    choices: OVERLAY_CHOICES,
+  }),
+  OPENPARCELS_MAP_CUSTOM_URL: setting({
+    group: "Map",
+    description:
+      "Custom tile provider, e.g. https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key={key}. Needs https and {z}, {x}, {y}; {s}, {r} and {key} are filled in by the server.",
+    schema: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .superRefine((value, context) => {
+        const problem = templateProblem(value);
+        if (problem !== null) context.addIssue({ code: "custom", message: problem });
+      })
+      .optional(),
+    default: undefined,
+    apply: "live",
+    kind: "string",
+  }),
+  OPENPARCELS_MAP_CUSTOM_KEY: setting({
+    group: "Map",
+    description: "API key for the custom provider's {key}. Stays on the server.",
+    schema: z.string().trim().min(1).max(500).optional(),
+    default: undefined,
+    apply: "live",
+    kind: "string",
+    secret: true,
+  }),
+  OPENPARCELS_MAP_CUSTOM_ATTRIBUTION: setting({
+    group: "Map",
+    description: "Credit shown on the map for the custom provider, as its terms require.",
+    schema: z.string().trim().min(1).max(300).optional(),
+    default: undefined,
+    apply: "live",
+    kind: "string",
+  }),
+  OPENPARCELS_MAP_CUSTOM_MAX_ZOOM: setting({
+    group: "Map",
+    description: "Deepest zoom the custom provider serves; the map scales up beyond it.",
+    schema: z.coerce.number().int().min(0).max(TILE_MAX_ZOOM_ANY),
+    default: 19,
+    apply: "live",
+    kind: "number",
+  }),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS;
@@ -284,6 +353,12 @@ export interface AppConfig {
     readonly rawAfterDays: number;
     readonly notFoundArchiveDays: number;
   };
+  readonly map: {
+    readonly baseLayer: (typeof BASE_LAYER_CHOICES)[number];
+    readonly overlay: (typeof OVERLAY_CHOICES)[number];
+    /** Unset without a template. */
+    readonly custom: CustomProvider | undefined;
+  };
 }
 
 export class ConfigError extends Error {
@@ -319,6 +394,19 @@ export function toConfig(values: Readonly<SettingValues>, env: ParsedEnv): AppCo
       deleteAfterDays: values.OPENPARCELS_DELETE_DAYS,
       rawAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
       notFoundArchiveDays: values.OPENPARCELS_NOT_FOUND_ARCHIVE_DAYS,
+    },
+    map: {
+      baseLayer: values.OPENPARCELS_MAP_BASE_LAYER,
+      overlay: values.OPENPARCELS_MAP_OVERLAY,
+      custom:
+        values.OPENPARCELS_MAP_CUSTOM_URL === undefined
+          ? undefined
+          : {
+              url: values.OPENPARCELS_MAP_CUSTOM_URL,
+              apiKey: values.OPENPARCELS_MAP_CUSTOM_KEY,
+              attribution: values.OPENPARCELS_MAP_CUSTOM_ATTRIBUTION,
+              maxZoom: values.OPENPARCELS_MAP_CUSTOM_MAX_ZOOM,
+            },
     },
   };
 }

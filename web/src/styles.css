@@ -1349,6 +1349,63 @@ tbody tr:hover {
   filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
 }
 
+/* Map style menu, top right, above Leaflet's panes and controls. */
+.map-layer-control {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.map-layer-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--panel-solid);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.map-layer-menu {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-solid);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.875rem;
+  min-width: 150px;
+}
+
+.map-layer-menu legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.map-layer-menu label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.map-layer-overlay {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
 /* Beats leaflet.css (loaded later): outside the world tiles the map shows the page colour. */
 .map-frame .leaflet-container {
   background: var(--bg);
