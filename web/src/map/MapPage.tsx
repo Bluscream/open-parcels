@@ -52,6 +52,9 @@ function PinMarker({ pin }: { readonly pin: Pin }): ReactNode {
                 : null}
             </span>
             <span className="muted">{formatRelative(pin.at)}</span>
+            {pin.approximate ? (
+              <span className="muted">Approximate: the scan named only the town</span>
+            ) : null}
           </div>
         </Popup>
       </Marker>

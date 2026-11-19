@@ -51,6 +51,12 @@ export const iconShip = createDivIcon(<Ship size={24} />, "#3b82f6", 32);
 export const iconTrain = createDivIcon(<Train size={24} />, "#a855f7", 32);
 export const iconSource = createDivIcon(<MapPin size={24} />, "#ef4444", 28);
 export const iconIntermediate = createDivIcon(<MapPin size={20} />, "#9ca3af", 24);
+/** A stop placed from its place name only: hollow and fainter, as its spot is a town's centre. */
+export const iconApproximate = createDivIcon(
+  <MapPin size={20} strokeDasharray="3 2" opacity={0.75} />,
+  "#9ca3af",
+  24,
+);
 export const iconCurrent = createDivIcon(<MapPin size={24} fill="#3b82f6" />, "#3b82f6", 28);
 export const iconHeli = createDivIcon(<Helicopter size={24} />, "#06b6d4", 32);
 export const iconBike = createDivIcon(<Bike size={24} />, "#22c55e", 32);
