@@ -15,6 +15,7 @@ import { utcSnapshot } from "./utc.js";
 import { normaliseBarcode } from "./barcode.js";
 import { foldParcel } from "./fold.js";
 import { scrubRaw } from "./raw-scrub.js";
+import { withSafeLinks } from "./links.js";
 import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
 
 /** A parcel missing from every complete listing for this long, undelivered, counts as removed. */
@@ -252,7 +253,7 @@ export class Reconciler {
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
       for (const reported of result.snapshots) {
-        const snapshot = normalisedCodes(utcSnapshot(reported));
+        const snapshot = withSafeLinks(normalisedCodes(utcSnapshot(reported)));
         const value = source.kind === "mail" ? unmappedMail(snapshot) : null;
         if (value !== null) {
           unknown.push(value);
