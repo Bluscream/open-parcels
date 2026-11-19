@@ -14,13 +14,14 @@ import * as m0010 from "./migrations/0010-order-lifecycle.js";
 import * as m0011 from "./migrations/0011-setting-overrides.js";
 import * as m0012 from "./migrations/0012-session-roles.js";
 import * as m0013 from "./migrations/0013-geocoded-events.js";
+import * as m0014 from "./migrations/0014-place-candidates.js";
 import type { Database } from "./schema.js";
 
 /**
  * Migrations are listed explicitly rather than read from a folder: the build output stays
  * self-contained and a missing file is a compile error, not a silent skip.
  */
-const MIGRATIONS: Readonly<Record<string, Migration>> = {
+export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0001-initial": m0001,
   "0002-reconciler": m0002,
   "0003-sign-in-attempts": m0003,
@@ -34,6 +35,7 @@ const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0011-setting-overrides": m0011,
   "0012-session-roles": m0012,
   "0013-geocoded-events": m0013,
+  "0014-place-candidates": m0014,
 };
 
 const staticProvider: MigrationProvider = {

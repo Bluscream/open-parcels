@@ -291,7 +291,7 @@ There is one owner per container, so tables carry no user column.
 | `items` | id, parcel_id, title, image_ref, url, external_id, quantity, price, currency | |
 | `orders` | id, shop, order_number, placed_at, status | |
 | `live_state` | parcel_id, state, stops_away, message, position_at, updated_at | No coordinates |
-| `places` | key (normalised text), lat, lng, precision, missed_at | Hits and misses are cached; misses are retried after 7 days |
+| `places` | key (normalised text), candidates (JSON), looked_at | Every usable answer for a name is cached; which one a scan stands for is chosen from the parcel's route. Names without one are retried after 30 days |
 | `outbox` | seq (monotonic), type, parcel_id, payload (JSON), created_at | Feeds SSE replay and, later, webhooks and MQTT |
 | `unknown_vocab` | plugin, kind, key, first_seen_at, count | Drives the one-time "please report" warning. Keys only |
 | `sign_in_attempts` | id, source_id, flow, blob (AES-GCM: plug-in state and current step), failures, expires_at, poll_not_before | Interactive sign-ins in progress; one per source, gone when finished, cancelled or expired |

@@ -9,6 +9,8 @@ export interface Place {
   readonly rank: number | null;
   /** Nominatim's `addresstype` (`city`, `country`, `postcode`, …), null when not said. */
   readonly kind: string | null;
+  /** Nominatim's `importance` (0–1, higher is better known), null when not said. */
+  readonly importance: number | null;
 }
 
 /** Settlement types that name a town even when Nominatim ranks the boundary as a state. */
@@ -47,7 +49,8 @@ const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const MIN_INTERVAL_MS = 1_000;
 const TIMEOUT_MS = 10_000;
 const CACHE_SIZE = 200;
-const RESULTS = 5;
+/** Enough to reach the right one of several places sharing a name (see route-choice.ts). */
+const RESULTS = 8;
 
 const answerSchema = z.array(
   z.object({
@@ -56,6 +59,7 @@ const answerSchema = z.array(
     lon: z.coerce.number().min(-180).max(180),
     place_rank: z.number().int().optional(),
     addresstype: z.string().optional(),
+    importance: z.number().optional(),
   }),
 );
 
@@ -132,6 +136,7 @@ export class Geocoder {
       longitude: entry.lon,
       rank: entry.place_rank ?? null,
       kind: entry.addresstype ?? null,
+      importance: entry.importance ?? null,
     }));
   }
 }

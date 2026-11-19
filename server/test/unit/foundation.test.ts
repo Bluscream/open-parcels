@@ -166,6 +166,7 @@ describe("migrations", () => {
         "0011-setting-overrides",
         "0012-session-roles",
         "0013-geocoded-events",
+        "0014-place-candidates",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

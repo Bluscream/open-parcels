@@ -153,7 +153,7 @@ export interface ParcelEventTable {
   /** Where the scan happened, when the carrier says; both set or both null. */
   latitude: ColumnType<number | null, number | null | undefined>;
   longitude: ColumnType<number | null, number | null | undefined>;
-  /** 1 when the coordinates were looked up from `location_text` (approximate). See 0012. */
+  /** 1 when the coordinates were looked up from `location_text` (approximate). See 0013. */
   geocoded: ColumnType<number, number | undefined, number>;
   /** Hash of (at, raw_status, location) so a re-fetched history never duplicates entries. */
   fingerprint: string;
@@ -203,14 +203,12 @@ export interface LiveStateTable {
   updated_at: Timestamp;
 }
 
-/** Place-name lookups, keyed by the normalised name: a hit has coordinates, a miss `missed_at`. */
+/** Place-name lookups, keyed by the normalised name. See migration 0014. */
 export interface PlaceTable {
   key: string;
-  latitude: number | null;
-  longitude: number | null;
-  precision: "exact" | "street" | "area" | null;
-  resolved_at: Timestamp | null;
-  missed_at: Timestamp | null;
+  /** JSON array of the places the name may stand for, best first; `[]` when none was found. */
+  candidates: string;
+  looked_at: Timestamp;
 }
 
 export interface OutboxTable {
