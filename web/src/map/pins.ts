@@ -8,6 +8,8 @@ export interface Pin {
   readonly at: string | null;
   /** The carrier's last scan, when a live courier position is shown instead. */
   readonly from: LatLng | null;
+  /** The place was looked up from a scan's place name: only the town's centre. */
+  readonly approximate: boolean;
 }
 
 /**
@@ -25,5 +27,6 @@ export function pinFor(parcel: Parcel): Pin | undefined {
     courier,
     at: location.at,
     from: courier && scan !== null ? [scan.latitude, scan.longitude] : null,
+    approximate: location.precision === "area",
   };
 }

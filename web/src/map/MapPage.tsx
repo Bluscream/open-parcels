@@ -53,6 +53,9 @@ function PinMarker({ pin }: { readonly pin: Pin }): ReactNode {
                 : null}
             </span>
             <PopupMeta when={formatRelative(pin.at)} point={pin.point} />
+            {pin.approximate ? (
+              <span className="muted">Approximate: the scan named only the town</span>
+            ) : null}
           </div>
         </Popup>
       </Marker>

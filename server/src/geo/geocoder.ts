@@ -5,6 +5,26 @@ export interface Place {
   readonly label: string;
   readonly latitude: number;
   readonly longitude: number;
+  /** Nominatim's `place_rank` (4 country … 30 building), null when the service did not say. */
+  readonly rank: number | null;
+  /** Nominatim's `addresstype` (`city`, `country`, `postcode`, …), null when not said. */
+  readonly kind: string | null;
+}
+
+/** Settlement types that name a town even when Nominatim ranks the boundary as a state. */
+const SETTLEMENTS = new Set(["city", "town", "village", "municipality", "hamlet", "suburb"]);
+/** `place_rank` from which a match is a city or finer (13–16 city, 17+ town, suburb, postcode…). */
+export const MIN_STOP_RANK = 13;
+
+/**
+ * Whether a match is precise enough to stand for a scan's place on a route: a city, town,
+ * district, postcode or finer. Countries, states, regions and counties (rank below 13) are
+ * not, unless their type is a settlement: city-states such as Hamburg or Berlin are ranked as
+ * states but are a city.
+ */
+export function isStopPrecise(place: Place): boolean {
+  if (place.kind !== null && SETTLEMENTS.has(place.kind)) return true;
+  return place.rank !== null && place.rank >= MIN_STOP_RANK;
 }
 
 export class GeocodeError extends Error {
@@ -34,6 +54,8 @@ const answerSchema = z.array(
     display_name: z.string(),
     lat: z.coerce.number().min(-90).max(90),
     lon: z.coerce.number().min(-180).max(180),
+    place_rank: z.number().int().optional(),
+    addresstype: z.string().optional(),
   }),
 );
 
@@ -108,6 +130,8 @@ export class Geocoder {
       label: entry.display_name,
       latitude: entry.lat,
       longitude: entry.lon,
+      rank: entry.place_rank ?? null,
+      kind: entry.addresstype ?? null,
     }));
   }
 }

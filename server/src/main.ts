@@ -80,6 +80,7 @@ async function main(): Promise<void> {
   await services.reconciler.repair();
   services.scheduler.start();
   services.live.start();
+  services.places.start();
   await services.mail.start();
 
   const supervisorToken = process.env["SUPERVISOR_TOKEN"];
@@ -108,6 +109,7 @@ async function main(): Promise<void> {
     clearInterval(maintenance);
     services.scheduler.stop();
     services.live.stop();
+    services.places.stop();
     services.mail
       .stop()
       .then(() => Promise.all(servers.map((server) => server.close())))

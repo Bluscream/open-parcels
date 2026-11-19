@@ -731,6 +731,7 @@ export type GetApiV1Parcels200ItemHistoryItem = {
    * @nullable
    */
   longitude: number | null;
+  approximate: boolean;
 };
 
 export type GetApiV1Parcels200ItemDirection =
@@ -1157,6 +1158,7 @@ export type PostApiV1Parcels201HistoryItem = {
    * @nullable
    */
   longitude: number | null;
+  approximate: boolean;
 };
 
 export type PostApiV1Parcels201Direction =
@@ -1569,6 +1571,7 @@ export type GetApiV1ParcelsId200HistoryItem = {
    * @nullable
    */
   longitude: number | null;
+  approximate: boolean;
 };
 
 export type GetApiV1ParcelsId200Direction =
@@ -2003,6 +2006,7 @@ export type PatchApiV1ParcelsId200HistoryItem = {
    * @nullable
    */
   longitude: number | null;
+  approximate: boolean;
 };
 
 export type PatchApiV1ParcelsId200Direction =

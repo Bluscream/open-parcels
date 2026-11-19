@@ -13,6 +13,7 @@ import * as m0009 from "./migrations/0009-idle-source-state.js";
 import * as m0010 from "./migrations/0010-order-lifecycle.js";
 import * as m0011 from "./migrations/0011-setting-overrides.js";
 import * as m0012 from "./migrations/0012-session-roles.js";
+import * as m0013 from "./migrations/0013-geocoded-events.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -32,6 +33,7 @@ const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0010-order-lifecycle": m0010,
   "0011-setting-overrides": m0011,
   "0012-session-roles": m0012,
+  "0013-geocoded-events": m0013,
 };
 
 const staticProvider: MigrationProvider = {

@@ -9,6 +9,7 @@ import {
   determineTransportMethod,
   generateCurvedPath,
   getTransportMarkerIcon,
+  iconApproximate,
   iconHome,
   iconIntermediate,
   iconSource,
@@ -22,9 +23,14 @@ interface Stop {
   readonly point: LatLng;
   readonly at: string;
   readonly label: string;
+  /** Placed from the scan's place name by the server, not by the carrier. */
+  readonly approximate: boolean;
 }
 
-/** The scans that came with coordinates, oldest first, without repeats of the same place. */
+/**
+ * The scans with coordinates (the carrier's, or approximate ones the server looked up from the
+ * place name), oldest first, without repeats of the same place.
+ */
 function stopsOf(parcel: ParcelDetail): Stop[] {
   const stops: Stop[] = [];
   const sorted = [...parcel.history].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -36,6 +42,7 @@ function stopsOf(parcel: ParcelDetail): Stop[] {
       point: [entry.latitude, entry.longitude],
       at: entry.timestamp,
       label: entry.location ?? entry.raw_status,
+      approximate: entry.approximate,
     });
   }
   return stops;
@@ -96,13 +103,22 @@ export default function LocationMap({ parcel }: { readonly parcel: ParcelDetail 
             <Marker
               key={`${stop.at}-${String(index)}`}
               position={stop.point}
-              icon={last ? transport : index === 0 ? iconSource : iconIntermediate}
+              icon={
+                last
+                  ? transport
+                  : index === 0
+                    ? iconSource
+                    : stop.approximate
+                      ? iconApproximate
+                      : iconIntermediate
+              }
               zIndexOffset={last ? 1000 : 0}
             >
               <Popup>
                 <div className="popup-content">
                   <strong>{stop.label}</strong>
                   <PopupMeta when={formatDateTime(stop.at)} point={stop.point} />
+                  {stop.approximate ? <span className="muted">Approximate place</span> : null}
                 </div>
               </Popup>
             </Marker>
