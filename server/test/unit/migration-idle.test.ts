@@ -65,7 +65,7 @@ describe("migration 0009-idle-source-state", () => {
         values ('a1', 'fine', 'f', x'00', 't', 't')
       `.execute(raw);
 
-      expect(await migrateToLatest(db)).toEqual(["0009-idle-source-state"]);
+      expect(await migrateToLatest(db)).toEqual(["0009-idle-source-state", "0010-order-lifecycle"]);
 
       const rows = await sql<{ id: string; state: string; state_detail: string | null }>`
         select id, state, state_detail from sources order by id

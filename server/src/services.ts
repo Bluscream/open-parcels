@@ -32,6 +32,7 @@ import type { MailboxClientFactory, MailInterpreter } from "./mail/types.js";
 import { MailWatcher } from "./mail/watcher.js";
 import type { Presentation } from "./parcels/repository.js";
 import { ParcelService } from "./parcels/service.js";
+import { OrderService } from "./orders/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
 import { TileProxy } from "./tiles/proxy.js";
 import { Geocoder } from "./geo/geocoder.js";
@@ -95,6 +96,7 @@ export interface Services {
   readonly calendar: CalendarService;
   readonly signIn: SignInService;
   readonly parcels: ParcelService;
+  readonly orders: OrderService;
   readonly setup: SetupGate;
 }
 
@@ -323,6 +325,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
       exclusive: (sourceId, work) => runner.exclusive(sourceId, work),
     }),
     parcels,
+    orders: new OrderService(db, bus, clock, presentation),
     setup,
   };
 }

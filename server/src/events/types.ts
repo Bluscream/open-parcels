@@ -17,6 +17,8 @@ export const EVENT_TYPES = [
   "source.state_changed",
   "source.run_finished",
   "source.removed",
+  "order.updated",
+  "order.deleted",
   "settings.updated",
   "vocab.unknown",
 ] as const;

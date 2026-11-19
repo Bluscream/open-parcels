@@ -77,6 +77,14 @@ export interface OrderTable {
   status: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
+  /** The owner's name for the order; null for the shop's. See migration 0010. */
+  label: ColumnType<string | null, string | null | undefined>;
+  /** Null while archiving is automatic; `archived` or `kept` when the owner decided. */
+  archive_mode: ColumnType<"archived" | "kept" | null, "archived" | "kept" | null | undefined>;
+  /** When the owner archived the order. */
+  archived_at: ColumnType<Timestamp | null, Timestamp | null | undefined>;
+  /** Set when the owner deleted the order: kept as a tombstone so a shop cannot re-create it. */
+  deleted_at: ColumnType<Timestamp | null, Timestamp | null | undefined>;
 }
 
 export interface ParcelTable {
