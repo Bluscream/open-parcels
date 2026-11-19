@@ -57,7 +57,14 @@ export interface ParcelSnapshot {
    * starts over, like the demo plug-ins' loop.
    */
   readonly historyComplete?: boolean;
+  /** Items known to be in this parcel. */
   readonly items: readonly SnapshotItem[];
+  /**
+   * Everything in the order, when the source knows the order but not (for every item) which
+   * parcel carries it, like a shop. Items also listed in `items` are linked to this parcel; the
+   * rest belong to the order only. Unset: the order's items are left as they are.
+   */
+  readonly orderItems?: readonly SnapshotItem[];
   readonly order: {
     readonly shop: string;
     readonly orderNumber: string;

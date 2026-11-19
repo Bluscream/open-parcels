@@ -19,6 +19,7 @@ import { formatDistance } from "../lib/geo";
 import { useHome } from "../settings/home";
 import { kmToHome } from "./distance";
 import { EditableStatus, EditableTitle, ParcelActions, useCanEdit } from "./InlineEdit";
+import { ItemList } from "./ItemList";
 
 const LocationMap = lazy(() => import("../map/LocationMap"));
 
@@ -133,33 +134,29 @@ function History({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
 }
 
 function Items({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
+  // The order's other lines: in another parcel, or in one not known yet.
+  const own = new Set(parcel.items.map((item) => item.title));
+  const otherLines = (parcel.order?.items ?? []).filter(
+    (line) => line.parcel_id !== parcel.id && !own.has(line.title),
+  );
   return (
     <section className="detail-section" aria-labelledby="items-title">
       <h2 id="items-title">Items</h2>
       {parcel.items.length === 0 ? (
         <p className="muted">No items known.</p>
       ) : (
-        <ul className="items">
-          {parcel.items.map((item, index) => (
-            <li key={`${item.title}-${index}`}>
-              {item.image_url === null ? (
-                <span className="item-thumb" aria-hidden="true" />
-              ) : (
-                <img src={item.image_url} alt="" width={48} height={48} loading="lazy" />
-              )}
-              <span>
-                {item.quantity !== null && item.quantity > 1 ? `${item.quantity} × ` : ""}
-                {item.url === null ? (
-                  item.title
-                ) : (
-                  <a href={item.url} target="_blank" rel="noreferrer noopener">
-                    {item.title}
-                  </a>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <ItemList items={parcel.items} />
+      )}
+      {otherLines.length === 0 ? null : (
+        <>
+          <h3 className="items-subtitle">Also in this order</h3>
+          <ItemList
+            items={otherLines}
+            note={(_item, index) =>
+              otherLines[index]?.parcel_id === null ? "Parcel not known yet" : "In another parcel"
+            }
+          />
+        </>
       )}
       <h2>Sources</h2>
       {parcel.sources.length === 0 ? (

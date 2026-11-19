@@ -46,8 +46,18 @@ export const itemSchema = z.object({
   image_url: z.string().nullable(),
   url: z.string().nullable(),
   quantity: z.number().int().positive().nullable(),
+  price: z.number().nullable(),
+  currency: z.string().nullable(),
 });
 export type Item = z.infer<typeof itemSchema>;
+
+/** An order line: `parcel_id` is the parcel carrying it, null while that is not known. */
+export const orderItemSchema = itemSchema.extend({ parcel_id: z.uuid().nullable() });
+export type OrderItem = z.infer<typeof orderItemSchema>;
+
+/** How a parcel without its own label is named (the "Default parcel label" setting). */
+export const PARCEL_LABEL_MODES = ["tracking_number", "items"] as const;
+export type ParcelLabelMode = (typeof PARCEL_LABEL_MODES)[number];
 
 /**
  * parcel-live/1: the courier on the last mile. Coordinates are the courier's, never the
@@ -128,6 +138,8 @@ export const parcelSchema = z.object({
   id: z.uuid(),
   direction: z.enum(DIRECTIONS),
   label: z.string().nullable(),
+  /** The label, else (per the "Default parcel label" setting) the item names or the code. */
+  display_name: z.string(),
   manual_status: parcelStatusSchema.nullable(),
   carrier_status: parcelStatusSchema,
   carrier_delivered: z.boolean(),
@@ -135,7 +147,9 @@ export const parcelSchema = z.object({
   items: z.array(itemSchema),
   live: liveSchema.nullable(),
   location: locationSchema.nullable(),
-  order: z.object({ shop: z.string(), order_number: z.string() }).nullable(),
+  order: z
+    .object({ shop: z.string(), order_number: z.string(), items: z.array(orderItemSchema) })
+    .nullable(),
   sources: z.array(parcelSourceRefSchema),
   lookup: lookupSchema,
   first_seen_at: isoDateTime,

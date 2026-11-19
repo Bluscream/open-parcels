@@ -7,13 +7,16 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useParcels } from "../api/queries";
 import type { Parcel } from "../api/types";
 import { ErrorNotice, Spinner } from "../components/ui";
-import { ParcelCard } from "../parcels/ParcelCard";
+import { ItemList } from "../parcels/ItemList";
+import { ParcelCard, parcelName } from "../parcels/ParcelCard";
 
 interface Order {
   readonly key: string;
   readonly shop: string;
   readonly number: string;
   readonly parcels: Parcel[];
+  /** What was ordered, with the parcel carrying each line when known. */
+  readonly items: NonNullable<Parcel["order"]>["items"];
 }
 
 export function groupOrders(parcels: readonly Parcel[]): Order[] {
@@ -28,6 +31,7 @@ export function groupOrders(parcels: readonly Parcel[]): Order[] {
       shop: parcel.order.shop,
       number: parcel.order.order_number,
       parcels: [],
+      items: parcel.order.items,
     };
     order.parcels.push(parcel);
     orders.set(key, order);
@@ -63,6 +67,20 @@ function OrderCard({ order }: { readonly order: Order }): ReactNode {
           <span style={{ width: `${(delivered / order.parcels.length) * 100}%` }} />
         </div>
       </div>
+      {order.items.length === 0 ? null : (
+        <div>
+          <h3 className="items-subtitle">Items</h3>
+          <ItemList
+            items={order.items}
+            note={(_item, index) => {
+              const parcelId = order.items[index]?.parcel_id ?? null;
+              if (parcelId === null) return "Parcel not known yet";
+              const carrying = order.parcels.find((parcel) => parcel.id === parcelId);
+              return carrying === undefined ? null : `In ${parcelName(carrying)}`;
+            }}
+          />
+        </div>
+      )}
       <ul className="parcel-list">
         {order.parcels.map((parcel) => (
           <li key={parcel.id}>

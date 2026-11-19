@@ -224,12 +224,25 @@ export type GetApiV1Settings200Home = {
   label: string | null;
 } | null;
 
+/**
+ * How a parcel without a label is named: its tracking code, or its item names (max 100 characters).
+ */
+export type GetApiV1Settings200ParcelLabel =
+  (typeof GetApiV1Settings200ParcelLabel)[keyof typeof GetApiV1Settings200ParcelLabel];
+
+export const GetApiV1Settings200ParcelLabel = {
+  tracking_number: "tracking_number",
+  items: "items",
+} as const;
+
 export type GetApiV1Settings200 = {
   /**
    * Where parcels go: centres the maps and gives distances. Set by the user.
    * @nullable
    */
   home: GetApiV1Settings200Home;
+  /** How a parcel without a label is named: its tracking code, or its item names (max 100 characters). */
+  parcel_label: GetApiV1Settings200ParcelLabel;
 };
 
 /**
@@ -272,6 +285,61 @@ export type PutApiV1SettingsHome200 = {
    * @nullable
    */
   label: string | null;
+};
+
+export type PutApiV1SettingsParcelLabelBodyParcelLabel =
+  (typeof PutApiV1SettingsParcelLabelBodyParcelLabel)[keyof typeof PutApiV1SettingsParcelLabelBodyParcelLabel];
+
+export const PutApiV1SettingsParcelLabelBodyParcelLabel = {
+  tracking_number: "tracking_number",
+  items: "items",
+} as const;
+
+export type PutApiV1SettingsParcelLabelBody = {
+  parcel_label: PutApiV1SettingsParcelLabelBodyParcelLabel;
+};
+
+/**
+ * Where parcels go: centres the maps and gives distances. Set by the user.
+ * @nullable
+ */
+export type PutApiV1SettingsParcelLabel200Home = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  /**
+   * @maxLength 300
+   * @nullable
+   */
+  label: string | null;
+} | null;
+
+/**
+ * How a parcel without a label is named: its tracking code, or its item names (max 100 characters).
+ */
+export type PutApiV1SettingsParcelLabel200ParcelLabel =
+  (typeof PutApiV1SettingsParcelLabel200ParcelLabel)[keyof typeof PutApiV1SettingsParcelLabel200ParcelLabel];
+
+export const PutApiV1SettingsParcelLabel200ParcelLabel = {
+  tracking_number: "tracking_number",
+  items: "items",
+} as const;
+
+export type PutApiV1SettingsParcelLabel200 = {
+  /**
+   * Where parcels go: centres the maps and gives distances. Set by the user.
+   * @nullable
+   */
+  home: PutApiV1SettingsParcelLabel200Home;
+  /** How a parcel without a label is named: its tracking code, or its item names (max 100 characters). */
+  parcel_label: PutApiV1SettingsParcelLabel200ParcelLabel;
 };
 
 export type GetApiV1GeocodeParams = {
@@ -465,6 +533,10 @@ export type GetApiV1Parcels200ItemItemsItem = {
    * @nullable
    */
   quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
 };
 
 export type GetApiV1Parcels200ItemLiveState =
@@ -560,12 +632,36 @@ export type GetApiV1Parcels200ItemLocation = {
   at: string | null;
 } | null;
 
+export type GetApiV1Parcels200ItemOrderItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
 /**
  * @nullable
  */
 export type GetApiV1Parcels200ItemOrder = {
   shop: string;
   order_number: string;
+  items: GetApiV1Parcels200ItemOrderItemsItem[];
 } | null;
 
 export type GetApiV1Parcels200ItemSourcesItemKind =
@@ -657,6 +753,7 @@ export type GetApiV1Parcels200Item = {
   direction: GetApiV1Parcels200ItemDirection;
   /** @nullable */
   label: string | null;
+  display_name: string;
   /** @nullable */
   manual_status: GetApiV1Parcels200ItemManualStatus;
   carrier_status: GetApiV1Parcels200ItemCarrierStatus;
@@ -813,6 +910,10 @@ export type PostApiV1Parcels201ItemsItem = {
    * @nullable
    */
   quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
 };
 
 export type PostApiV1Parcels201LiveState =
@@ -908,12 +1009,36 @@ export type PostApiV1Parcels201Location = {
   at: string | null;
 } | null;
 
+export type PostApiV1Parcels201OrderItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
 /**
  * @nullable
  */
 export type PostApiV1Parcels201Order = {
   shop: string;
   order_number: string;
+  items: PostApiV1Parcels201OrderItemsItem[];
 } | null;
 
 export type PostApiV1Parcels201SourcesItemKind =
@@ -1005,6 +1130,7 @@ export type PostApiV1Parcels201 = {
   direction: PostApiV1Parcels201Direction;
   /** @nullable */
   label: string | null;
+  display_name: string;
   /** @nullable */
   manual_status: PostApiV1Parcels201ManualStatus;
   carrier_status: PostApiV1Parcels201CarrierStatus;
@@ -1148,6 +1274,10 @@ export type GetApiV1ParcelsId200ItemsItem = {
    * @nullable
    */
   quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
 };
 
 export type GetApiV1ParcelsId200LiveState =
@@ -1243,12 +1373,36 @@ export type GetApiV1ParcelsId200Location = {
   at: string | null;
 } | null;
 
+export type GetApiV1ParcelsId200OrderItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
 /**
  * @nullable
  */
 export type GetApiV1ParcelsId200Order = {
   shop: string;
   order_number: string;
+  items: GetApiV1ParcelsId200OrderItemsItem[];
 } | null;
 
 export type GetApiV1ParcelsId200SourcesItemKind =
@@ -1340,6 +1494,7 @@ export type GetApiV1ParcelsId200 = {
   direction: GetApiV1ParcelsId200Direction;
   /** @nullable */
   label: string | null;
+  display_name: string;
   /** @nullable */
   manual_status: GetApiV1ParcelsId200ManualStatus;
   carrier_status: GetApiV1ParcelsId200CarrierStatus;
@@ -1506,6 +1661,10 @@ export type PatchApiV1ParcelsId200ItemsItem = {
    * @nullable
    */
   quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
 };
 
 export type PatchApiV1ParcelsId200LiveState =
@@ -1601,12 +1760,36 @@ export type PatchApiV1ParcelsId200Location = {
   at: string | null;
 } | null;
 
+export type PatchApiV1ParcelsId200OrderItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
 /**
  * @nullable
  */
 export type PatchApiV1ParcelsId200Order = {
   shop: string;
   order_number: string;
+  items: PatchApiV1ParcelsId200OrderItemsItem[];
 } | null;
 
 export type PatchApiV1ParcelsId200SourcesItemKind =
@@ -1698,6 +1881,7 @@ export type PatchApiV1ParcelsId200 = {
   direction: PatchApiV1ParcelsId200Direction;
   /** @nullable */
   label: string | null;
+  display_name: string;
   /** @nullable */
   manual_status: PatchApiV1ParcelsId200ManualStatus;
   carrier_status: PatchApiV1ParcelsId200CarrierStatus;
@@ -2712,6 +2896,25 @@ export const deleteApiV1SettingsHome = async (
   });
 };
 
+export const getPutApiV1SettingsParcelLabelUrl = () => {
+  return `/api/v1/settings/parcel-label`;
+};
+
+/**
+ * @summary Choose how parcels without a label are named.
+ */
+export const putApiV1SettingsParcelLabel = async (
+  putApiV1SettingsParcelLabelBody: PutApiV1SettingsParcelLabelBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<PutApiV1SettingsParcelLabel200> => {
+  return apiFetch<PutApiV1SettingsParcelLabel200>(getPutApiV1SettingsParcelLabelUrl(), {
+    ...options,
+    method: "PUT",
+    headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
+    body: JSON.stringify(putApiV1SettingsParcelLabelBody),
+  });
+};
+
 export const getGetApiV1GeocodeUrl = (params: GetApiV1GeocodeParams) => {
   const normalizedParams = new URLSearchParams();
 
@@ -3179,6 +3382,24 @@ export const getIcalTokenIcs = async (
   options?: Parameters<typeof apiFetch>[1],
 ): Promise<void> => {
   return apiFetch<void>(getGetIcalTokenIcsUrl(token), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetApiV1ParcelsIdPictureUrl = (id: string) => {
+  return `/api/v1/parcels/${id}/picture`;
+};
+
+/**
+ * 404 when none of its items has a picture. Used as the entity picture in Home Assistant.
+ * @summary The parcel's item pictures as one square PNG (1, 2×2 or 3×3 tiles).
+ */
+export const getApiV1ParcelsIdPicture = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getGetApiV1ParcelsIdPictureUrl(id), {
     ...options,
     method: "GET",
   });

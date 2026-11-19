@@ -26,7 +26,10 @@ function routes(patch: (body: unknown) => { status?: number; body: unknown }) {
 
 describe("editing a parcel in place", () => {
   it("renames with the pencil and Enter, and Escape leaves it as it was", async () => {
-    const calls = routes((body) => ({ body: { ...BASE, ...(body as object) } }));
+    const calls = routes((body) => {
+      const label = (body as { label?: string | null }).label ?? null;
+      return { body: { ...BASE, label, display_name: label ?? BASE.barcode } };
+    });
     const user = userEvent.setup();
     renderApp(`/parcels/${ID}`);
     await user.click(await screen.findByRole("button", { name: "Rename" }));

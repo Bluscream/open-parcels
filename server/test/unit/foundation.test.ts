@@ -160,6 +160,7 @@ describe("migrations", () => {
         "0005-archive-reason",
         "0006-auto-created-sources",
         "0007-event-coordinates",
+        "0008-order-items",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

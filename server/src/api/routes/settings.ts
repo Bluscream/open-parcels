@@ -1,34 +1,33 @@
 import { z } from "zod";
-import { isoNow } from "../../clock.js";
+import { PARCEL_LABEL_MODES } from "../../domain/parcel.js";
+import { appendEvent } from "../../events/bus.js";
 import { GeocodeError } from "../../geo/geocoder.js";
 import type { Services } from "../../services.js";
+import { homeSchema } from "../../settings/store.js";
 import type { TypedApp } from "../app.js";
 import { requireScope } from "../auth-plugin.js";
 import { ApiError, errorBodySchema } from "../errors.js";
 
-const HOME_SETTING = "home";
+const settingsSchema = z.object({
+  home: homeSchema.nullable(),
+  parcel_label: z
+    .enum(PARCEL_LABEL_MODES)
+    .describe(
+      "How a parcel without a label is named: its tracking code, or its item names (max 100 characters).",
+    ),
+});
 
-const homeSchema = z
-  .object({
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
-    label: z.string().trim().max(300).nullable().default(null),
-  })
-  .describe("Where parcels go: centres the maps and gives distances. Set by the user.");
-type Home = z.infer<typeof homeSchema>;
+/** Every parcel's display name may change: clients re-read (the HA integration resyncs). */
+async function announce(services: Services, what: string): Promise<void> {
+  await appendEvent(services.db, services.clock, {
+    type: "settings.updated",
+    parcelId: null,
+    payload: { changed: what },
+  });
+}
 
-const settingsSchema = z.object({ home: homeSchema.nullable() });
-
-/** The user's home location, or null when none is set (or the stored value is unreadable). */
-export async function readHome(services: Services): Promise<Home | null> {
-  const row = await services.db
-    .selectFrom("settings")
-    .select("value")
-    .where("key", "=", HOME_SETTING)
-    .executeTakeFirst();
-  if (row === undefined) return null;
-  const parsed = homeSchema.safeParse(JSON.parse(row.value));
-  return parsed.success ? parsed.data : null;
+function current(services: Services): z.infer<typeof settingsSchema> {
+  return { home: services.settings.home, parcel_label: services.settings.labelMode };
 }
 
 export function registerSettingsRoutes(app: TypedApp, services: Services): void {
@@ -42,7 +41,7 @@ export function registerSettingsRoutes(app: TypedApp, services: Services): void 
         response: { 200: settingsSchema },
       },
     },
-    async () => ({ home: await readHome(services) }),
+    () => current(services),
   );
 
   app.put(
@@ -57,16 +56,9 @@ export function registerSettingsRoutes(app: TypedApp, services: Services): void 
       },
     },
     async (request) => {
-      const home = request.body;
-      const now = isoNow(services.clock);
-      await services.db
-        .insertInto("settings")
-        .values({ key: HOME_SETTING, value: JSON.stringify(home), updated_at: now })
-        .onConflict((oc) =>
-          oc.column("key").doUpdateSet({ value: JSON.stringify(home), updated_at: now }),
-        )
-        .execute();
-      return home;
+      await services.settings.setHome(request.body);
+      await announce(services, "home");
+      return request.body;
     },
   );
 
@@ -77,8 +69,27 @@ export function registerSettingsRoutes(app: TypedApp, services: Services): void 
       schema: { tags: ["settings"], summary: "Forget the home location." },
     },
     async (_request, reply) => {
-      await services.db.deleteFrom("settings").where("key", "=", HOME_SETTING).execute();
+      await services.settings.setHome(null);
+      await announce(services, "home");
       return reply.code(204).send();
+    },
+  );
+
+  app.put(
+    "/api/v1/settings/parcel-label",
+    {
+      preHandler: requireScope("write"),
+      schema: {
+        tags: ["settings"],
+        summary: "Choose how parcels without a label are named.",
+        body: z.object({ parcel_label: z.enum(PARCEL_LABEL_MODES) }),
+        response: { 200: settingsSchema },
+      },
+    },
+    async (request) => {
+      await services.settings.setLabelMode(request.body.parcel_label);
+      await announce(services, "parcel_label");
+      return current(services);
     },
   );
 

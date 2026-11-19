@@ -8,6 +8,7 @@ import * as m0004 from "./migrations/0004-lookup-state.js";
 import * as m0005 from "./migrations/0005-archive-reason.js";
 import * as m0006 from "./migrations/0006-auto-created-sources.js";
 import * as m0007 from "./migrations/0007-event-coordinates.js";
+import * as m0008 from "./migrations/0008-order-items.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -22,6 +23,7 @@ const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0005-archive-reason": m0005,
   "0006-auto-created-sources": m0006,
   "0007-event-coordinates": m0007,
+  "0008-order-items": m0008,
 };
 
 const staticProvider: MigrationProvider = {

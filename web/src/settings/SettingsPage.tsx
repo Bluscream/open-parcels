@@ -6,7 +6,16 @@ import { ErrorNotice, Spinner, errorMessage } from "../components/ui";
 import { formatLatLng, parseLatLng, type LatLngTuple } from "../lib/geo";
 import { iconHome } from "../map/mapIcons";
 import { SharedMap } from "../map/SharedMap";
-import { searchPlaces, useClearHome, useHome, useSaveHome, type Home } from "./home";
+import {
+  searchPlaces,
+  useClearHome,
+  useHome,
+  useParcelLabel,
+  useSaveHome,
+  useSaveParcelLabel,
+  type Home,
+  type ParcelLabelMode,
+} from "./home";
 
 interface Place {
   readonly label: string;
@@ -183,6 +192,34 @@ function HomeSection(): ReactNode {
   );
 }
 
+function LabelSection(): ReactNode {
+  const mode = useParcelLabel();
+  const save = useSaveParcelLabel();
+  return (
+    <section className="card stack" aria-labelledby="label-title">
+      <h2 id="label-title">Default parcel label</h2>
+      <p className="muted">
+        How a parcel is named when you have not given it a label yourself, here and in Home
+        Assistant.
+      </p>
+      <label className="field">
+        <span>Name parcels by</span>
+        <select
+          value={save.isPending ? save.variables : mode}
+          disabled={save.isPending}
+          onChange={(e) => {
+            save.mutate(e.target.value as ParcelLabelMode);
+          }}
+        >
+          <option value="tracking_number">Tracking number (default)</option>
+          <option value="items">Item names (max 100 characters)</option>
+        </select>
+      </label>
+      <ErrorNotice error={save.error} />
+    </section>
+  );
+}
+
 export function SettingsPage(): ReactNode {
   return (
     <section aria-labelledby="settings-title" className="stack">
@@ -190,6 +227,7 @@ export function SettingsPage(): ReactNode {
         <h1 id="settings-title">Settings</h1>
       </div>
       <HomeSection />
+      <LabelSection />
     </section>
   );
 }

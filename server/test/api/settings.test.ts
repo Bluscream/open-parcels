@@ -22,7 +22,10 @@ async function setUp(
 describe("home location", () => {
   it("is unset, then set, read back and forgotten", async () => {
     const { app, headers } = await setUp();
-    expect((await app.inject({ url: "/api/v1/settings", headers })).json()).toEqual({ home: null });
+    expect((await app.inject({ url: "/api/v1/settings", headers })).json()).toEqual({
+      home: null,
+      parcel_label: "tracking_number",
+    });
 
     const home = { latitude: 52.123456, longitude: 13.654321, label: "Example Street 1" };
     const put = await app.inject({
@@ -32,7 +35,7 @@ describe("home location", () => {
       payload: home,
     });
     expect(put.json()).toEqual(home);
-    expect((await app.inject({ url: "/api/v1/settings", headers })).json()).toEqual({ home });
+    expect((await app.inject({ url: "/api/v1/settings", headers })).json()).toMatchObject({ home });
 
     const bad = await app.inject({
       method: "PUT",
@@ -44,7 +47,10 @@ describe("home location", () => {
 
     const removed = await app.inject({ method: "DELETE", url: "/api/v1/settings/home", headers });
     expect(removed.statusCode).toBe(204);
-    expect((await app.inject({ url: "/api/v1/settings", headers })).json()).toEqual({ home: null });
+    expect((await app.inject({ url: "/api/v1/settings", headers })).json()).toEqual({
+      home: null,
+      parcel_label: "tracking_number",
+    });
   });
 
   it("looks places up through the server and reports a failing search", async () => {

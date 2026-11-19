@@ -675,10 +675,19 @@
                       ],
                       "additionalProperties": false,
                       "description": "Where parcels go: centres the maps and gives distances. Set by the user."
+                    },
+                    "parcel_label": {
+                      "type": "string",
+                      "enum": [
+                        "tracking_number",
+                        "items"
+                      ],
+                      "description": "How a parcel without a label is named: its tracking code, or its item names (max 100 characters)."
                     }
                   },
                   "required": [
-                    "home"
+                    "home",
+                    "parcel_label"
                   ],
                   "additionalProperties": false
                 }
@@ -774,6 +783,92 @@
         "responses": {
           "200": {
             "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/settings/parcel-label": {
+      "put": {
+        "summary": "Choose how parcels without a label are named.",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parcel_label": {
+                    "type": "string",
+                    "enum": [
+                      "tracking_number",
+                      "items"
+                    ]
+                  }
+                },
+                "required": [
+                  "parcel_label"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "home": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "latitude": {
+                          "type": "number",
+                          "minimum": -90,
+                          "maximum": 90
+                        },
+                        "longitude": {
+                          "type": "number",
+                          "minimum": -180,
+                          "maximum": 180
+                        },
+                        "label": {
+                          "default": null,
+                          "nullable": true,
+                          "type": "string",
+                          "maxLength": 300
+                        }
+                      },
+                      "required": [
+                        "latitude",
+                        "longitude",
+                        "label"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Where parcels go: centres the maps and gives distances. Set by the user."
+                    },
+                    "parcel_label": {
+                      "type": "string",
+                      "enum": [
+                        "tracking_number",
+                        "items"
+                      ],
+                      "description": "How a parcel without a label is named: its tracking code, or its item names (max 100 characters)."
+                    }
+                  },
+                  "required": [
+                    "home",
+                    "parcel_label"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         }
       }
@@ -1116,6 +1211,9 @@
                         "nullable": true,
                         "type": "string"
                       },
+                      "display_name": {
+                        "type": "string"
+                      },
                       "manual_status": {
                         "nullable": true,
                         "type": "string",
@@ -1174,13 +1272,23 @@
                               "minimum": 0,
                               "exclusiveMinimum": true,
                               "maximum": 9007199254740991
+                            },
+                            "price": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "currency": {
+                              "nullable": true,
+                              "type": "string"
                             }
                           },
                           "required": [
                             "title",
                             "image_url",
                             "url",
-                            "quantity"
+                            "quantity",
+                            "price",
+                            "currency"
                           ],
                           "additionalProperties": false
                         }
@@ -1313,11 +1421,62 @@
                           },
                           "order_number": {
                             "type": "string"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "title": {
+                                  "type": "string"
+                                },
+                                "image_url": {
+                                  "nullable": true,
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "nullable": true,
+                                  "type": "string"
+                                },
+                                "quantity": {
+                                  "nullable": true,
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true,
+                                  "maximum": 9007199254740991
+                                },
+                                "price": {
+                                  "nullable": true,
+                                  "type": "number"
+                                },
+                                "currency": {
+                                  "nullable": true,
+                                  "type": "string"
+                                },
+                                "parcel_id": {
+                                  "nullable": true,
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "image_url",
+                                "url",
+                                "quantity",
+                                "price",
+                                "currency",
+                                "parcel_id"
+                              ],
+                              "additionalProperties": false
+                            }
                           }
                         },
                         "required": [
                           "shop",
-                          "order_number"
+                          "order_number",
+                          "items"
                         ],
                         "additionalProperties": false
                       },
@@ -1429,6 +1588,7 @@
                       "id",
                       "direction",
                       "label",
+                      "display_name",
                       "manual_status",
                       "carrier_status",
                       "carrier_delivered",
@@ -1636,6 +1796,9 @@
                       "nullable": true,
                       "type": "string"
                     },
+                    "display_name": {
+                      "type": "string"
+                    },
                     "manual_status": {
                       "nullable": true,
                       "type": "string",
@@ -1694,13 +1857,23 @@
                             "minimum": 0,
                             "exclusiveMinimum": true,
                             "maximum": 9007199254740991
+                          },
+                          "price": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "currency": {
+                            "nullable": true,
+                            "type": "string"
                           }
                         },
                         "required": [
                           "title",
                           "image_url",
                           "url",
-                          "quantity"
+                          "quantity",
+                          "price",
+                          "currency"
                         ],
                         "additionalProperties": false
                       }
@@ -1833,11 +2006,62 @@
                         },
                         "order_number": {
                           "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "title": {
+                                "type": "string"
+                              },
+                              "image_url": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "url": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "quantity": {
+                                "nullable": true,
+                                "type": "integer",
+                                "minimum": 0,
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991
+                              },
+                              "price": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "currency": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "parcel_id": {
+                                "nullable": true,
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "image_url",
+                              "url",
+                              "quantity",
+                              "price",
+                              "currency",
+                              "parcel_id"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
                         "shop",
-                        "order_number"
+                        "order_number",
+                        "items"
                       ],
                       "additionalProperties": false
                     },
@@ -1949,6 +2173,7 @@
                     "id",
                     "direction",
                     "label",
+                    "display_name",
                     "manual_status",
                     "carrier_status",
                     "carrier_delivered",
@@ -2180,6 +2405,9 @@
                       "nullable": true,
                       "type": "string"
                     },
+                    "display_name": {
+                      "type": "string"
+                    },
                     "manual_status": {
                       "nullable": true,
                       "type": "string",
@@ -2238,13 +2466,23 @@
                             "minimum": 0,
                             "exclusiveMinimum": true,
                             "maximum": 9007199254740991
+                          },
+                          "price": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "currency": {
+                            "nullable": true,
+                            "type": "string"
                           }
                         },
                         "required": [
                           "title",
                           "image_url",
                           "url",
-                          "quantity"
+                          "quantity",
+                          "price",
+                          "currency"
                         ],
                         "additionalProperties": false
                       }
@@ -2377,11 +2615,62 @@
                         },
                         "order_number": {
                           "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "title": {
+                                "type": "string"
+                              },
+                              "image_url": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "url": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "quantity": {
+                                "nullable": true,
+                                "type": "integer",
+                                "minimum": 0,
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991
+                              },
+                              "price": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "currency": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "parcel_id": {
+                                "nullable": true,
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "image_url",
+                              "url",
+                              "quantity",
+                              "price",
+                              "currency",
+                              "parcel_id"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
                         "shop",
-                        "order_number"
+                        "order_number",
+                        "items"
                       ],
                       "additionalProperties": false
                     },
@@ -2493,6 +2782,7 @@
                     "id",
                     "direction",
                     "label",
+                    "display_name",
                     "manual_status",
                     "carrier_status",
                     "carrier_delivered",
@@ -2731,6 +3021,9 @@
                       "nullable": true,
                       "type": "string"
                     },
+                    "display_name": {
+                      "type": "string"
+                    },
                     "manual_status": {
                       "nullable": true,
                       "type": "string",
@@ -2789,13 +3082,23 @@
                             "minimum": 0,
                             "exclusiveMinimum": true,
                             "maximum": 9007199254740991
+                          },
+                          "price": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "currency": {
+                            "nullable": true,
+                            "type": "string"
                           }
                         },
                         "required": [
                           "title",
                           "image_url",
                           "url",
-                          "quantity"
+                          "quantity",
+                          "price",
+                          "currency"
                         ],
                         "additionalProperties": false
                       }
@@ -2928,11 +3231,62 @@
                         },
                         "order_number": {
                           "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "title": {
+                                "type": "string"
+                              },
+                              "image_url": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "url": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "quantity": {
+                                "nullable": true,
+                                "type": "integer",
+                                "minimum": 0,
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991
+                              },
+                              "price": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "currency": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "parcel_id": {
+                                "nullable": true,
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "image_url",
+                              "url",
+                              "quantity",
+                              "price",
+                              "currency",
+                              "parcel_id"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
                         "shop",
-                        "order_number"
+                        "order_number",
+                        "items"
                       ],
                       "additionalProperties": false
                     },
@@ -3044,6 +3398,7 @@
                     "id",
                     "direction",
                     "label",
+                    "display_name",
                     "manual_status",
                     "carrier_status",
                     "carrier_delivered",
@@ -5843,6 +6198,32 @@
           }
         ],
         "security": [],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/parcels/{id}/picture": {
+      "get": {
+        "summary": "The parcel's item pictures as one square PNG (1, 2×2 or 3×3 tiles).",
+        "tags": [
+          "images"
+        ],
+        "description": "404 when none of its items has a picture. Used as the entity picture in Home Assistant.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "Default Response"

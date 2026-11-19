@@ -1,11 +1,13 @@
-import type { Kysely } from "kysely";
-import type { Database, ParcelRow } from "../db/schema.js";
+import type { Kysely, Selectable } from "kysely";
+import type { Database, OrderItemTable, ParcelRow } from "../db/schema.js";
 import {
   effectiveDelivered,
   effectiveStatus,
   PARCEL_STATUSES,
   type HistoryEntry,
   type Item,
+  type OrderItem,
+  type ParcelLabelMode,
   type Live,
   type Parcel,
   type ParcelStatus,
@@ -49,7 +51,7 @@ interface Related {
   items: Map<string, Item[]>;
   live: Map<string, Live>;
   sources: Map<string, Parcel["sources"]>;
-  orders: Map<string, Parcel["order"]>;
+  orders: Map<string, OrderInfo>;
   listedBy: Map<string, Set<string>>;
   places: Map<string, Parcel["location"]>;
 }
@@ -69,12 +71,96 @@ export interface LivePosition {
 export interface Presentation {
   position(parcelId: string): LivePosition | undefined;
   imagePath(remote: string | null): string | null;
+  /** The "Default parcel label" setting: how a parcel without a label is named. */
+  labelMode(): ParcelLabelMode;
 }
 
 export const RAW_PRESENTATION: Presentation = {
   position: () => undefined,
   imagePath: (remote) => remote,
+  labelMode: () => "tracking_number",
 };
+
+/** Item names joined, for the "Item names" label mode: at most this many characters. */
+export const ITEM_LABEL_MAX = 100;
+
+/** A parcel's name: its label, else its item names (in that mode), else the tracking code. */
+export function displayName(
+  label: string | null,
+  barcode: string,
+  items: readonly { readonly title: string }[],
+  mode: ParcelLabelMode,
+): string {
+  if (label !== null) return label;
+  if (mode === "items" && items.length > 0) {
+    const names = items.map((item) => item.title.trim()).filter((title) => title !== "");
+    const joined = names.join(", ");
+    if (joined !== "") {
+      return joined.length <= ITEM_LABEL_MAX
+        ? joined
+        : `${joined.slice(0, ITEM_LABEL_MAX - 1).trimEnd()}…`;
+    }
+  }
+  return barcode;
+}
+
+type OrderItemRow = Selectable<OrderItemTable>;
+
+interface OrderInfo {
+  readonly shop: string;
+  readonly order_number: string;
+  readonly items: OrderItem[];
+  readonly parcels: number;
+}
+
+/** Orders with their lines and how many parcels they have. */
+function buildOrders(
+  orders: readonly { id: string; shop: string; order_number: string }[],
+  lines: readonly OrderItemRow[],
+  sizes: readonly { order_id: string | null; count: number }[],
+  imagePath: (ref: string | null) => string | null,
+): Map<string, OrderInfo> {
+  const linesByOrder = groupBy(lines, (line) => line.order_id);
+  const counts = new Map(sizes.map((size) => [size.order_id, size.count]));
+  return new Map(
+    orders.map((order) => [
+      order.id,
+      {
+        shop: order.shop,
+        order_number: order.order_number,
+        parcels: counts.get(order.id) ?? 0,
+        items: (linesByOrder.get(order.id) ?? []).map((line) => ({
+          title: line.title,
+          image_url: imagePath(line.image_ref),
+          url: line.url,
+          quantity: line.quantity,
+          price: line.price,
+          currency: line.currency,
+          parcel_id: line.parcel_id,
+        })),
+      },
+    ]),
+  );
+}
+
+/**
+ * What is in a parcel: its own item list; else the order lines linked to it; else, for an order
+ * with only this parcel, every order line.
+ */
+function itemsOf(parcelId: string, own: Item[], order: OrderInfo | undefined): Item[] {
+  if (own.length > 0 || order === undefined) return own;
+  const strip = (line: OrderItem): Item => ({
+    title: line.title,
+    image_url: line.image_url,
+    url: line.url,
+    quantity: line.quantity,
+    price: line.price,
+    currency: line.currency,
+  });
+  const linked = order.items.filter((line) => line.parcel_id === parcelId);
+  if (linked.length > 0) return linked.map(strip);
+  return order.parcels === 1 ? order.items.map(strip) : [];
+}
 
 /** Reads parcels in the normalised shape, loading related rows in one query per table. */
 export class ParcelRepository {
@@ -163,55 +249,73 @@ export class ParcelRepository {
         places: new Map(),
       };
     }
-    const [events, placed, items, live, sources, orders] = await Promise.all([
-      withHistory
-        ? this.db
-            .selectFrom("parcel_events")
-            .selectAll()
-            .where("parcel_id", "in", ids)
-            .orderBy("at")
-            .execute()
-        : Promise.resolve([]),
-      // Only the scans with a position: the parcel's place, also when the history is not loaded.
-      this.db
-        .selectFrom("parcel_events")
-        .select(["parcel_id", "at", "location_text", "latitude", "longitude"])
-        .where("parcel_id", "in", ids)
-        .where("latitude", "is not", null)
-        .where("longitude", "is not", null)
-        .orderBy("at")
-        .execute(),
-      this.db
-        .selectFrom("items")
-        .selectAll()
-        .where("parcel_id", "in", ids)
-        .orderBy("position")
-        .execute(),
-      this.db.selectFrom("live_state").selectAll().where("parcel_id", "in", ids).execute(),
-      this.db
-        .selectFrom("parcel_sources")
-        .innerJoin("sources", "sources.id", "parcel_sources.source_id")
-        .select([
-          "parcel_sources.parcel_id",
-          "parcel_sources.source_id",
-          "parcel_sources.role",
-          "parcel_sources.last_seen_at",
-          "parcel_sources.missing_since",
-          "sources.plugin",
-          "sources.label",
-          "sources.kind",
-        ])
-        .orderBy("sources.created_at")
-        .where("parcel_sources.parcel_id", "in", ids)
-        .execute(),
-      orderIds.length === 0
-        ? Promise.resolve([])
-        : this.db
-            .selectFrom("orders")
-            .select(["id", "shop", "order_number"])
-            .where("id", "in", orderIds)
-            .execute(),
-    ]);
+    const [events, placed, items, live, sources, orders, orderItems, orderSizes] =
+      await Promise.all([
+        withHistory
+          ? this.db
+              .selectFrom("parcel_events")
+              .selectAll()
+              .where("parcel_id", "in", ids)
+              .orderBy("at")
+              .execute()
+          : Promise.resolve([]),
+        // Only the scans with a position: the parcel's place, also when the history is not loaded.
+        this.db
+          .selectFrom("parcel_events")
+          .select(["parcel_id", "at", "location_text", "latitude", "longitude"])
+          .where("parcel_id", "in", ids)
+          .where("latitude", "is not", null)
+          .where("longitude", "is not", null)
+          .orderBy("at")
+          .execute(),
+        this.db
+          .selectFrom("items")
+          .selectAll()
+          .where("parcel_id", "in", ids)
+          .orderBy("position")
+          .execute(),
+        this.db.selectFrom("live_state").selectAll().where("parcel_id", "in", ids).execute(),
+        this.db
+          .selectFrom("parcel_sources")
+          .innerJoin("sources", "sources.id", "parcel_sources.source_id")
+          .select([
+            "parcel_sources.parcel_id",
+            "parcel_sources.source_id",
+            "parcel_sources.role",
+            "parcel_sources.last_seen_at",
+            "parcel_sources.missing_since",
+            "sources.plugin",
+            "sources.label",
+            "sources.kind",
+          ])
+          .orderBy("sources.created_at")
+          .where("parcel_sources.parcel_id", "in", ids)
+          .execute(),
+        orderIds.length === 0
+          ? Promise.resolve([])
+          : this.db
+              .selectFrom("orders")
+              .select(["id", "shop", "order_number"])
+              .where("id", "in", orderIds)
+              .execute(),
+        orderIds.length === 0
+          ? Promise.resolve([])
+          : this.db
+              .selectFrom("order_items")
+              .selectAll()
+              .where("order_id", "in", orderIds)
+              .orderBy("order_id")
+              .orderBy("position")
+              .execute(),
+        orderIds.length === 0
+          ? Promise.resolve([])
+          : this.db
+              .selectFrom("parcels")
+              .select((eb) => ["order_id", eb.fn.countAll<number>().as("count")])
+              .where("order_id", "in", orderIds)
+              .groupBy("order_id")
+              .execute(),
+      ]);
     const history = new Map<string, HistoryEntry[]>();
     for (const [parcelId, list] of groupBy(events, (event) => event.parcel_id)) {
       history.set(
@@ -250,6 +354,8 @@ export class ParcelRepository {
           image_url: this.presentation.imagePath(item.image_ref),
           url: item.url,
           quantity: item.quantity,
+          price: item.price,
+          currency: item.currency,
         })),
       );
     }
@@ -301,9 +407,10 @@ export class ParcelRepository {
         ),
       );
     }
-    const orderMap = new Map<string, Parcel["order"]>(
-      orders.map((order) => [order.id, { shop: order.shop, order_number: order.order_number }]),
+    const orderMap = buildOrders(orders, orderItems, orderSizes, (ref) =>
+      this.presentation.imagePath(ref),
     );
+
     return {
       history,
       items: itemMap,
@@ -316,6 +423,8 @@ export class ParcelRepository {
   }
 
   #toParcel(row: ParcelRow, related: Related): Parcel {
+    const order = row.order_id === null ? undefined : related.orders.get(row.order_id);
+    const items = itemsOf(row.id, related.items.get(row.id) ?? [], order);
     const carrierStatus = asStatus(row.status) ?? "unknown";
     const manual = asStatus(row.manual_status);
     const carrierDelivered = row.delivered === 1;
@@ -338,14 +447,18 @@ export class ParcelRepository {
       id: row.id,
       direction: row.direction,
       label: row.label,
+      display_name: displayName(row.label, row.barcode, items, this.presentation.labelMode()),
       manual_status: manual,
       carrier_status: carrierStatus,
       carrier_delivered: carrierDelivered,
       archived_at: row.archived_at,
-      items: related.items.get(row.id) ?? [],
+      items,
       live: related.live.get(row.id) ?? null,
       location: related.places.get(row.id) ?? null,
-      order: row.order_id === null ? null : (related.orders.get(row.order_id) ?? null),
+      order:
+        order === undefined
+          ? null
+          : { shop: order.shop, order_number: order.order_number, items: order.items },
       sources: related.sources.get(row.id) ?? [],
       // Another source of the same carrier (an account) listing the parcel means the carrier
       // found it, whatever its public tracking answered. It has been found since the app first

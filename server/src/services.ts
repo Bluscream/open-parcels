@@ -35,6 +35,8 @@ import { ParcelService } from "./parcels/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
 import { TileProxy } from "./tiles/proxy.js";
 import { Geocoder } from "./geo/geocoder.js";
+import { SettingsStore } from "./settings/store.js";
+import { CollageMaker } from "./images/collage.js";
 
 /** How this server identifies itself to OpenStreetMap's services. */
 const USER_AGENT =
@@ -83,6 +85,8 @@ export interface Services {
   readonly images: ImageProxy;
   readonly tiles: TileProxy;
   readonly geocoder: Geocoder;
+  readonly settings: SettingsStore;
+  readonly collages: CollageMaker;
   readonly mail: MailWatcher;
   readonly reconciler: Reconciler;
   readonly runner: SourceRunner;
@@ -209,10 +213,13 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     userAgent: USER_AGENT,
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
   });
+  const settings = new SettingsStore(db, clock);
+  await settings.load();
   // Filled in once the live tracker exists; reads before that see no positions.
   const presentation: Presentation = {
     position: (parcelId) => live.position(parcelId),
     imagePath: (remote) => images.pathFor(remote),
+    labelMode: () => settings.labelMode,
   };
   const reconciler = new Reconciler(db, bus, clock, logger, presentation);
   const runner = new SourceRunner({
@@ -297,6 +304,8 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     images,
     tiles,
     geocoder,
+    settings,
+    collages: new CollageMaker(path.join(deps.config.dataDir, "collages")),
     mail,
     reconciler,
     runner,

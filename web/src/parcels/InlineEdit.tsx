@@ -91,7 +91,7 @@ export function EditableTitle({ parcel }: { readonly parcel: ParcelDetail }): Re
   }
   return (
     <div className="inline-edit">
-      <h1 id="parcel-title">{parcel.label ?? parcel.barcode}</h1>
+      <h1 id="parcel-title">{parcel.display_name}</h1>
       {canEdit ? (
         <PencilButton
           label="Rename"

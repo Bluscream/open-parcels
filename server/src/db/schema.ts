@@ -166,6 +166,21 @@ export interface ItemTable {
   currency: string | null;
 }
 
+/** What was ordered; `parcel_id` once it is known which parcel carries it. */
+export interface OrderItemTable {
+  id: Generated<number>;
+  order_id: string;
+  position: number;
+  title: string;
+  image_ref: string | null;
+  url: string | null;
+  external_id: string | null;
+  quantity: number | null;
+  price: number | null;
+  currency: string | null;
+  parcel_id: string | null;
+}
+
 export interface LiveStateTable {
   parcel_id: string;
   state: "en_route" | "next_stop" | "delivered" | "ended";
@@ -233,6 +248,7 @@ export interface Database {
   parcels: ParcelTable;
   parcel_sources: ParcelSourceTable;
   parcel_events: ParcelEventTable;
+  order_items: OrderItemTable;
   parcel_raw: ParcelRawTable;
   items: ItemTable;
   live_state: LiveStateTable;

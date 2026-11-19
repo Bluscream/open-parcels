@@ -8,7 +8,12 @@ import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
 import { ParcelRepository, RAW_PRESENTATION, type Presentation } from "../parcels/repository.js";
 import type { FetchResult, LiveTarget } from "../plugin/api.js";
-import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../plugin/snapshot.js";
+import {
+  snapshot,
+  type ParcelSnapshot,
+  type SnapshotEvent,
+  type SnapshotItem,
+} from "../plugin/snapshot.js";
 import { healState, mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
 import { utcSnapshot } from "./utc.js";
@@ -101,6 +106,73 @@ export function fingerprint(
       ? `${event.at}\u0000${event.rawStatus}\u0000${event.location ?? ""}`
       : `id\u0000${event.id}`;
   return createHash("sha256").update(basis).digest("hex").slice(0, 32);
+}
+
+/** Matches an order line across polls: the shop's own id, else its title. */
+function itemKey(item: { readonly externalId: string | null; readonly title: string }): string {
+  return item.externalId ?? `title:${item.title}`;
+}
+
+/**
+ * Keeps the order's item list. With `orderItems` the list is replaced by the source's, keeping
+ * links to parcels that other snapshots made; items this snapshot lists for its parcel are linked
+ * to it. Without, the parcel's items are added to (or linked in) the order's list.
+ */
+async function writeOrderItems(
+  trx: Trx,
+  orderId: string,
+  parcelId: string,
+  snapshot: ParcelSnapshot,
+): Promise<void> {
+  const inParcel = new Set(snapshot.items.map(itemKey));
+  const stored = await trx
+    .selectFrom("order_items")
+    .selectAll()
+    .where("order_id", "=", orderId)
+    .orderBy("position")
+    .execute();
+  const linked = new Map(
+    stored.map((row) => [
+      itemKey({ externalId: row.external_id, title: row.title }),
+      row.parcel_id,
+    ]),
+  );
+  const row = (item: SnapshotItem, position: number) => ({
+    order_id: orderId,
+    position,
+    title: item.title,
+    image_ref: item.imageUrl,
+    url: item.url,
+    external_id: item.externalId,
+    quantity: item.quantity,
+    price: item.price,
+    currency: item.currency,
+    parcel_id: inParcel.has(itemKey(item)) ? parcelId : (linked.get(itemKey(item)) ?? null),
+  });
+  if (snapshot.orderItems !== undefined) {
+    await trx.deleteFrom("order_items").where("order_id", "=", orderId).execute();
+    if (snapshot.orderItems.length > 0) {
+      await trx.insertInto("order_items").values(snapshot.orderItems.map(row)).execute();
+    }
+    return;
+  }
+  let position = stored.length;
+  for (const item of snapshot.items) {
+    const key = itemKey(item);
+    const existing = stored.find(
+      (candidate) => itemKey({ externalId: candidate.external_id, title: candidate.title }) === key,
+    );
+    if (existing === undefined) {
+      await trx.insertInto("order_items").values(row(item, position)).execute();
+      position += 1;
+    } else if (existing.parcel_id === null) {
+      await trx
+        .updateTable("order_items")
+        .set({ parcel_id: parcelId })
+        .where("id", "=", existing.id)
+        .execute();
+    }
+  }
 }
 
 /** An event's position, only when both halves are real coordinates. */
@@ -439,6 +511,9 @@ export class Reconciler {
       snapshot,
       now,
     });
+    if (orderId !== null) {
+      await writeOrderItems(trx, orderId, parcelId, snapshot);
+    }
 
     const derived = deriveEvents(
       before === null ? null : eventView(before, manual),

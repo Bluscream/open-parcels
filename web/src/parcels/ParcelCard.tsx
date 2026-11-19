@@ -6,8 +6,9 @@ import { CarrierLogo } from "../components/CarrierLogo";
 import { formatRelative, formatWindow } from "../lib/format";
 import { LookupBadge, StatusBadge } from "./badges";
 
-export function parcelName(parcel: Pick<Parcel, "label" | "barcode">): string {
-  return parcel.label ?? parcel.barcode;
+/** The parcel's name as the server gives it (label, item names or tracking code per Settings). */
+export function parcelName(parcel: Pick<Parcel, "display_name">): string {
+  return parcel.display_name;
 }
 
 /** "Expected Thu 20 Nov", "4 stops away", "Delivered 2 hours ago", or nothing. */

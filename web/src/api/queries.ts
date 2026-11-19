@@ -170,7 +170,10 @@ export function useUpdateParcel(id: string) {
       if (previous !== undefined) {
         client.setQueryData<ParcelDetail>(keys.parcel(id), {
           ...previous,
-          ...(body.label === undefined ? {} : { label: body.label }),
+          ...(body.label === undefined
+            ? {}
+            : // Without a label the server names it (code or item names); the code until it answers.
+              { label: body.label, display_name: body.label ?? previous.barcode }),
           ...(body.manual_status === undefined
             ? {}
             : {

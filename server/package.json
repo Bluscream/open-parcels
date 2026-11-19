@@ -28,6 +28,7 @@
     "mailparser": "3.14.5",
     "open-parcels-rules": "file:vendor/open-parcels-rules-2.0.0-dev.7.tgz",
     "pino": "10.4.0",
+    "sharp": "^0.35.5",
     "tough-cookie": "6.1.0",
     "undici": "8.12.4",
     "zod": "4.6.7"

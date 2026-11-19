@@ -74,7 +74,7 @@ export const SIGNED_IN = {
 
 /** A made-up parcel; every value is invented. */
 export function parcel(overrides: Partial<Parcel> = {}): Parcel {
-  return {
+  const base: Omit<Parcel, "display_name"> = {
     id: "00000000-0000-4000-8000-000000000001",
     carrier: "dhl",
     barcode: "TEST0000000001",
@@ -106,4 +106,5 @@ export function parcel(overrides: Partial<Parcel> = {}): Parcel {
     updated_at: "2026-11-18T10:00:00.000Z",
     ...overrides,
   };
+  return { ...base, display_name: overrides.display_name ?? base.label ?? base.barcode };
 }

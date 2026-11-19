@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineCarrier, type ParcelSnapshot } from "../../plugin/api.js";
+import { defineCarrier, type ParcelSnapshot, type SnapshotItem } from "../../plugin/api.js";
 import {
   courierView,
   DEMO_CARRIER,
@@ -7,6 +7,7 @@ import {
   DEMO_POLL_MS,
   DEMO_SHOP,
   DEMO_SHOP_NAME,
+  GIFT_VOUCHER,
   IMAGE_HOST,
   demoLiveReading,
   runOf,
@@ -32,8 +33,9 @@ function fromCourier(parcel: DemoParcel, now: number): ParcelSnapshot {
   return {
     ...courierView(parcel, now),
     carrier: DEMO_CARRIER,
-    items: parcel.items,
-    order: order(parcel, now),
+    // A courier knows neither the order nor what is inside; the shop does.
+    items: [],
+    order: null,
     handoff: null,
     raw: { demo: true, barcode: parcel.barcode },
   };
@@ -61,12 +63,24 @@ function fromShop(parcel: DemoParcel, now: number): ParcelSnapshot {
     // Drops what an earlier version of the demo shop stored as its own history.
     historyComplete: true,
     items: parcel.items,
+    orderItems: orderLines(parcel.order.number),
     order: order(parcel, now),
     externalRef: null,
     handoff: { carrier: DEMO_CARRIER, barcode: parcel.barcode },
     raw: { demo: true, barcode: parcel.barcode },
     live: null,
   };
+}
+
+/**
+ * Everything in an order: the items of its parcels, plus for DEMO-1001 a gift voucher that the
+ * shop lists in no parcel, so it belongs to the order only.
+ */
+function orderLines(orderNumber: string): SnapshotItem[] {
+  const lines = DEMO_PARCELS.filter((parcel) => parcel.order.number === orderNumber).flatMap(
+    (parcel) => parcel.items,
+  );
+  return orderNumber === "DEMO-1001" ? [...lines, GIFT_VOUCHER] : lines;
 }
 
 const LIMITS = { "*": { intervalMs: 1_000, burst: 1 } } as const;

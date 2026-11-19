@@ -17,6 +17,7 @@ export const EVENT_TYPES = [
   "source.state_changed",
   "source.run_finished",
   "source.removed",
+  "settings.updated",
   "vocab.unknown",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];

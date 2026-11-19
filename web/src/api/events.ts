@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiUrl } from "./fetcher";
+import { settingsKey } from "../settings/home";
 import { keys } from "./queries";
 
 const PARCEL_EVENTS = [
@@ -128,6 +129,11 @@ export function useLiveUpdates(enabled: boolean): LiveState {
     for (const type of SOURCE_EVENTS) {
       source.addEventListener(type, onSource);
     }
+    // A changed setting (home, how parcels are named) changes every parcel's view.
+    source.addEventListener("settings.updated", () => {
+      void client.invalidateQueries({ queryKey: settingsKey });
+      void client.invalidateQueries({ queryKey: keys.parcels });
+    });
     // The server could not replay what was missed (too old, or a reset database): reload all.
     const onResync = (): void => {
       void client.invalidateQueries();

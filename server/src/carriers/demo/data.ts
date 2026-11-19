@@ -72,6 +72,9 @@ function item(title: string, quantity: number, price: number, text: string): Sna
   };
 }
 
+/** In the order, but in none of its parcels. */
+export const GIFT_VOUCHER: SnapshotItem = item("Gift voucher, 20 EUR", 1, 20, "Gift");
+
 /** Ten stops from `from` to `to`, wobbling a little so the line is not straight. */
 function stopsBetween(from: Point, to: Point): Point[] {
   const route: Point[] = [];

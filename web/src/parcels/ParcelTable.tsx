@@ -27,7 +27,7 @@ export function ItemThumbs({ items }: { readonly items: Parcel["items"] }): Reac
 }
 
 const COLUMNS = [
-  column.accessor((parcel) => parcel.label ?? parcel.barcode, {
+  column.accessor((parcel) => parcel.display_name, {
     id: "label",
     header: "Parcel",
     cell: (info) => (
