@@ -15,8 +15,14 @@ const PARCEL_EVENTS = [
   "parcel.deleted",
 ] as const;
 
-/** Source events: a state change, a finished run (new run times and counts), a removal. */
-const SOURCE_EVENTS = ["source.state_changed", "source.run_finished", "source.removed"] as const;
+/** Source events: added, renamed, a state change, a finished run (run times, counts), a removal. */
+const SOURCE_EVENTS = [
+  "source.added",
+  "source.updated",
+  "source.state_changed",
+  "source.run_finished",
+  "source.removed",
+] as const;
 
 export type LiveState = "connecting" | "live" | "offline";
 

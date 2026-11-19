@@ -135,6 +135,9 @@ function topKeys(body: unknown): string {
   return keys.length === 0 ? "(none)" : keys.join(", ");
 }
 
+/** The source's detail while public tracking is off: the run looks nothing up. */
+export const PUBLIC_TRACKING_OFF = "Public tracking off: nothing to look up.";
+
 type TrackingContext = PluginContext<{ publicTracking: boolean }, unknown>;
 
 /** Looks codes up on DPD Germany's public tracking page, one request per code. */
@@ -143,7 +146,7 @@ export async function trackDe(
   barcodes: readonly string[],
 ): Promise<FetchResult> {
   if (!context.config.publicTracking) {
-    return { snapshots: [], complete: false };
+    return { snapshots: [], complete: false, idle: PUBLIC_TRACKING_OFF };
   }
   const report: Report = (kind, key) => {
     context.reportUnknown(kind, key);

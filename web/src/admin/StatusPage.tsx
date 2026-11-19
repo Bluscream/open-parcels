@@ -44,7 +44,11 @@ export function StatusPage(): ReactNode {
         <ul className="plain-list">
           {(sources.data ?? []).map((source) => (
             <li key={source.id}>
-              <SourceStateBadge state={source.state} lastOkAt={source.last_ok_at} />{" "}
+              <SourceStateBadge
+                state={source.state}
+                lastOkAt={source.last_ok_at}
+                detail={source.state_detail}
+              />{" "}
               <strong>{source.label}</strong>{" "}
               <span className="muted">
                 last run {formatRelative(source.last_run_at)}, last success{" "}

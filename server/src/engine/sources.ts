@@ -80,6 +80,17 @@ export async function removeOrphanedAutoSources(
   return orphans.length;
 }
 
+type EventRow = Pick<SourceRow, "id" | "plugin" | "label" | "kind" | "state" | "state_detail">;
+
+/** The payload of `source.added`, `source.updated` and `source.run_finished`. */
+function sourcePayload(row: EventRow): Record<string, unknown> {
+  return {
+    source: { id: row.id, plugin: row.plugin, label: row.label, kind: row.kind },
+    state: row.state,
+    detail: row.state_detail,
+  };
+}
+
 /** Associated data for a source's encrypted blobs: a blob copied to another row fails to decrypt. */
 export const secretAad = (sourceId: string): string => `source:${sourceId}:secret`;
 export const sessionAad = (sourceId: string): string => `source:${sourceId}:session`;
@@ -175,6 +186,7 @@ export class SourceService {
     if (created === undefined) {
       throw new Error("Created source could not be read back.");
     }
+    await this.#announceSource(id, "source.added");
     return created;
   }
 
@@ -289,6 +301,13 @@ export class SourceService {
       })
       .where("id", "=", id)
       .execute();
+    const labelChanged = changes.label !== undefined && changes.label !== row.label;
+    if (
+      labelChanged ||
+      (changes.config !== undefined && JSON.stringify(changes.config) !== row.config)
+    ) {
+      await this.#announceSource(id, "source.updated");
+    }
     if (changes.enabled === false) {
       await this.setState(id, "disabled", null);
     } else if (changes.enabled === true && row.state === "disabled") {
@@ -331,20 +350,39 @@ export class SourceService {
     return deleted;
   }
 
-  /** Fires `source.run_finished`: a run ended, whatever its outcome. */
-  async announceRun(
-    source: { id: string; plugin: string; label: string; kind: SourceKind },
-    ok: boolean,
-  ): Promise<void> {
+  /**
+   * Fires `source.run_finished`: a run ended, whatever its outcome. It carries the source's
+   * current label, state and detail, so a client that missed a change catches up here.
+   */
+  async announceRun(id: string, ok: boolean): Promise<void> {
+    const row = await this.#eventRow(id);
+    if (row === undefined) {
+      return;
+    }
     await appendEvent(this.db, this.clock, {
       type: "source.run_finished",
       parcelId: null,
-      payload: {
-        source: { id: source.id, plugin: source.plugin, label: source.label, kind: source.kind },
-        ok,
-      },
+      payload: { ...sourcePayload(row), ok },
     });
     await this.bus.notify();
+  }
+
+  /** Fires `source.added` or `source.updated` with the source as it now is. */
+  async #announceSource(id: string, type: "source.added" | "source.updated"): Promise<void> {
+    const row = await this.#eventRow(id);
+    if (row === undefined) {
+      return;
+    }
+    await appendEvent(this.db, this.clock, { type, parcelId: null, payload: sourcePayload(row) });
+    await this.bus.notify();
+  }
+
+  async #eventRow(id: string): Promise<EventRow | undefined> {
+    return this.db
+      .selectFrom("sources")
+      .select(["id", "plugin", "label", "kind", "state", "state_detail"])
+      .where("id", "=", id)
+      .executeTakeFirst();
   }
 
   /**

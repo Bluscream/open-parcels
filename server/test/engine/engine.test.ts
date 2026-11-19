@@ -41,12 +41,15 @@ async function addShop(): Promise<string> {
   return source.id;
 }
 
-/** Events in order, without the `source.run_finished` every run ends with. */
+/**
+ * Events in order, without the `source.run_finished` every run ends with and the `source.added`
+ * every new source fires (see source-events.test.ts).
+ */
 async function eventTypes(): Promise<string[]> {
   const rows = await context.services.db
     .selectFrom("outbox")
     .select("type")
-    .where("type", "!=", "source.run_finished")
+    .where("type", "not in", ["source.run_finished", "source.added"])
     .orderBy("seq")
     .execute();
   return rows.map((row) => row.type);

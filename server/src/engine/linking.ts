@@ -1,6 +1,7 @@
 import type { Kysely } from "kysely";
 import { isoNow, type Clock } from "../clock.js";
 import type { Database } from "../db/schema.js";
+import { appendEvent } from "../events/bus.js";
 import {
   InvalidSourceConfigError,
   type PluginRegistry,
@@ -74,6 +75,16 @@ export function trackingSourceIn(
         updated_at: now,
       })
       .execute();
+    // Clients add the source's device at once; the caller's next notify delivers it.
+    await appendEvent(db, clock, {
+      type: "source.added",
+      parcelId: null,
+      payload: {
+        source: { id, plugin: carrier, label: `${plugin.info.name} tracking`, kind: "tracking" },
+        state: "ok",
+        detail: null,
+      },
+    });
     return id;
   };
 }

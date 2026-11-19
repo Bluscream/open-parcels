@@ -388,14 +388,17 @@ Everything is under `/api/v1`. The OpenAPI document is at `/api/v1/openapi.json`
 | `parcel.live_updated` | A live session starts or ends, its state changes, or `stops_away` changes. Never for a position change alone |
 | `parcel.removed` | An active parcel has been gone, undelivered, for 6 h. Nothing is judged while one of its sources is failing |
 | `parcel.deleted` | A parcel was deleted: by the user, or folded into another parcel with the same code (`merged_into`: its id) |
+| `source.added` | A source was created, by the user or by the app for a code added by hand. Clients add its device |
+| `source.updated` | A source's label or configuration changed. Clients rename its device |
 | `source.state_changed` | A source changes state, including "needs sign-in" |
-| `source.run_finished` | A source run ended, successfully or not (`ok`). Clients refresh run times and counts |
+| `source.run_finished` | A source run ended, successfully or not (`ok`). Clients refresh run times and counts. A run the plug-in skipped on purpose (DPD with public tracking off) is `ok` but leaves `last_ok_at` alone and puts the reason in the detail |
 | `source.removed` | A source was deleted, or merged into another (`merged_into`: its id). Clients drop its device |
 | `vocab.unknown` | An unmapped status value is seen for the first time |
 
 The payload is the normalised parcel without `raw`, with `live` stripped of coordinates and the
 trail, plus `old_*` and `new_*` for whatever changed. Source events carry
-`source: {id, plugin, label, kind}` instead.
+`source: {id, plugin, label, kind}` instead; `source.added`, `source.updated` and
+`source.run_finished` also carry the source's current `state` and `detail`.
 
 #### Parcel shape
 

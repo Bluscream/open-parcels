@@ -20,6 +20,8 @@ import {
 export class FakeWorld {
   listing: ParcelSnapshot[] = [];
   complete = true;
+  /** When set, runs report that they deliberately did nothing, for this reason. */
+  idle: string | undefined;
   failWith: Error | undefined;
   readonly accountCalls: number[] = [];
   readonly trackCalls: string[][] = [];
@@ -32,6 +34,9 @@ export class FakeWorld {
   result(): FetchResult {
     if (this.failWith !== undefined) {
       throw this.failWith;
+    }
+    if (this.idle !== undefined) {
+      return { snapshots: [], complete: false, idle: this.idle };
     }
     return { snapshots: this.listing, complete: this.complete };
   }

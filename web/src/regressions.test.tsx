@@ -1,9 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { CalendarEntry, Source } from "./api/types";
 import { toCalendarEvent } from "./calendar/events";
 import { describeLookup } from "./lib/format";
+import { SourceStateBadge } from "./parcels/badges";
 import { isSecretField } from "./sources/schema";
 import { mockApi, parcel, renderApp, SIGNED_IN } from "./test/helpers";
 
@@ -30,6 +31,19 @@ describe("parcel list", () => {
     const table = await screen.findByRole("table", { name: "Parcels" });
     expect(screen.getByLabelText("All")).toBeChecked();
     expect(within(table).getByText("Archived")).toBeInTheDocument();
+  });
+});
+
+describe("a source that ran but had nothing to do", () => {
+  it("shows Idle and its reason instead of OK", () => {
+    render(
+      <SourceStateBadge
+        state="ok"
+        lastOkAt={null}
+        detail="Public tracking off: nothing to look up."
+      />,
+    );
+    expect(screen.getByText("Idle", { selector: ".badge" })).toBeInTheDocument();
   });
 });
 

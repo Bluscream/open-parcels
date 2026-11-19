@@ -325,11 +325,15 @@ describe("DPD Germany public tracking", () => {
     expect(unknowns).toContain("tracking_step=SOMETHING_NEW");
   });
 
-  it("sends nothing when the public page is switched off for the source", async () => {
+  it("sends nothing, and says so, when the public page is switched off for the source", async () => {
     const fake = new FakeDpd();
     const result = await track(context(fake, { publicTracking: false }).ctx, [BARCODE_IN]);
     expect(fake.requests).toEqual([]);
-    expect(result).toEqual({ snapshots: [], complete: false });
+    expect(result).toEqual({
+      snapshots: [],
+      complete: false,
+      idle: "Public tracking off: nothing to look up.",
+    });
   });
 
   it("keeps the public lookup off unless a source switches it on", () => {

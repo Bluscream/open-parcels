@@ -61,6 +61,12 @@ export interface FetchResult {
    * lookup state instead.
    */
   readonly complete: boolean;
+  /**
+   * Set when the plug-in deliberately did nothing, saying why (for example "Public tracking off:
+   * nothing to look up."). The run then claims no success: the source keeps this as its detail,
+   * its last successful run stays as it was, and nothing is reconciled.
+   */
+  readonly idle?: string;
 }
 
 export { pastedRedirect } from "./sign-in.js";

@@ -162,12 +162,14 @@ export class Scheduler {
           backoff_until: null,
           next_run_at: next?.toISOString() ?? null,
           last_run_at: now.toISOString(),
-          last_ok_at: now.toISOString(),
+          // A run that deliberately did nothing is no success to report.
+          ...(outcome.idle === undefined ? { last_ok_at: now.toISOString() } : {}),
         })
         .where("id", "=", source.id)
         .execute();
-      if (source.state !== "ok" || source.state_detail !== null) {
-        await this.deps.sources.setState(source.id, "ok", null);
+      const detail = outcome.idle ?? null;
+      if (source.state !== "ok" || source.state_detail !== detail) {
+        await this.deps.sources.setState(source.id, "ok", detail);
       }
       return;
     }
@@ -198,7 +200,7 @@ export class Scheduler {
    * next run and counts) refresh even when its state did not change.
    */
   async #announce(source: SourceRow, outcome: RunOutcome): Promise<void> {
-    await this.deps.sources.announceRun(source, outcome.ok);
+    await this.deps.sources.announceRun(source.id, outcome.ok);
   }
 
   async #activeParcels(sourceId: string): Promise<ActiveParcel[]> {

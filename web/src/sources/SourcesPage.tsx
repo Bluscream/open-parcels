@@ -45,7 +45,11 @@ function SourceRow(props: {
     <li className="card source-row">
       <div className="source-head">
         <h2>{source.label}</h2>
-        <SourceStateBadge state={source.state} lastOkAt={source.last_ok_at} />
+        <SourceStateBadge
+          state={source.state}
+          lastOkAt={source.last_ok_at}
+          detail={source.state_detail}
+        />
         <span className="muted">
           {source.plugin} · {source.kind}
         </span>

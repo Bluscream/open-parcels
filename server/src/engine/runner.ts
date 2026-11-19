@@ -36,6 +36,8 @@ export type RunOutcome =
       readonly updated: number;
       readonly events: number;
       readonly liveTargets: readonly LiveTargetOfParcel[];
+      /** Why the plug-in did nothing, when it chose to; such a run is not a success. */
+      readonly idle?: string;
     }
   | {
       readonly ok: false;
@@ -131,6 +133,10 @@ export class SourceRunner {
     const log = this.deps.logger.child({ plugin: row.plugin, source: row.id });
     try {
       const { result, asked } = await this.#fetch(row, plugin, log);
+      if (result.idle !== undefined) {
+        // Nothing was asked, so nothing is reconciled: an empty answer must not count as "not found".
+        return { ok: true, created: 0, updated: 0, events: 0, liveTargets: [], idle: result.idle };
+      }
       // Let this run's unknown-value reports land before its result is applied.
       await this.#reports;
       const summary = await this.deps.reconciler.ingest(row.id, result, asked);
