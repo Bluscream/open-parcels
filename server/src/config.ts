@@ -197,7 +197,7 @@ export const SETTINGS = {
   OPENPARCELS_MAP_BASE_LAYER: setting({
     group: "Map",
     description:
-      "Map style shown until a user picks another on the map: map, topographic, satellite, borders only, or the custom provider.",
+      "Map style shown until a user picks another on the map: map, topographic, satellite, borders only, a CARTO style (needs the CARTO key), or the custom provider.",
     schema: z.enum(BASE_LAYER_CHOICES),
     default: "osm",
     apply: "live",
@@ -212,6 +212,16 @@ export const SETTINGS = {
     apply: "live",
     kind: "string",
     choices: OVERLAY_CHOICES,
+  }),
+  OPENPARCELS_MAP_CARTO_KEY: setting({
+    group: "Map",
+    description:
+      "CARTO API key (free for non-commercial use at carto.com/basemaps/apikey). Unlocks the CARTO styles: Dark Matter (the pre-rewrite look), Positron and Voyager. Stays on the server.",
+    schema: z.string().trim().min(1).max(500).optional(),
+    default: undefined,
+    apply: "live",
+    kind: "string",
+    secret: true,
   }),
   OPENPARCELS_MAP_CUSTOM_URL: setting({
     group: "Map",
@@ -358,6 +368,8 @@ export interface AppConfig {
     readonly overlay: (typeof OVERLAY_CHOICES)[number];
     /** Unset without a template. */
     readonly custom: CustomProvider | undefined;
+    /** Unlocks the CARTO styles; unset hides them. */
+    readonly cartoKey: string | undefined;
   };
 }
 
@@ -407,6 +419,7 @@ export function toConfig(values: Readonly<SettingValues>, env: ParsedEnv): AppCo
               attribution: values.OPENPARCELS_MAP_CUSTOM_ATTRIBUTION,
               maxZoom: values.OPENPARCELS_MAP_CUSTOM_MAX_ZOOM,
             },
+      cartoKey: values.OPENPARCELS_MAP_CARTO_KEY,
     },
   };
 }

@@ -143,11 +143,25 @@ describe("tile layers", () => {
 
   it("leaves a keyed custom provider out until its key is set", () => {
     const url = "https://tiles.example.org/{z}/{x}/{y}.png?key={key}";
-    expect(availableLayers({ url, apiKey: undefined, attribution: undefined, maxZoom: 19 })).toBe(
-      BUILTIN_LAYERS,
-    );
+    expect(
+      availableLayers({ url, apiKey: undefined, attribution: undefined, maxZoom: 19 }),
+    ).toEqual(BUILTIN_LAYERS);
     expect(
       availableLayers({ url, apiKey: "k", attribution: undefined, maxZoom: 19 }).map((l) => l.id),
     ).toContain("custom");
+  });
+
+  it("offers the CARTO styles only with a CARTO key, which the server fills in", () => {
+    expect(availableLayers(undefined).some((layer) => layer.id.startsWith("carto"))).toBe(false);
+    const layers = availableLayers(undefined, "c key");
+    const dark = layers.find((layer) => layer.id === "carto_dark");
+    expect(layers.filter((layer) => layer.id.startsWith("carto")).map((l) => l.id)).toEqual([
+      "carto_dark",
+      "carto_light",
+      "carto_voyager",
+    ]);
+    expect(dark === undefined ? null : tileUrl(dark, 5, 16, 10)).toBe(
+      "https://basemaps.cartocdn.com/rastertiles/dark_all/5/16/10.png?key=c%20key",
+    );
   });
 });

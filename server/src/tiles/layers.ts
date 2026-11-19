@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
 /**
- * The map styles the server proxies. Only providers whose terms allow keyless use by a personal,
- * self-hosted server that caches tiles are built in; anything else (CARTO, Esri, MapTiler, Stadia,
- * Thunderforest, Mapbox) is reached through the custom provider with the owner's own key.
+ * The map styles the server proxies. Providers whose terms allow keyless use by a personal,
+ * self-hosted server that caches tiles are built in; CARTO is built in behind the owner's own
+ * CARTO key; anything else (Esri, MapTiler, Stadia, Thunderforest, Mapbox) is reached through the
+ * custom provider with the owner's own key.
  * Upstream URLs and keys never leave the server: the web only sees ids, labels and attribution.
  */
 export type LayerKind = "base" | "overlay";
@@ -97,8 +98,36 @@ export const BUILTIN_LAYERS: readonly TileLayerDef[] = [
   },
 ];
 
+const CARTO = `${OSM} &copy; <a href="https://carto.com/attributions">CARTO</a>`;
+
+/**
+ * CARTO basemaps, offered once the owner has saved a CARTO API key (free for non-commercial use,
+ * carto.com/basemaps/apikey); without one CARTO only serves "API key required" tiles. Dark Matter
+ * is what open-parcels used before the rewrite.
+ */
+export const CARTO_LAYERS: readonly TileLayerDef[] = (
+  [
+    ["carto_dark", "Dark (CARTO Dark Matter)", "dark_all"],
+    ["carto_light", "Light (CARTO Positron)", "light_all"],
+    ["carto_voyager", "Voyager (CARTO)", "voyager"],
+  ] as const
+).map(([id, label, style]) => ({
+  id,
+  label,
+  kind: "base" as const,
+  url: `https://basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}.png?key={key}`,
+  format: "png" as const,
+  maxZoom: 20,
+  attribution: CARTO,
+  satellite: false,
+  cacheKey: `carto-${style}`,
+}));
+
 export const BASE_LAYER_CHOICES = [
   ...BUILTIN_LAYERS.filter((layer) => layer.kind === "base").map((layer) => layer.id),
+  "carto_dark",
+  "carto_light",
+  "carto_voyager",
   "custom",
 ] as const;
 export const OVERLAY_CHOICES = [
@@ -157,10 +186,18 @@ export function customLayer(custom: CustomProvider): TileLayerDef | null {
   };
 }
 
-/** The allowlist the proxy serves: the built-in layers and, when usable, the custom one. */
-export function availableLayers(custom: CustomProvider | undefined): readonly TileLayerDef[] {
+/**
+ * The allowlist the proxy serves: the built-in layers, CARTO's when a CARTO key is set, and the
+ * custom one when usable.
+ */
+export function availableLayers(
+  custom: CustomProvider | undefined,
+  cartoKey?: string,
+): readonly TileLayerDef[] {
+  const carto =
+    cartoKey === undefined ? [] : CARTO_LAYERS.map((layer) => ({ ...layer, apiKey: cartoKey }));
   const extra = custom === undefined ? null : customLayer(custom);
-  return extra === null ? BUILTIN_LAYERS : [...BUILTIN_LAYERS, extra];
+  return [...BUILTIN_LAYERS, ...carto, ...(extra === null ? [] : [extra])];
 }
 
 function escapeHtml(text: string): string {
