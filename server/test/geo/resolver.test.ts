@@ -456,6 +456,20 @@ describe("chooseStops", () => {
     expect(chooseStops(scans)).toEqual(chosen);
   });
 
+  it("keeps a weak match only with a well-known stop nearby", () => {
+    const weak = town("Mayong, Jepara", -6.75, 110.76, 0.16);
+    const mainz = town("Mainz", 50, 8.27, 0.69);
+    const semarang = town("Semarang", -6.99, 110.42, 0.6);
+    // Nothing else placed, or only a stop on another continent: the weak match is not trusted.
+    expect(chooseStops([open([weak])])).toEqual([null]);
+    expect(chooseStops([open([weak]), open([mainz])])[0]).toBeNull();
+    // A well-known place of the same parcel 50 km away vouches for it.
+    expect(chooseStops([open([weak]), open([semarang])])[0]).toMatchObject({ latitude: -6.75 });
+    // Two weak matches do not vouch for each other.
+    const weakNear = town("Hamlet", -6.8, 110.8, 0.1);
+    expect(chooseStops([open([weak]), open([weakNear])])).toEqual([null, null]);
+  });
+
   it("rejects every candidate of a name when all are implausible", () => {
     const far = [town("Far A", -6.75, 110.76), town("Far B", -33.9, 151.2)];
     const chosen = chooseStops([open([MUENSTER]), open(far), open([HANOVER])]);

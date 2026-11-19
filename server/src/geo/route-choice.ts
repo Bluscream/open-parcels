@@ -24,6 +24,15 @@ export const DETOUR_FACTOR = 2;
 /** Without any context the first answer counts only when it leads every other by this much. */
 export const PROMINENCE_GAP = 0.1;
 
+/**
+ * A match the search itself rates below this is weak: a little-known place that happens to share
+ * the name ("Mayong Town" finds a town in Indonesia at 0.16, while the scan meant one in China;
+ * towns found rightly rate 0.28 and up). A weak match is kept only with a carrier position or a
+ * well-known place of the same parcel within `CONFIRM_KM`.
+ */
+export const WEAK_IMPORTANCE = 0.25;
+export const CONFIRM_KM = 1_000;
+
 const EARTH_RADIUS_KM = 6_371;
 
 /** Great-circle distance (haversine). */
@@ -167,6 +176,28 @@ function placeAmbiguous(scans: readonly RouteScan[], placed: (Point | undefined)
   }
 }
 
+/** Whether a chosen point is a weak match of its name (see `WEAK_IMPORTANCE`). */
+function isWeak(point: Point): boolean {
+  const importance = "importance" in point ? point.importance : null;
+  return typeof importance === "number" && importance < WEAK_IMPORTANCE;
+}
+
+/**
+ * Drops weak matches no other stop vouches for: a carrier position or a well-known place within
+ * `CONFIRM_KM`. Weak matches do not vouch for each other, so one pass decides.
+ */
+function dropUnconfirmedWeak(scans: readonly RouteScan[], placed: (Point | undefined)[]): void {
+  const strong = placed.filter((point) => point !== undefined && !isWeak(point));
+  scans.forEach((scan, index) => {
+    const point = placed[index];
+    if (scan.fixed !== null || point === undefined || !isWeak(point)) return;
+    const confirmed = strong.some(
+      (other) => other !== undefined && distanceKm(other, point) <= CONFIRM_KM,
+    );
+    if (!confirmed) placed[index] = undefined;
+  });
+}
+
 /**
  * Chooses, for every scan of one parcel that names a place, which candidate it stands for,
  * using the parcel's other scans as context. Returns one entry per scan: the chosen point, null
@@ -182,6 +213,8 @@ function placeAmbiguous(scans: readonly RouteScan[], placed: (Point | undefined)
  *    stays unplaced. Should no scan of the parcel be placed by then, the oldest name whose
  *    first candidate is clearly the most prominent (`PROMINENCE_GAP`) starts the route; without
  *    one, the ambiguous names stay unplaced.
+ * 4. A weak match (`WEAK_IMPORTANCE`) stays only when a carrier position or a well-known place
+ *    of the parcel lies within `CONFIRM_KM`; otherwise the scan stays unplaced.
  *
  * The same scans always give the same answer, whatever was chosen before.
  */
@@ -189,6 +222,7 @@ export function chooseStops(scans: readonly RouteScan[]): (Point | null | undefi
   const placed: (Point | undefined)[] = scans.map((scan) => scan.fixed ?? undefined);
   placeUnambiguous(scans, placed);
   placeAmbiguous(scans, placed);
+  dropUnconfirmedWeak(scans, placed);
   return scans.map((scan, index) =>
     scan.fixed !== null || scan.candidates === null ? undefined : (placed[index] ?? null),
   );
