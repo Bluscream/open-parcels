@@ -52,11 +52,19 @@ export async function fetchUnified(deps: Deps, apiKey: string, code: string): Pr
     throw new UnexpectedResponseError("The DHL tracking API did not answer with an object.");
   }
   const shipments = objects(body["shipments"]);
-  return (
-    shipments.find((s) => asString(s["id"])?.toUpperCase() === code.toUpperCase()) ??
-    shipments[0] ??
-    null
-  );
+  if (shipments.length === 0) {
+    return null;
+  }
+  // Only the shipment that is this code: taking another one would file its history under it.
+  const compact = (value: string): string => value.replace(/\s+/g, "").toUpperCase();
+  const match = shipments.find((s) => {
+    const id = asString(s["id"]);
+    return id !== null && compact(id) === compact(code);
+  });
+  if (match === undefined) {
+    throw new UnexpectedResponseError("The DHL tracking API answered without the asked code.");
+  }
+  return match;
 }
 
 function mapCode(deps: Deps, status: Json): SnapshotEvent["status"] {

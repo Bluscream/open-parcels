@@ -96,13 +96,18 @@ async function detail(
     throw new UnexpectedResponseError("Evri's parcel lookup has no results.");
   }
   const parcels = results.filter(isObject);
+  if (parcels.length === 0) {
+    return null;
+  }
+  // Only the parcel that names this barcode or the id it was looked up by, never just the first.
   const matching = parcels.find((parcel) =>
-    objects(parcel["parcelIdentifiers"]).some(
-      (entry) => (text(entry["value"]) ?? text(entry["barcode"]))?.toUpperCase() === ids.code,
-    ),
+    objects(parcel["parcelIdentifiers"]).some((entry) => {
+      const value = (text(entry["value"]) ?? text(entry["barcode"]))?.toUpperCase();
+      return value === ids.code || text(entry["urn"]) === ids.urn;
+    }),
   );
-  if (matching !== undefined || parcels.length <= 1) {
-    return matching ?? parcels[0] ?? null;
+  if (matching !== undefined) {
+    return matching;
   }
   throw new UnexpectedResponseError("Evri's parcel lookup did not include the barcode.");
 }

@@ -68,6 +68,24 @@ describe("Evri tracking", () => {
     expect(unknown).toEqual([]);
   });
 
+  it("never takes a single result that names neither the barcode nor its id", async () => {
+    const other = parcel(stage("2", "2026-11-17T10:00:00Z"));
+    const stranger = {
+      results: [{ ...other.results[0], parcelIdentifiers: [{ value: "EV00000000000099" }] }],
+    };
+    const { fetchImpl } = fakeNetwork([
+      routeTable(
+        {
+          [REFERENCE]: [json({ parcelIdentifiers: [{ urn: URN }] }, 200)],
+          [DETAIL]: [json(stranger, 200)],
+        },
+        "host",
+      ),
+    ]);
+    const { base } = fakeContext(evri.http, fetchImpl);
+    await expect(plugin.track(base, CONFIG, null, [CODE])).rejects.toBeInstanceOf(TransientError);
+  });
+
   it("uses a remembered id without resolving again and dates the delivery", async () => {
     const { fetchImpl, calls } = fakeNetwork([
       routeTable(
