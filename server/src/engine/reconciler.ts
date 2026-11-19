@@ -103,6 +103,19 @@ export function fingerprint(
   return createHash("sha256").update(basis).digest("hex").slice(0, 32);
 }
 
+/** An event's position, only when both halves are real coordinates. */
+function coordinates(event: SnapshotEvent): { latitude: number | null; longitude: number | null } {
+  const { latitude, longitude } = event;
+  const valid =
+    latitude !== undefined &&
+    longitude !== undefined &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 &&
+    Math.abs(longitude) <= 180;
+  return valid ? { latitude, longitude } : { latitude: null, longitude: null };
+}
+
 /**
  * A mail whose wording no rule maps, recorded so it can be added to the rules. Identifiers in the
  * subject are masked; the carrier goes in the plug-in column so the right table is obvious.
@@ -669,6 +682,7 @@ export class Reconciler {
           status: event.status,
           raw_status: event.rawStatus,
           location_text: event.location,
+          ...coordinates(event),
           fingerprint: fingerprint(event),
         })
         .onConflict((oc) => oc.columns(["parcel_id", "fingerprint"]).doNothing())

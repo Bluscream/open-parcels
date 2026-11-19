@@ -299,6 +299,18 @@ export type GetApiV1Parcels200ItemHistoryItem = {
   raw_status: string;
   /** @nullable */
   location: string | null;
+  /**
+   * @minimum -90
+   * @maximum 90
+   * @nullable
+   */
+  latitude: number | null;
+  /**
+   * @minimum -180
+   * @maximum 180
+   * @nullable
+   */
+  longitude: number | null;
 };
 
 export type GetApiV1Parcels200ItemDirection =
@@ -636,6 +648,18 @@ export type PostApiV1Parcels201HistoryItem = {
   raw_status: string;
   /** @nullable */
   location: string | null;
+  /**
+   * @minimum -90
+   * @maximum 90
+   * @nullable
+   */
+  latitude: number | null;
+  /**
+   * @minimum -180
+   * @maximum 180
+   * @nullable
+   */
+  longitude: number | null;
 };
 
 export type PostApiV1Parcels201Direction =
@@ -959,6 +983,18 @@ export type GetApiV1ParcelsId200HistoryItem = {
   raw_status: string;
   /** @nullable */
   location: string | null;
+  /**
+   * @minimum -90
+   * @maximum 90
+   * @nullable
+   */
+  latitude: number | null;
+  /**
+   * @minimum -180
+   * @maximum 180
+   * @nullable
+   */
+  longitude: number | null;
 };
 
 export type GetApiV1ParcelsId200Direction =
@@ -1304,6 +1340,18 @@ export type PatchApiV1ParcelsId200HistoryItem = {
   raw_status: string;
   /** @nullable */
   location: string | null;
+  /**
+   * @minimum -90
+   * @maximum 90
+   * @nullable
+   */
+  latitude: number | null;
+  /**
+   * @minimum -180
+   * @maximum 180
+   * @nullable
+   */
+  longitude: number | null;
 };
 
 export type PatchApiV1ParcelsId200Direction =

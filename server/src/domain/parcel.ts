@@ -35,6 +35,8 @@ export const historyEntrySchema = z.object({
   status: parcelStatusSchema.nullable(),
   raw_status: z.string(),
   location: z.string().nullable(),
+  latitude: z.number().min(-90).max(90).nullable(),
+  longitude: z.number().min(-180).max(180).nullable(),
 });
 export type HistoryEntry = z.infer<typeof historyEntrySchema>;
 

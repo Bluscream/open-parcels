@@ -51,6 +51,7 @@ interface Related {
   sources: Map<string, Parcel["sources"]>;
   orders: Map<string, Parcel["order"]>;
   listedBy: Map<string, Set<string>>;
+  places: Map<string, Parcel["location"]>;
 }
 
 /** A courier position held in memory by the live tracker. */
@@ -159,9 +160,10 @@ export class ParcelRepository {
         sources: new Map(),
         orders: new Map(),
         listedBy: new Map(),
+        places: new Map(),
       };
     }
-    const [events, items, live, sources, orders] = await Promise.all([
+    const [events, placed, items, live, sources, orders] = await Promise.all([
       withHistory
         ? this.db
             .selectFrom("parcel_events")
@@ -170,6 +172,15 @@ export class ParcelRepository {
             .orderBy("at")
             .execute()
         : Promise.resolve([]),
+      // Only the scans with a position: the parcel's place, also when the history is not loaded.
+      this.db
+        .selectFrom("parcel_events")
+        .select(["parcel_id", "at", "location_text", "latitude", "longitude"])
+        .where("parcel_id", "in", ids)
+        .where("latitude", "is not", null)
+        .where("longitude", "is not", null)
+        .orderBy("at")
+        .execute(),
       this.db
         .selectFrom("items")
         .selectAll()
@@ -210,8 +221,25 @@ export class ParcelRepository {
           status: asStatus(event.status),
           raw_status: event.raw_status,
           location: event.location_text,
+          latitude: event.latitude,
+          longitude: event.longitude,
         })),
       );
+    }
+    const places = new Map<string, Parcel["location"]>();
+    for (const event of placed) {
+      // Ordered by time, so the last one written per parcel is its latest.
+      if (event.latitude !== null && event.longitude !== null) {
+        places.set(event.parcel_id, {
+          latitude: event.latitude,
+          longitude: event.longitude,
+          source: "event",
+          precision: "exact",
+          name: event.location_text,
+          address: null,
+          at: event.at,
+        });
+      }
     }
     const itemMap = new Map<string, Item[]>();
     for (const [parcelId, list] of groupBy(items, (item) => item.parcel_id)) {
@@ -283,6 +311,7 @@ export class ParcelRepository {
       sources: sourceMap,
       orders: orderMap,
       listedBy,
+      places,
     };
   }
 
@@ -315,7 +344,7 @@ export class ParcelRepository {
       archived_at: row.archived_at,
       items: related.items.get(row.id) ?? [],
       live: related.live.get(row.id) ?? null,
-      location: null,
+      location: related.places.get(row.id) ?? null,
       order: row.order_id === null ? null : (related.orders.get(row.order_id) ?? null),
       sources: related.sources.get(row.id) ?? [],
       // Another source of the same carrier (an account) listing the parcel means the carrier

@@ -34,6 +34,8 @@ export async function foldParcel(
       "status",
       "raw_status",
       "location_text",
+      "latitude",
+      "longitude",
       "fingerprint",
     ])
     .expression((eb) =>
@@ -46,6 +48,8 @@ export async function foldParcel(
           "status",
           "raw_status",
           "location_text",
+          "latitude",
+          "longitude",
           "fingerprint",
         ])
         .where("parcel_id", "=", duplicate.id),

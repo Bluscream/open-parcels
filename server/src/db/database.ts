@@ -7,6 +7,7 @@ import * as m0003 from "./migrations/0003-sign-in-attempts.js";
 import * as m0004 from "./migrations/0004-lookup-state.js";
 import * as m0005 from "./migrations/0005-archive-reason.js";
 import * as m0006 from "./migrations/0006-auto-created-sources.js";
+import * as m0007 from "./migrations/0007-event-coordinates.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -20,6 +21,7 @@ const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0004-lookup-state": m0004,
   "0005-archive-reason": m0005,
   "0006-auto-created-sources": m0006,
+  "0007-event-coordinates": m0007,
 };
 
 const staticProvider: MigrationProvider = {

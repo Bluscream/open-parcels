@@ -80,7 +80,7 @@ export interface HttpPolicy {
   readonly limits: Readonly<Record<string, HostLimit>>;
   /**
    * Only set when the carrier refuses an honest client User-Agent. `reason` documents what the
-   * carrier does without it and is shown in diagnostics.
+   * carrier does without it; it is not shown to users.
    */
   readonly userAgent?: { readonly value: string; readonly reason: string };
 }

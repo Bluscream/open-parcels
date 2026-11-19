@@ -24,6 +24,7 @@ import { correos } from "../carriers/correos/index.js";
 import { ctt } from "../carriers/ctt/index.js";
 import { dao } from "../carriers/dao/index.js";
 import { delhivery } from "../carriers/delhivery/index.js";
+import { demoCarrier, demoShop } from "../carriers/demo/index.js";
 import { dhl } from "../carriers/dhl/index.js";
 import { dpd } from "../carriers/dpd/index.js";
 import { dragonfly } from "../carriers/dragonfly/index.js";
@@ -117,6 +118,8 @@ export const BUILTIN_CARRIERS: readonly RegisteredPlugin[] = [
   register(ctt),
   register(dao),
   register(delhivery),
+  register(demoCarrier),
+  register(demoShop),
   register(dhl),
   register(dpd),
   register(dragonfly),

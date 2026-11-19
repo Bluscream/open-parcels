@@ -824,13 +824,27 @@
                             "location": {
                               "nullable": true,
                               "type": "string"
+                            },
+                            "latitude": {
+                              "nullable": true,
+                              "type": "number",
+                              "minimum": -90,
+                              "maximum": 90
+                            },
+                            "longitude": {
+                              "nullable": true,
+                              "type": "number",
+                              "minimum": -180,
+                              "maximum": 180
                             }
                           },
                           "required": [
                             "timestamp",
                             "status",
                             "raw_status",
-                            "location"
+                            "location",
+                            "latitude",
+                            "longitude"
                           ],
                           "additionalProperties": false
                         }
@@ -1330,13 +1344,27 @@
                           "location": {
                             "nullable": true,
                             "type": "string"
+                          },
+                          "latitude": {
+                            "nullable": true,
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "longitude": {
+                            "nullable": true,
+                            "type": "number",
+                            "minimum": -180,
+                            "maximum": 180
                           }
                         },
                         "required": [
                           "timestamp",
                           "status",
                           "raw_status",
-                          "location"
+                          "location",
+                          "latitude",
+                          "longitude"
                         ],
                         "additionalProperties": false
                       }
@@ -1860,13 +1888,27 @@
                           "location": {
                             "nullable": true,
                             "type": "string"
+                          },
+                          "latitude": {
+                            "nullable": true,
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "longitude": {
+                            "nullable": true,
+                            "type": "number",
+                            "minimum": -180,
+                            "maximum": 180
                           }
                         },
                         "required": [
                           "timestamp",
                           "status",
                           "raw_status",
-                          "location"
+                          "location",
+                          "latitude",
+                          "longitude"
                         ],
                         "additionalProperties": false
                       }
@@ -2397,13 +2439,27 @@
                           "location": {
                             "nullable": true,
                             "type": "string"
+                          },
+                          "latitude": {
+                            "nullable": true,
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "longitude": {
+                            "nullable": true,
+                            "type": "number",
+                            "minimum": -180,
+                            "maximum": 180
                           }
                         },
                         "required": [
                           "timestamp",
                           "status",
                           "raw_status",
-                          "location"
+                          "location",
+                          "latitude",
+                          "longitude"
                         ],
                         "additionalProperties": false
                       }

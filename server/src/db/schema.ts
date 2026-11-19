@@ -139,6 +139,9 @@ export interface ParcelEventTable {
   status: string | null;
   raw_status: string;
   location_text: string | null;
+  /** Where the scan happened, when the carrier says; both set or both null. */
+  latitude: ColumnType<number | null, number | null | undefined>;
+  longitude: ColumnType<number | null, number | null | undefined>;
   /** Hash of (at, raw_status, location) so a re-fetched history never duplicates entries. */
   fingerprint: string;
 }

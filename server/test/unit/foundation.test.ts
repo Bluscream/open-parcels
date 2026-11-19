@@ -159,6 +159,7 @@ describe("migrations", () => {
         "0004-lookup-state",
         "0005-archive-reason",
         "0006-auto-created-sources",
+        "0007-event-coordinates",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

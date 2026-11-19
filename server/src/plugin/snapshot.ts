@@ -7,6 +7,9 @@ export interface SnapshotEvent {
   readonly status: ParcelStatus | null;
   readonly rawStatus: string;
   readonly location: string | null;
+  /** Where the scan happened, when the carrier gives coordinates (WGS 84). */
+  readonly latitude?: number;
+  readonly longitude?: number;
   /**
    * The source's own identity for this entry (a mail's Message-ID), when it has one. The stored
    * entry is then deduplicated on it instead of on time and text, so one mail is one entry.
