@@ -8,9 +8,10 @@ import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
 import { ParcelRepository, RAW_PRESENTATION, type Presentation } from "../parcels/repository.js";
 import type { FetchResult, LiveTarget } from "../plugin/api.js";
-import type { ParcelSnapshot } from "../plugin/snapshot.js";
-import { mergeParcel, type Authority, type ParcelState } from "./merge.js";
+import type { ParcelSnapshot, SnapshotEvent } from "../plugin/snapshot.js";
+import { healState, mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
+import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
 
 /** A parcel missing from every complete listing for this long, undelivered, counts as removed. */
 export const REMOVAL_GRACE_MS = 6 * 60 * 60 * 1000;
@@ -86,11 +87,41 @@ function stateColumns(state: ParcelState) {
   };
 }
 
-function fingerprint(at: string, rawStatus: string, location: string | null): string {
-  return createHash("sha256")
-    .update(`${at}\u0000${rawStatus}\u0000${location ?? ""}`)
-    .digest("hex")
-    .slice(0, 32);
+/** An entry's identity: the source's own id when it has one, else time, text and place. */
+function fingerprint(event: SnapshotEvent): string {
+  const basis =
+    event.id === undefined
+      ? `${event.at}\u0000${event.rawStatus}\u0000${event.location ?? ""}`
+      : `id\u0000${event.id}`;
+  return createHash("sha256").update(basis).digest("hex").slice(0, 32);
+}
+
+/**
+ * A mail whose wording no rule maps, recorded so it can be added to the rules. Identifiers in the
+ * subject are masked; the carrier goes in the plug-in column so the right table is obvious.
+ */
+function unmappedMail(snapshot: ParcelSnapshot): UnknownValue | null {
+  const raw = snapshot.rawStatus;
+  if (snapshot.status !== null || snapshot.delivered || raw === null) {
+    return null;
+  }
+  const key = maskIdentifiers(raw);
+  return key === "" ? null : { plugin: snapshot.carrier, kind: "mail_subject", key };
+}
+
+/** The parcel's stored history from every source, as merge input. */
+async function storedHistory(trx: Trx, parcelId: string): Promise<SnapshotEvent[]> {
+  const rows = await trx
+    .selectFrom("parcel_events")
+    .select(["at", "status", "raw_status", "location_text"])
+    .where("parcel_id", "=", parcelId)
+    .execute();
+  return rows.map((row) => ({
+    at: row.at,
+    status: asStatus(row.status),
+    rawStatus: row.raw_status,
+    location: row.location_text,
+  }));
 }
 
 async function findParcel(
@@ -145,9 +176,14 @@ export class Reconciler {
       asked: asked.length,
       found: 0,
     };
+    const unknown: UnknownValue[] = [];
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
       for (const snapshot of result.snapshots) {
+        const value = source.kind === "mail" ? unmappedMail(snapshot) : null;
+        if (value !== null) {
+          unknown.push(value);
+        }
         const outcome = await this.#applySnapshot(trx, source, snapshot);
         seen.add(outcome.parcelId);
         if (snapshot.live !== null) {
@@ -162,8 +198,78 @@ export class Reconciler {
       summary.found = await this.#recordLookup(trx, asked, seen);
     });
     await this.bus.notify();
+    const vocab = { db: this.db, bus: this.bus, clock: this.clock };
+    for (const value of unknown) {
+      // Recording is best effort; the parcels are already stored.
+      await recordUnknown(vocab, value, this.logger).catch((error: unknown) => {
+        this.logger.error({ err: error }, "Recording an unrecognised value failed.");
+      });
+    }
     summary.events += await this.judgeRemovals();
     return summary;
+  }
+
+  /**
+   * Repairs parcels stored under the old merge rules (`unknown` while a stored entry maps, or
+   * delivered in status only), from their stored history. Idempotent; run at startup.
+   */
+  async repair(): Promise<number> {
+    const candidates = await this.db
+      .selectFrom("parcels")
+      .select("id")
+      .where((eb) =>
+        eb.or([
+          eb("status", "=", "unknown"),
+          eb.and([eb("status", "=", "delivered"), eb("delivered", "=", 0)]),
+        ]),
+      )
+      .execute();
+    let repaired = 0;
+    await this.db.transaction().execute(async (trx) => {
+      for (const { id } of candidates) {
+        repaired += (await this.#repairOne(trx, id)) ? 1 : 0;
+      }
+    });
+    if (repaired > 0) {
+      await this.bus.notify();
+      this.logger.info({ repaired }, "Repaired parcel statuses from their stored history.");
+    }
+    return repaired;
+  }
+
+  async #repairOne(trx: Trx, parcelId: string): Promise<boolean> {
+    const row = await trx
+      .selectFrom("parcels")
+      .selectAll()
+      .where("id", "=", parcelId)
+      .executeTakeFirstOrThrow();
+    const before = rowToState(row);
+    const after = healState(before, await storedHistory(trx, parcelId));
+    if (after === null) {
+      return false;
+    }
+    await trx
+      .updateTable("parcels")
+      .set({ ...stateColumns(after), updated_at: isoNow(this.clock) })
+      .where("id", "=", parcelId)
+      .execute();
+    const manual = asStatus(row.manual_status);
+    const derived = deriveEvents(eventView(before, manual), eventView(after, manual));
+    const parcel =
+      derived.length === 0
+        ? undefined
+        : await new ParcelRepository(trx, this.presentation).get(parcelId);
+    if (parcel === undefined) {
+      return true;
+    }
+    for (const event of derived) {
+      await appendEvent(trx, this.clock, {
+        type: event.type,
+        parcelId,
+        payload: parcelEventPayload(parcel, event.changes),
+      });
+    }
+    return true;
   }
 
   async #applySnapshot(
@@ -188,6 +294,7 @@ export class Reconciler {
       before,
       { ...snapshot, carrier: key.carrier, barcode: key.barcode },
       authority,
+      existing === undefined ? [] : await storedHistory(trx, existing.id),
     );
     const parcelId = existing?.id ?? crypto.randomUUID();
     const orderId = await this.#upsertOrder(trx, snapshot, now);
@@ -407,7 +514,7 @@ export class Reconciler {
           status: event.status,
           raw_status: event.rawStatus,
           location_text: event.location,
-          fingerprint: fingerprint(event.at, event.rawStatus, event.location),
+          fingerprint: fingerprint(event),
         })
         .onConflict((oc) => oc.columns(["parcel_id", "fingerprint"]).doNothing())
         .execute();

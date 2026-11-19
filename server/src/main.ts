@@ -66,6 +66,7 @@ async function main(): Promise<void> {
     servers.push(ingress);
   }
 
+  await services.reconciler.repair();
   services.scheduler.start();
   services.live.start();
   await services.mail.start();

@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import {
   detectTrackingNumbers,
+  mapStatus,
   parseMail,
   type MailParseResult,
   type Rules,
 } from "open-parcels-rules";
+import type { ParcelStatus } from "../domain/parcel.js";
 import { snapshot, type ParcelSnapshot } from "../plugin/snapshot.js";
 import type { MailInput, MailInterpreter } from "./types.js";
 
@@ -36,6 +39,28 @@ function carrierFor(
   return best === undefined || best.carrier === "upu" ? null : best.carrier;
 }
 
+/** The carrier's status table read on the subject, when the mail rule's keywords found none. */
+function textStatus(rules: Rules, carrier: string, subject: string): ParcelStatus | null {
+  return subject.trim() === ""
+    ? null
+    : (mapStatus(rules, carrier, { text: subject })?.status ?? null);
+}
+
+/**
+ * One identity per mail: its Message-ID, else a digest of what it says. A mail seen twice (in two
+ * folders, or again after the server reset its UIDs) then gives one history entry, not two.
+ */
+function mailId(mail: MailInput): string {
+  if (mail.messageId !== null && mail.messageId.trim() !== "") {
+    return `mail:${mail.messageId.trim()}`;
+  }
+  const digest = createHash("sha256")
+    .update([mail.from, mail.subject, mail.text ?? "", mail.html ?? ""].join("\u0000"))
+    .digest("hex")
+    .slice(0, 32);
+  return `mail:${digest}`;
+}
+
 /**
  * Turns shipping mails into parcel snapshots using the shared rules. Only mails that name a
  * tracking number produce a parcel; pickup codes are never carried over, because codes that open
@@ -53,6 +78,7 @@ export function createMailInterpreter(rules: Rules, timeZone: string): MailInter
     });
     const domain = senderDomain(mail.from);
     const at = (mail.date ?? new Date()).toISOString();
+    const id = mailId(mail);
     const snapshots: ParcelSnapshot[] = [];
     for (const result of results) {
       if (result.kind !== "parcel") {
@@ -65,7 +91,7 @@ export function createMailInterpreter(rules: Rules, timeZone: string): MailInter
         if (carrier === null) {
           continue;
         }
-        const status = result.status ?? null;
+        const status = result.status ?? textStatus(rules, carrier, mail.subject);
         snapshots.push(
           snapshot({
             carrier,
@@ -75,7 +101,7 @@ export function createMailInterpreter(rules: Rules, timeZone: string): MailInter
             plannedFrom: result.arrival?.from ?? null,
             plannedTo: result.arrival?.to ?? null,
             url: result.trackingUrl ?? null,
-            history: [{ at, status, rawStatus: mail.subject, location: null }],
+            history: [{ at, status, rawStatus: mail.subject, location: null, id }],
             items: (result.items ?? []).map((title) => ({
               title,
               imageUrl: null,

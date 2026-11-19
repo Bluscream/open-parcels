@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { isoNow, type Clock } from "../clock.js";
 import { DecryptionError, type SecretBox } from "../crypto/secrets.js";
 import type { Database, SourceRow } from "../db/schema.js";
-import { appendEvent, type EventBus } from "../events/bus.js";
+import type { EventBus } from "../events/bus.js";
 import {
   CaptchaError,
   RateLimitedError,
@@ -25,6 +25,7 @@ import {
   type RegisteredPlugin,
 } from "./registry.js";
 import { secretAad, sessionAad } from "./sources.js";
+import { recordUnknown } from "./vocab.js";
 
 export type RunOutcome =
   | {
@@ -261,42 +262,7 @@ export class SourceRunner {
     };
   }
 
-  /** Records an unmapped code or key; warns and fires `vocab.unknown` only the first time. */
   async #reportUnknown(plugin: string, kind: string, key: string, log: Logger): Promise<void> {
-    const now = isoNow(this.deps.clock);
-    const safeKey = key.slice(0, 120);
-    const existing = await this.deps.db
-      .selectFrom("unknown_vocab")
-      .select("count")
-      .where("plugin", "=", plugin)
-      .where("kind", "=", kind)
-      .where("key", "=", safeKey)
-      .executeTakeFirst();
-    if (existing !== undefined) {
-      await this.deps.db
-        .updateTable("unknown_vocab")
-        .set({ count: existing.count + 1, last_seen_at: now })
-        .where("plugin", "=", plugin)
-        .where("kind", "=", kind)
-        .where("key", "=", safeKey)
-        .execute();
-      return;
-    }
-    await this.deps.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("unknown_vocab")
-        .values({ plugin, kind, key: safeKey, first_seen_at: now, last_seen_at: now, count: 1 })
-        .execute();
-      await appendEvent(trx, this.deps.clock, {
-        type: "vocab.unknown",
-        parcelId: null,
-        payload: { plugin, kind, key: safeKey },
-      });
-    });
-    await this.deps.bus.notify();
-    log.warn(
-      { kind, key: safeKey },
-      "Unrecognised value from the carrier. Please report it so it can be mapped.",
-    );
+    await recordUnknown(this.deps, { plugin, kind, key }, log);
   }
 }

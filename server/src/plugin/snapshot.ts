@@ -7,6 +7,11 @@ export interface SnapshotEvent {
   readonly status: ParcelStatus | null;
   readonly rawStatus: string;
   readonly location: string | null;
+  /**
+   * The source's own identity for this entry (a mail's Message-ID), when it has one. The stored
+   * entry is then deduplicated on it instead of on time and text, so one mail is one entry.
+   */
+  readonly id?: string;
 }
 
 export interface SnapshotItem {
