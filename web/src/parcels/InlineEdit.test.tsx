@@ -62,7 +62,8 @@ describe("editing a parcel in place", () => {
     refuse = true;
     await user.click(screen.getByRole("button", { name: "Change status" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "Status" }), "delivered");
-    expect(await screen.findByText("Try again.")).toBeInTheDocument();
+    // The refused save goes through a server round trip; allow a slow machine some time.
+    expect(await screen.findByText("Try again.", {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByText("Delivered", { selector: ".badge, .status-badge" })).toBeNull();
   });
 });

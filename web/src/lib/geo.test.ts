@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distanceKm, formatDistance, formatLatLng, parseLatLng } from "./geo";
+import { boundsAround, distanceKm, formatDistance, formatLatLng, parseLatLng } from "./geo";
 
 describe("parseLatLng", () => {
   it.each([
@@ -19,6 +19,25 @@ describe("parseLatLng", () => {
       expect(parseLatLng(text)).toBeNull();
     },
   );
+});
+
+describe("boundsAround", () => {
+  it("mirrors every point around the centre, so fitting them keeps the centre in the middle", () => {
+    const points = boundsAround([50, 8], [[52, 13]]);
+    expect(points).toEqual([
+      [50, 8],
+      [52, 13],
+      [48, 3],
+    ]);
+    const lats = points.map(([lat]) => lat);
+    const lngs = points.map(([, lng]) => lng);
+    expect((Math.min(...lats) + Math.max(...lats)) / 2).toBe(50);
+    expect((Math.min(...lngs) + Math.max(...lngs)) / 2).toBe(8);
+  });
+
+  it("is just the centre without points", () => {
+    expect(boundsAround([50, 8], [])).toEqual([[50, 8]]);
+  });
 });
 
 describe("distances", () => {

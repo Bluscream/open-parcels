@@ -41,6 +41,20 @@ export function formatDistance(km: number, locale?: string): string {
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(km)} km`;
 }
 
+/**
+ * Points to fit so that `center` ends up in the middle: every point plus its mirror image around
+ * the centre. Fitting these shows all points with the centre (the home location) in the middle.
+ */
+export function boundsAround(center: LatLngTuple, points: readonly LatLngTuple[]): LatLngTuple[] {
+  return [
+    center,
+    ...points.flatMap((point): LatLngTuple[] => [
+      point,
+      [Math.max(-85, Math.min(85, 2 * center[0] - point[0])), 2 * center[1] - point[1]],
+    ]),
+  ];
+}
+
 /** Coordinates as typed back into the box: six decimals is about 10 cm. */
 export function formatLatLng([latitude, longitude]: LatLngTuple): string {
   return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;

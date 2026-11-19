@@ -6,13 +6,16 @@ import { useParcels } from "../api/queries";
 import type { Parcel } from "../api/types";
 import { SplitContainer } from "../components/SplitContainer";
 import { ErrorNotice, Spinner } from "../components/ui";
+import { boundsAround } from "../lib/geo";
 import { formatRelative, STATUS_LABELS } from "../lib/format";
+import { useHome } from "../settings/home";
 import { ParcelCard, parcelName } from "../parcels/ParcelCard";
 import { AnimatedRoute } from "./AnimatedRoute";
 import {
   determineTransportMethod,
   generateCurvedPath,
   getTransportMarkerIcon,
+  iconHome,
   iconSource,
   iconVan,
 } from "./mapIcons";
@@ -85,10 +88,13 @@ export default function MapPage(): ReactNode {
     [parcels.data],
   );
   const pins = useMemo(() => active.map(pinFor).filter((pin) => pin !== undefined), [active]);
-  const bounds = useMemo(
-    () => pins.flatMap((pin) => (pin.from === null ? [pin.point] : [pin.point, pin.from])),
-    [pins],
-  );
+  const { home } = useHome();
+  const homePoint = home?.point;
+  // With a home location, it sits in the middle and the view widens until every parcel fits.
+  const bounds = useMemo(() => {
+    const points = pins.flatMap((pin) => (pin.from === null ? [pin.point] : [pin.point, pin.from]));
+    return homePoint === undefined ? points : boundsAround(homePoint, points);
+  }, [pins, homePoint]);
   const couriers = pins.filter((pin) => pin.courier).length;
 
   return (
@@ -111,7 +117,21 @@ export default function MapPage(): ReactNode {
             rightMinSize={20}
             leftPanel={
               <div className="glass-panel map-panel">
-                <SharedMap label="Parcels on the map" bounds={bounds}>
+                <SharedMap
+                  label="Parcels on the map"
+                  bounds={bounds}
+                  {...(homePoint === undefined ? {} : { center: homePoint, zoom: 12 })}
+                >
+                  {homePoint === undefined ? null : (
+                    <Marker position={homePoint} icon={iconHome} title="Home" zIndexOffset={-100}>
+                      <Popup>
+                        <strong>Home</strong>
+                        {home?.label === null || home?.label === undefined ? null : (
+                          <div className="muted">{home.label}</div>
+                        )}
+                      </Popup>
+                    </Marker>
+                  )}
                   {pins.map((pin) => (
                     <PinMarker key={pin.parcel.id} pin={pin} />
                   ))}

@@ -1,6 +1,6 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import type { LatLng } from "./mapIcons";
 
@@ -22,7 +22,10 @@ function prefersDark(): boolean {
     : forced === "dark";
 }
 
-/** Keeps the map sized to its container and fitted to the given points. */
+/**
+ * Keeps the map sized to its container and fitted to the given points, until the user pans or
+ * zooms: after that, new points (a courier moving) no longer pull the view back.
+ */
 function MapResizer({
   bounds,
   maxZoom,
@@ -31,8 +34,27 @@ function MapResizer({
   readonly maxZoom: number;
 }): null {
   const map = useMap();
+  const userMoved = useRef(false);
+  useEffect(() => {
+    const container = map.getContainer();
+    const moved = (): void => {
+      userMoved.current = true;
+    };
+    map.on("dragstart", moved);
+    container.addEventListener("wheel", moved, { passive: true });
+    container.addEventListener("dblclick", moved);
+    const zoomButtons = container.querySelector(".leaflet-control-zoom");
+    zoomButtons?.addEventListener("click", moved);
+    return () => {
+      map.off("dragstart", moved);
+      container.removeEventListener("wheel", moved);
+      container.removeEventListener("dblclick", moved);
+      zoomButtons?.removeEventListener("click", moved);
+    };
+  }, [map]);
   useEffect(() => {
     const fit = (): void => {
+      if (userMoved.current) return;
       const valid = (bounds ?? []).filter(([lat, lng]) => !Number.isNaN(lat) && !Number.isNaN(lng));
       if (valid.length > 0) {
         map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom });
