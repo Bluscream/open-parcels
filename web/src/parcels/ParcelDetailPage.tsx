@@ -14,8 +14,8 @@ import {
   SOURCE_KIND_LABELS,
   STATUS_LABELS,
 } from "../lib/format";
-import { ArchivedBadge, LookupBadge, StatusBadge } from "./badges";
-import { ParcelEditor } from "./ParcelEditor";
+import { ArchivedBadge, LookupBadge } from "./badges";
+import { EditableStatus, EditableTitle, ParcelActions, useCanEdit } from "./InlineEdit";
 
 const LocationMap = lazy(() => import("../map/LocationMap"));
 
@@ -172,28 +172,34 @@ function Items({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
 function Header({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
   const carrierName = useCarrierName(parcel.carrier);
   const update = useUpdateParcel(parcel.id);
+  const canEdit = useCanEdit();
   const markedDelivered = parcel.manual_status === "delivered";
   return (
     <div className="detail-head">
       <CarrierLogo carrier={parcel.carrier} size={52} />
       <div className="detail-head-text">
         <div className="muted">{carrierName}</div>
-        <h1 id="parcel-title">{parcel.label ?? parcel.barcode}</h1>
+        <EditableTitle parcel={parcel} />
       </div>
       <div className="detail-head-tags">
-        <button
-          type="button"
-          className="button small"
-          aria-pressed={markedDelivered}
-          disabled={update.isPending}
-          onClick={() => {
-            update.mutate({ manual_status: markedDelivered ? null : "delivered" });
-          }}
-        >
-          {markedDelivered ? "Mark not delivered" : "Mark delivered"}
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            className="button small"
+            aria-pressed={markedDelivered}
+            disabled={update.isPending}
+            onClick={() => {
+              update.mutate({ manual_status: markedDelivered ? null : "delivered" });
+            }}
+          >
+            {markedDelivered ? "Mark not delivered" : "Mark delivered"}
+          </button>
+        ) : null}
         {parcel.archived_at === null ? null : <ArchivedBadge />}
-        <StatusBadge status={parcel.status} manual={parcel.manual_status !== null} />
+        <EditableStatus parcel={parcel} />
+      </div>
+      <div className="detail-head-actions">
+        <ParcelActions parcel={parcel} />
       </div>
     </div>
   );
@@ -208,7 +214,6 @@ function Overview({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
         <History parcel={parcel} />
         <Items parcel={parcel} />
         <Facts parcel={parcel} />
-        <ParcelEditor key={parcel.updated_at} parcel={parcel} />
       </div>
     </div>
   );

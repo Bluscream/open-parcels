@@ -34,6 +34,7 @@ import {
   type PostApiV1SourcesBody,
   type PostApiV1TokensBody,
 } from "./generated";
+import type { ParcelDetail } from "./types";
 
 export const keys = {
   parcels: ["parcels"] as const,
@@ -162,6 +163,29 @@ export function useUpdateParcel(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: PatchApiV1ParcelsIdBody) => patchApiV1ParcelsId(id, body),
+    // Edits show at once; a refused one puts the page back as it was.
+    onMutate: async (body) => {
+      await client.cancelQueries({ queryKey: keys.parcel(id) });
+      const previous = client.getQueryData<ParcelDetail>(keys.parcel(id));
+      if (previous !== undefined) {
+        client.setQueryData<ParcelDetail>(keys.parcel(id), {
+          ...previous,
+          ...(body.label === undefined ? {} : { label: body.label }),
+          ...(body.manual_status === undefined
+            ? {}
+            : {
+                manual_status: body.manual_status,
+                status: body.manual_status ?? previous.carrier_status,
+              }),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _body, context) => {
+      if (context?.previous !== undefined) {
+        client.setQueryData(keys.parcel(id), context.previous);
+      }
+    },
     onSuccess: (parcel) => {
       client.setQueryData(keys.parcel(id), parcel);
       return invalidateParcelViews(client);
