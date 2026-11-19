@@ -66,7 +66,30 @@ function addressText(value: AddressObject | AddressObject[] | undefined): string
   return list.flatMap((entry) => entry.value.map((address) => address.address ?? "")).join(", ");
 }
 
-export async function toMailInput(source: Buffer): Promise<MailInput> {
+/** A Date header this far ahead of now is a sender's wrong clock, not a time to trust. */
+const FUTURE_SKEW_MS = 15 * 60_000;
+
+/**
+ * The time a mail stands for: its Date header when that is plausible, else when the server
+ * received it. A missing header never becomes "now", and a future-dated one never becomes the
+ * parcel's status time (which would block carrier updates until it passed).
+ */
+export function mailDate(header: Date | null, receivedAt: Date | null, now: Date): Date | null {
+  const plausible = (date: Date | null): date is Date =>
+    date !== null &&
+    !Number.isNaN(date.getTime()) &&
+    date.getTime() <= now.getTime() + FUTURE_SKEW_MS;
+  if (plausible(header)) {
+    return header;
+  }
+  return plausible(receivedAt) ? receivedAt : null;
+}
+
+export async function toMailInput(
+  source: Buffer,
+  receivedAt: Date | null = null,
+  now: Date = new Date(),
+): Promise<MailInput> {
   const parsed = await simpleParser(source, { skipImageLinks: true });
   return {
     messageId: parsed.messageId ?? null,
@@ -74,7 +97,7 @@ export async function toMailInput(source: Buffer): Promise<MailInput> {
     subject: parsed.subject ?? "",
     text: parsed.text ?? null,
     html: typeof parsed.html === "string" ? parsed.html : null,
-    date: parsed.date ?? null,
+    date: mailDate(parsed.date ?? null, receivedAt, now),
   };
 }
 
@@ -229,7 +252,12 @@ export class MailWatcher {
             );
       for await (const message of messages) {
         lastUid = Math.max(lastUid, message.uid);
-        snapshots.push(...this.#interpret(sourceId, await toMailInput(message.source)));
+        const mail = await toMailInput(
+          message.source,
+          message.receivedAt ?? null,
+          this.deps.clock.now(),
+        );
+        snapshots.push(...this.#interpret(sourceId, mail));
       }
       progress = { ...progress, [folder]: { uidValidity, lastUid } };
     }
