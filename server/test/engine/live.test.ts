@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LIVE_FAST_MS, LIVE_PROBE_MS } from "../../src/engine/live.js";
 import type { EphemeralMessage } from "../../src/events/bus.js";
 import { RateLimitedError, TransientError } from "../../src/plugin/api.js";
@@ -184,5 +184,52 @@ describe("live courier tracking", () => {
     await poll("out_for_delivery", true);
     shop.liveScript = [reading("en_route", 3, COURIER)];
     expect(await context.services.live.pass()).toBe(LIVE_FAST_MS);
+  });
+
+  it("forgets the target of a parcel deleted since the last poll", async () => {
+    const parcelId = await poll("out_for_delivery", true);
+    await context.services.db.deleteFrom("parcels").where("id", "=", parcelId).execute();
+    expect(await context.services.live.pass()).toBeNull();
+    expect(shop.liveCalls).toHaveLength(0);
+  });
+});
+
+describe("the live tracking loop", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("runs one chain of passes however often it is woken during a pass", async () => {
+    vi.useFakeTimers();
+    const live = context.services.live;
+    let release: (next: number | null) => void = () => undefined;
+    const pass = vi.spyOn(live, "pass").mockImplementation(
+      () =>
+        new Promise<number | null>((resolve) => {
+          release = resolve;
+        }),
+    );
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pass).toHaveBeenCalledTimes(1);
+    // Wakes while the pass runs, as setTargets after every poll does.
+    live.wake();
+    live.wake();
+    live.setTargets(sourceId, []);
+    await vi.advanceTimersByTimeAsync(LIVE_FAST_MS);
+    expect(pass).toHaveBeenCalledTimes(1);
+    release(LIVE_FAST_MS);
+    // One rerun for the wakes, right away, and nothing else.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pass).toHaveBeenCalledTimes(2);
+    release(LIVE_FAST_MS);
+    await vi.advanceTimersByTimeAsync(LIVE_FAST_MS - 1);
+    expect(pass).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(pass).toHaveBeenCalledTimes(3);
+    live.stop();
+    release(LIVE_FAST_MS);
+    await vi.advanceTimersByTimeAsync(LIVE_PROBE_MS);
+    expect(pass).toHaveBeenCalledTimes(3);
   });
 });

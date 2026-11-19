@@ -52,6 +52,9 @@ export class LiveTracker {
   readonly #failures = new Map<string, number>();
   #timer: ReturnType<typeof setTimeout> | undefined;
   #stopped = true;
+  /** A pass is running; a wake meanwhile only sets `#rerun`. */
+  #running = false;
+  #rerun = false;
 
   constructor(private readonly deps: LiveDeps) {}
 
@@ -87,30 +90,61 @@ export class LiveTracker {
     }
   }
 
+  /**
+   * Starts a pass soon. There is only ever one chain of passes: a wake while a pass runs asks for
+   * one more pass after it instead of starting a second chain, and a wake while the next pass is
+   * already scheduled leaves that one in place.
+   */
   wake(): void {
-    if (this.#stopped || this.#timer !== undefined) {
+    if (this.#stopped) {
       return;
     }
-    this.#schedule(0);
+    if (this.#running) {
+      this.#rerun = true;
+      return;
+    }
+    if (this.#timer === undefined) {
+      this.#schedule(0);
+    }
   }
 
   #schedule(delayMs: number): void {
+    if (this.#timer !== undefined) {
+      clearTimeout(this.#timer);
+    }
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
-      this.pass()
-        .then((next) => {
-          if (next !== null && !this.#stopped) {
-            this.#schedule(next);
-          }
-        })
-        .catch((error: unknown) => {
-          this.deps.logger.error({ err: error }, "Live tracking pass failed.");
-          if (!this.#stopped) {
-            this.#schedule(LIVE_PROBE_MS);
-          }
-        });
+      void this.#run();
     }, delayMs);
     this.#timer.unref();
+  }
+
+  /** Whether a wake arrived during the pass; read after the await, where it may have changed. */
+  #rerunAsked(): boolean {
+    return this.#rerun;
+  }
+
+  async #run(): Promise<void> {
+    this.#running = true;
+    this.#rerun = false;
+    let next: number | null;
+    try {
+      next = await this.pass();
+    } catch (error) {
+      this.deps.logger.error({ err: error }, "Live tracking pass failed.");
+      next = LIVE_PROBE_MS;
+    } finally {
+      this.#running = false;
+    }
+    if (this.#stopped) {
+      return;
+    }
+    if (this.#rerunAsked()) {
+      // Something changed during the pass (new targets, a wake): look again right away.
+      this.#schedule(0);
+    } else if (next !== null) {
+      this.#schedule(next);
+    }
   }
 
   /** Reads every candidate once. Returns the delay until the next pass, or null when idle. */
@@ -160,6 +194,13 @@ export class LiveTracker {
       .select(["id", "status", "delivered"])
       .where("id", "in", [...this.#targets.keys()])
       .execute();
+    // A parcel deleted since its source's last poll is no longer followed.
+    const present = new Set(rows.map((row) => row.id));
+    for (const parcelId of [...this.#targets.keys()]) {
+      if (!present.has(parcelId)) {
+        await this.#forget(parcelId);
+      }
+    }
     const result: [string, Tracked][] = [];
     for (const row of rows) {
       const tracked = this.#targets.get(row.id);
