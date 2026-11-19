@@ -37,7 +37,15 @@ const PLAUSIBLE = carrierPattern("ceska_posta");
 const BATCH_SIZE = 10;
 const NOT_FOUND = new Set(["-3", "-4"]);
 
-/** One history request for up to ten codes; the answer lists one object per code, in order. */
+const sameCode = (a: string, b: string): boolean =>
+  a.replace(/\s+/g, "").toUpperCase() === b.replace(/\s+/g, "").toUpperCase();
+
+/**
+ * One history request for up to ten codes. Each answer is matched to its code by the `id` it
+ * carries, never by position, so a reordered or shortened list cannot hand one parcel another's
+ * history. An answer without an id is only taken for a single-code request, where it cannot be
+ * anyone else's; in a batch it stops the run.
+ */
 async function readHistory(http: PluginHttp, codes: readonly string[]): Promise<Map<string, Json>> {
   const url = new URL(`https://${HISTORY_HOST}/services/ParcelHistory/getDataAsJson`);
   url.searchParams.set("idParcel", codes.join(";"));
@@ -47,12 +55,22 @@ async function readHistory(http: PluginHttp, codes: readonly string[]): Promise<
     throw new UnexpectedResponseError("Česká pošta history did not answer with a list.");
   }
   const found = new Map<string, Json>();
-  codes.forEach((code, index) => {
-    const entry: unknown = body[index];
-    if (isObject(entry)) {
+  for (const entry of body.filter(isObject)) {
+    const id = text(entry["id"]);
+    const [only] = codes;
+    const code =
+      id === null
+        ? codes.length === 1
+          ? only
+          : undefined
+        : codes.find((candidate) => sameCode(candidate, id));
+    if (id === null && code === undefined) {
+      throw new UnexpectedResponseError("Česká pošta history answered without parcel ids.");
+    }
+    if (code !== undefined) {
       found.set(code, entry);
     }
-  });
+  }
   return found;
 }
 

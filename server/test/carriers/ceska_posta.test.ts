@@ -8,7 +8,8 @@ const A = "DR0000000001X";
 const B = "DR0000000002X";
 
 const state = (id: string, date: string, text = `Step ${id}`) => ({ id, date, text });
-const history = (...states: ReturnType<typeof state>[]) => ({
+const history = (id: string, ...states: ReturnType<typeof state>[]) => ({
+  id,
   attributes: { weight: 1.5 },
   states: { state: states },
 });
@@ -20,8 +21,14 @@ describe("Česká pošta tracking", () => {
       onFragment(
         "getDataAsJson",
         json([
-          history(state("-L", "2026-11-16"), state("51", "2026-11-17"), state("53", "2026-11-18")),
-          history(state("-3", "2026-11-18")),
+          // Answered out of order: each answer names its code.
+          history(B, state("-3", "2026-11-18")),
+          history(
+            A,
+            state("-L", "2026-11-16"),
+            state("51", "2026-11-17"),
+            state("53", "2026-11-18"),
+          ),
         ]),
       ),
       onFragment(
@@ -59,6 +66,7 @@ describe("Česká pošta tracking", () => {
         "getDataAsJson",
         json([
           history(
+            A,
             state("91", "2026-11-18"),
             state("BG1", "2026-11-18", ""),
             state("ZZ", "2026-11-18"),
@@ -70,6 +78,21 @@ describe("Česká pošta tracking", () => {
     const [parcel] = (await world.track([A], {}, null)).snapshots;
     expect(parcel).toMatchObject({ status: "delivered", delivered: true });
     expect(world.unknown).toEqual(["status_code:ZZ"]);
+  });
+
+  it("never hands a parcel another code's history, and stops on answers without ids", async () => {
+    const world = new World(ceskaPosta);
+    world.routes = [
+      onFragment("getDataAsJson", json([history(B, state("91", "2026-11-18"))])),
+      onFragment("/package/", json({}, 404)),
+    ];
+    const result = await world.track([A, B], {}, null);
+    expect(result.snapshots.map((parcel) => parcel.barcode)).toEqual([B]);
+
+    const anonymous = new World(ceskaPosta);
+    const withoutId = { attributes: {}, states: { state: [state("91", "2026-11-18")] } };
+    anonymous.routes = [onFragment("getDataAsJson", json([withoutId, withoutId]))];
+    await expect(anonymous.track([A, B], {}, null)).rejects.toBeInstanceOf(TransientError);
   });
 
   it("fails the run when the history service fails", async () => {
