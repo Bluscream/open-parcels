@@ -1,3 +1,4 @@
+import { Package, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useParcels } from "../api/queries";
 import { ErrorNotice, Spinner } from "../components/ui";
@@ -10,9 +11,15 @@ export function ParcelsPage(): ReactNode {
   const parcels = useParcels(archived);
 
   return (
-    <section aria-labelledby="parcels-title">
-      <div className="page-header">
-        <h1 id="parcels-title">Parcels</h1>
+    <section aria-labelledby="parcels-title" className="stack">
+      <div className="page-header glass-panel">
+        <div className="page-title-row">
+          <Package size={22} className="page-icon" aria-hidden="true" />
+          <h1 id="parcels-title">Parcels</h1>
+          {parcels.data === undefined ? null : (
+            <span className="page-count">{parcels.data.length}</span>
+          )}
+        </div>
         <label className="checkbox">
           <input
             type="checkbox"
@@ -30,6 +37,7 @@ export function ParcelsPage(): ReactNode {
             setAdding(true);
           }}
         >
+          <Plus size={16} aria-hidden="true" />
           Track a parcel
         </button>
       </div>

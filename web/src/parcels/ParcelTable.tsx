@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo, useState, type ReactNode } from "react";
 import type { Parcel } from "../api/types";
+import { CarrierLogo } from "../components/CarrierLogo";
 import { DataTable } from "../components/DataTable";
 import { formatRelative, formatWindow } from "../lib/format";
 import { LookupBadge, StatusBadge } from "./badges";
@@ -9,6 +10,21 @@ import { LookupBadge, StatusBadge } from "./badges";
 export type ParcelFilter = "active" | "delivered" | "all";
 
 const column = createColumnHelper<Parcel>();
+
+/** Up to three item pictures beside the parcel name, as the original list showed them. */
+export function ItemThumbs({ items }: { readonly items: Parcel["items"] }): ReactNode {
+  const images = items.flatMap((item) => (item.image_url === null ? [] : [item.image_url]));
+  if (images.length === 0) {
+    return null;
+  }
+  return (
+    <span className="thumbs">
+      {images.slice(0, 3).map((src) => (
+        <img key={src} src={src} alt="" loading="lazy" width={32} height={32} />
+      ))}
+    </span>
+  );
+}
 
 const COLUMNS = [
   column.accessor((parcel) => parcel.label ?? parcel.barcode, {
@@ -20,10 +36,14 @@ const COLUMNS = [
         params={{ parcelId: info.row.original.id }}
         className="row-link"
       >
-        <strong>{info.getValue()}</strong>
-        {info.row.original.label === null ? null : (
-          <span className="muted mono"> {info.row.original.barcode}</span>
-        )}
+        <CarrierLogo carrier={info.row.original.carrier} size={32} />
+        <span className="cell-title">
+          <strong>{info.getValue()}</strong>
+          {info.row.original.label === null ? null : (
+            <span className="mono"> {info.row.original.barcode}</span>
+          )}
+        </span>
+        <ItemThumbs items={info.row.original.items} />
       </Link>
     ),
   }),

@@ -1,18 +1,32 @@
 import { Link, Outlet } from "@tanstack/react-router";
-import { Suspense, type ReactNode } from "react";
+import {
+  Activity,
+  CalendarDays,
+  KeyRound,
+  LogOut,
+  Map,
+  Package,
+  Plug,
+  Plus,
+  ShoppingBag,
+  type LucideIcon,
+} from "lucide-react";
+import { Suspense, useState, type ReactNode } from "react";
 import { useLiveUpdates, type LiveState } from "../api/events";
 import { useSession, useSignOut } from "../auth/session";
 import { Spinner } from "../components/ui";
 import { useTheme, type ThemeChoice } from "../lib/theme";
+import { AddParcelDialog } from "../parcels/AddParcelDialog";
 
 const NAV = [
-  { to: "/", label: "Parcels" },
-  { to: "/map", label: "Map" },
-  { to: "/calendar", label: "Calendar" },
-  { to: "/sources", label: "Sources" },
-  { to: "/tokens", label: "API tokens" },
-  { to: "/status", label: "Status" },
-] as const;
+  { to: "/", label: "Parcels", icon: Package },
+  { to: "/map", label: "Live Map", icon: Map },
+  { to: "/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/calendar", label: "Calendar", icon: CalendarDays },
+  { to: "/sources", label: "Sources", icon: Plug },
+  { to: "/tokens", label: "API tokens", icon: KeyRound },
+  { to: "/status", label: "Status", icon: Activity },
+] as const satisfies readonly { to: string; label: string; icon: LucideIcon }[];
 
 const LIVE_LABELS: Readonly<Record<LiveState, string>> = {
   connecting: "Connecting…",
@@ -43,6 +57,7 @@ export function Shell(): ReactNode {
   const session = useSession();
   const signOut = useSignOut();
   const live = useLiveUpdates(true);
+  const [adding, setAdding] = useState(false);
   const isIngress = session.data?.method === "ingress";
 
   return (
@@ -51,23 +66,37 @@ export function Shell(): ReactNode {
         Skip to content
       </a>
       <header className="topbar">
-        <span className="brand">📦 open-parcels</span>
+        <Link to="/" className="brand">
+          OpenParcels
+        </Link>
         <nav aria-label="Main">
           <ul className="nav">
             {NAV.map((item) => (
               <li key={item.to}>
                 <Link
                   to={item.to}
+                  title={item.label}
                   activeOptions={{ exact: item.to === "/" }}
                   activeProps={{ "aria-current": "page", className: "active" }}
                 >
-                  {item.label}
+                  <item.icon size={15} aria-hidden="true" />
+                  <span>{item.label}</span>
                 </Link>
               </li>
             ))}
           </ul>
         </nav>
         <div className="topbar-tools">
+          <button
+            type="button"
+            className="header-link"
+            onClick={() => {
+              setAdding(true);
+            }}
+          >
+            <Plus size={16} aria-hidden="true" />
+            Add
+          </button>
           <span className={`live live-${live}`} role="status" title="Live updates">
             {LIVE_LABELS[live]}
           </span>
@@ -75,11 +104,12 @@ export function Shell(): ReactNode {
           {isIngress || session.data?.method !== "session" ? null : (
             <button
               type="button"
-              className="button"
+              className="header-link"
               onClick={() => {
                 signOut.mutate();
               }}
             >
+              <LogOut size={16} aria-hidden="true" />
               Sign out
             </button>
           )}
@@ -90,6 +120,12 @@ export function Shell(): ReactNode {
           <Outlet />
         </Suspense>
       </main>
+      <AddParcelDialog
+        open={adding}
+        onClose={() => {
+          setAdding(false);
+        }}
+      />
     </div>
   );
 }

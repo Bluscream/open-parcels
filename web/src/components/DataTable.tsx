@@ -7,6 +7,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+import { ChevronDown, ChevronsUpDown, ChevronUp, Search } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 export interface DataTableProps<TData> {
@@ -23,11 +24,12 @@ export interface DataTableProps<TData> {
   readonly rowClassName?: (row: TData) => string | undefined;
 }
 
-function sortLabel(sorted: false | "asc" | "desc"): string {
-  if (sorted === "asc") {
-    return " ▲";
+function SortIcon({ sorted }: { readonly sorted: false | "asc" | "desc" }): ReactNode {
+  if (sorted === false) {
+    return <ChevronsUpDown size={12} className="sort-icon" aria-hidden="true" />;
   }
-  return sorted === "desc" ? " ▼" : "";
+  const Icon = sorted === "asc" ? ChevronUp : ChevronDown;
+  return <Icon size={12} className="sort-icon active" aria-hidden="true" />;
 }
 
 /** A sortable, searchable table built on TanStack Table. Headers are buttons, so sorting works by keyboard. */
@@ -50,25 +52,28 @@ export function DataTable<TData>(props: DataTableProps<TData>): ReactNode {
 
   return (
     <div className="data-table">
-      <div className="table-toolbar">
+      <div className="table-toolbar glass-panel">
         <label htmlFor={searchId} className="visually-hidden">
           {props.searchLabel ?? "Search"}
         </label>
-        <input
-          id={searchId}
-          type="search"
-          placeholder={`${props.searchLabel ?? "Search"}…`}
-          value={filter}
-          onChange={(e) => {
-            setFilter(e.target.value);
-          }}
-        />
+        <div className="search-wrap">
+          <Search size={14} aria-hidden="true" />
+          <input
+            id={searchId}
+            type="search"
+            placeholder={`${props.searchLabel ?? "Search"}…`}
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value);
+            }}
+          />
+        </div>
         {props.extraControls}
-        <span className="muted count" aria-live="polite">
+        <span className="count" aria-live="polite">
           {rows.length} of {props.data.length}
         </span>
       </div>
-      <div className="table-scroll">
+      <div className="table-scroll glass-panel">
         <table>
           <caption className="visually-hidden">{props.caption}</caption>
           <thead>
@@ -87,7 +92,7 @@ export function DataTable<TData>(props: DataTableProps<TData>): ReactNode {
                           onClick={header.column.getToggleSortingHandler()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          <span aria-hidden="true">{sortLabel(sorted)}</span>
+                          <SortIcon sorted={sorted} />
                         </button>
                       ) : (
                         flexRender(header.column.columnDef.header, header.getContext())
