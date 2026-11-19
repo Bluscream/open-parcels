@@ -422,7 +422,13 @@ describe("scheduler", () => {
     row = await sourceRow(id);
     expect(Date.parse(row.next_run_at ?? "") - context.clock.now().getTime()).toBe(900_000);
 
+    // A manual run does not jump the carrier's wait: it stays deferred to the Retry-After.
     post.failWith = undefined;
+    expect(await context.services.sources.requestRun(id)).toEqual({
+      deferredUntil: row.next_run_at,
+    });
+    expect(await context.services.scheduler.runDue()).toBe(0);
+    context.clock.advance(900_000);
     await runNow(id);
     row = await sourceRow(id);
     expect(row).toMatchObject({ state: "ok", consecutive_failures: 0 });

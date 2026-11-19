@@ -154,6 +154,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     secretKey: deps.secrets.derive("image proxy"),
     cacheDir: path.join(deps.config.dataDir, "images"),
     logger,
+    allowedHosts: () => registry.list().flatMap((plugin) => plugin.info.imageHosts),
   });
   const tiles = new TileProxy({
     cacheDir: path.join(deps.config.dataDir, "tiles"),
@@ -259,6 +260,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
       clock,
       logger,
       httpFor: (policy) => runner.httpFor(policy),
+      exclusive: (sourceId, work) => runner.exclusive(sourceId, work),
     }),
     parcels,
     setup,

@@ -19,8 +19,9 @@ async function runMaintenance(services: Services): Promise<void> {
   const sessions = await services.auth.pruneExpiredSessions();
   const events = await services.bus.pruneExpired();
   const images = await services.images.prune();
+  const tiles = await services.tiles.prune();
   const retention = await applyRetention(services.db, services.clock, services.config.retention);
-  services.logger.debug({ sessions, events, images, ...retention }, "Maintenance finished.");
+  services.logger.debug({ sessions, events, images, tiles, ...retention }, "Maintenance finished.");
 }
 
 async function main(): Promise<void> {

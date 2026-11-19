@@ -8,6 +8,18 @@ import { ApiError, errorBodySchema, notFound } from "../errors.js";
 
 const idParams = z.object({ id: z.uuid() });
 
+/** "45 seconds", "12 minutes", "3 hours": rounded up, for a message a person reads. */
+export function waitText(seconds: number): string {
+  if (seconds < 90) {
+    return `${String(seconds)} seconds`;
+  }
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 90) {
+    return `${String(minutes)} minutes`;
+  }
+  return `${String(Math.ceil(minutes / 60))} hours`;
+}
+
 const sourceSchema = z.object({
   id: z.uuid(),
   plugin: z.string(),
@@ -223,15 +235,30 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
       schema: {
         tags: ["sources"],
         summary: "Run a source now.",
+        description:
+          "While the source backs off (a captcha pause or the carrier's rate limit) the run is " +
+          "not brought forward: the answer is 429 `source_backing_off` with `Retry-After`.",
         params: idParams,
-        response: { 202: z.null(), 404: errorBodySchema },
+        response: { 202: z.null(), 404: errorBodySchema, 429: errorBodySchema },
       },
     },
     async (request, reply) => {
       if ((await services.sources.get(request.params.id)) === undefined) {
         throw notFound("The source");
       }
-      await services.sources.requestRun(request.params.id);
+      const { deferredUntil } = await services.sources.requestRun(request.params.id);
+      if (deferredUntil !== null) {
+        const seconds = Math.max(
+          1,
+          Math.ceil((Date.parse(deferredUntil) - services.clock.now().getTime()) / 1000),
+        );
+        void reply.header("retry-after", String(seconds));
+        throw new ApiError(
+          429,
+          "source_backing_off",
+          `The carrier asked us to wait; this source runs again in ${waitText(seconds)}.`,
+        );
+      }
       services.scheduler.wake();
       return reply.code(202).send(null);
     },

@@ -1,5 +1,7 @@
-import type { CookieJar } from "tough-cookie";
+import { isIP } from "node:net";
+import { getPublicSuffix, type CookieJar } from "tough-cookie";
 import type { Clock } from "../clock.js";
+import { isNonPublicHostLiteral } from "../net/address.js";
 import { RateLimitedError, TransientError } from "./errors.js";
 
 export const DEFAULT_USER_AGENT = "open-parcels/2 (+https://github.com/Bluscream/open-parcels)";
@@ -103,12 +105,44 @@ export interface RequestOptions {
 
 const MAX_REDIRECTS = 10;
 
-/** Same host, or a host under the same parent domain (`www.example.de` → `login.example.de`). */
+/** The registrable domain (`example.co.uk`); the host itself for IP literals. */
+function registrableDomain(hostname: string): string {
+  if (isIP(hostname.replace(/^\[|\]$/g, "")) !== 0) {
+    return hostname;
+  }
+  try {
+    return getPublicSuffix(hostname) ?? hostname;
+  } catch {
+    // tough-cookie refuses special-use names (`.invalid`, `.localhost`); those are not on the
+    // public suffix list, so the last two labels are their registrable part.
+    return hostname.split(".").slice(-2).join(".");
+  }
+}
+
+/**
+ * Same host, or a host under the same registrable domain (`www.example.de` → `login.example.de`).
+ * The registrable domain comes from the public suffix list, so `a.example.co.uk` never matches
+ * `other.co.uk`.
+ */
 export function sameSite(origin: URL): (target: URL) => boolean {
-  const parent = origin.hostname.split(".").slice(-2).join(".");
+  const parent = registrableDomain(origin.hostname);
   return (target) =>
     target.protocol === "https:" &&
     (target.hostname === parent || target.hostname.endsWith(`.${parent}`));
+}
+
+/** A short, value-free name for why a request never got an answer: `timeout`, `ECONNRESET`… */
+export function networkCause(error: unknown): string {
+  if (error instanceof Error && error.name === "TimeoutError") {
+    return "timeout";
+  }
+  const inner = error instanceof Error ? error.cause : undefined;
+  const code =
+    inner !== null && typeof inner === "object" && "code" in inner ? inner.code : undefined;
+  if (typeof code === "string" && /^[A-Z_]+$/.test(code)) {
+    return code;
+  }
+  return error instanceof Error ? error.name : "unknown error";
 }
 
 export interface HttpResponse {
@@ -181,6 +215,10 @@ export class PluginHttp {
   }
 
   async #send(url: URL, options: RequestOptions, redirect: "follow" | "manual"): Promise<Response> {
+    // Plug-ins build some URLs from carrier data (links, redirects); none may point inward.
+    if (isNonPublicHostLiteral(url.hostname)) {
+      throw new TransientError("Refusing a request to a non-public address.");
+    }
     const limit = this.policy.limits[url.hostname] ?? this.policy.limits["*"] ?? DEFAULT_LIMIT;
     await this.limiter.acquire(url.hostname, limit);
     const headers = new Headers(options.headers);
@@ -197,7 +235,9 @@ export class PluginHttp {
         signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       });
     } catch (error) {
-      throw new TransientError(`Request to ${url.hostname} failed.`, { cause: error });
+      throw new TransientError(`Request to ${url.hostname} failed (${networkCause(error)}).`, {
+        cause: error,
+      });
     }
     const retryAfter = parseRetryAfter(response.headers.get("retry-after"), this.clock.now());
     if (response.status === 429 || (response.status === 503 && retryAfter !== undefined)) {

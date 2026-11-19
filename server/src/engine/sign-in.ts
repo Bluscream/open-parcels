@@ -6,6 +6,7 @@ import { isoNow, type Clock } from "../clock.js";
 import { DecryptionError, type SecretBox } from "../crypto/secrets.js";
 import type { Database } from "../db/schema.js";
 import {
+  CaptchaError,
   RateLimitedError,
   SignInRejectedError,
   TransientError,
@@ -27,9 +28,12 @@ import type { SourceService, SourceView } from "./sources.js";
 export const ATTEMPT_TTL_MS = 15 * 60_000;
 /** Refused codes, wrong pastes and the like before the attempt is dropped. */
 export const MAX_FAILURES = 5;
+/** How long to wait after a captcha before the same step is tried again. */
+export const CAPTCHA_RETRY_SECONDS = 15 * 60;
 
 export type SignInErrorCode =
   | "sign_in_expired"
+  | "sign_in_captcha"
   | "sign_in_timeout"
   | "sign_in_refused"
   | "sign_in_failed"
@@ -71,6 +75,8 @@ export interface SignInDeps {
   readonly clock: Clock;
   readonly logger: Logger;
   readonly httpFor: (policy: HttpPolicy) => PluginHttp;
+  /** The per-source lock shared with runs and live reads (`SourceRunner.exclusive`). */
+  readonly exclusive?: <T>(sourceId: string, work: () => Promise<T>) => Promise<T>;
 }
 
 const storedSchema = z.object({ state: z.unknown(), step: z.looseObject({ kind: z.string() }) });
@@ -124,7 +130,48 @@ export class SignInService {
     return source.kind === "mail" ? [] : plugin.signInFlows(source.kind, source.config);
   }
 
+  /** The source's lock: one carrier conversation per account, shared with runs and live reads. */
+  async #locked<T>(sourceId: string, work: () => Promise<T>): Promise<T> {
+    return this.deps.exclusive === undefined ? work() : this.deps.exclusive(sourceId, work);
+  }
+
   async start(sourceId: string, flowId?: string): Promise<AttemptView> {
+    return this.#locked(sourceId, () => this.#start(sourceId, flowId));
+  }
+
+  async continue(sourceId: string, attemptId: string, input: SignInInput): Promise<AttemptView> {
+    // Read the step outside the lock: a second submit that queued behind the first finds the
+    // attempt changed (or gone) and is refused instead of reaching the carrier again.
+    const seen = await this.#version(sourceId, attemptId);
+    return this.#locked(sourceId, () => this.#continue(sourceId, attemptId, input, seen));
+  }
+
+  async poll(sourceId: string, attemptId: string): Promise<AttemptView> {
+    const seen = await this.#version(sourceId, attemptId);
+    return this.#locked(sourceId, () => this.#poll(sourceId, attemptId, seen));
+  }
+
+  /** The stored blob is re-encrypted with a fresh IV on every change, so it serves as a version. */
+  async #version(sourceId: string, attemptId: string): Promise<Buffer | undefined> {
+    const row = await this.deps.db
+      .selectFrom("sign_in_attempts")
+      .select("blob")
+      .where("id", "=", attemptId)
+      .where("source_id", "=", sourceId)
+      .executeTakeFirst();
+    return row?.blob;
+  }
+
+  #checkUnchanged(attempt: LoadedAttempt, seen: Buffer | undefined): void {
+    if (seen !== undefined && !attempt.blob.equals(seen)) {
+      throw new SignInError(
+        "sign_in_wrong_step",
+        "This step was already answered; continue with the step it led to.",
+      );
+    }
+  }
+
+  async #start(sourceId: string, flowId?: string): Promise<AttemptView> {
     const { source, plugin } = await this.#source(sourceId);
     const flows = source.kind === "mail" ? [] : plugin.signInFlows(source.kind, source.config);
     const interactive = flows.filter((flow) => flow.type === "interactive");
@@ -143,9 +190,15 @@ export class SignInService {
     return this.#settle(source, flow.id, null, turn, false);
   }
 
-  async continue(sourceId: string, attemptId: string, input: SignInInput): Promise<AttemptView> {
+  async #continue(
+    sourceId: string,
+    attemptId: string,
+    input: SignInInput,
+    seen: Buffer | undefined,
+  ): Promise<AttemptView> {
     const { source, plugin } = await this.#source(sourceId);
     const attempt = await this.#load(source.id, attemptId, false);
+    this.#checkUnchanged(attempt, seen);
     const checked = checkedInput(attempt.step, input);
     const turn = await this.#guarded(attempt, () =>
       this.#call(plugin, source, {
@@ -158,9 +211,14 @@ export class SignInService {
     return this.#settle(source, attempt.flow, attempt, turn, false);
   }
 
-  async poll(sourceId: string, attemptId: string): Promise<AttemptView> {
+  async #poll(sourceId: string, attemptId: string, seen: Buffer | undefined): Promise<AttemptView> {
     const { source, plugin } = await this.#source(sourceId);
     const attempt = await this.#load(source.id, attemptId, true);
+    // A poll that queued behind another one meets the poll_not_before the first one stored and
+    // gets "too soon"; a poll whose step has since moved on is refused like a stale continue.
+    if (attempt.step.kind !== "await_approval") {
+      this.#checkUnchanged(attempt, seen);
+    }
     if (attempt.step.kind !== "await_approval") {
       throw new SignInError("sign_in_wrong_step", "This step does not wait for an approval.");
     }
@@ -252,6 +310,14 @@ export class SignInService {
           "sign_in_unavailable",
           "The carrier could not be reached. Your sign-in is kept; try the same step again.",
           error instanceof RateLimitedError ? error.retryAfterSeconds : undefined,
+        );
+      }
+      if (error instanceof CaptchaError) {
+        // Not the user's fault, so not a failed try; the step is kept for after the wait.
+        throw new SignInError(
+          "sign_in_captcha",
+          "The carrier showed a captcha. Your sign-in is kept; wait a while, then try the same step again.",
+          CAPTCHA_RETRY_SECONDS,
         );
       }
       if (error instanceof InvalidSourceConfigError) {
@@ -366,6 +432,7 @@ export class SignInService {
     }
     return {
       id: row.id,
+      blob: row.blob,
       sourceId,
       flow: row.flow,
       state: stored.state,
@@ -389,6 +456,8 @@ export class SignInService {
 
 interface LoadedAttempt {
   readonly id: string;
+  /** The encrypted row as read; it changes on every update. */
+  readonly blob: Buffer;
   readonly sourceId: string;
   readonly flow: string;
   readonly state: unknown;

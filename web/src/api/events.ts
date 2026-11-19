@@ -76,6 +76,11 @@ export function useLiveUpdates(enabled: boolean): LiveState {
     for (const type of SOURCE_EVENTS) {
       source.addEventListener(type, onSource);
     }
+    // The server could not replay what was missed (too old, or a reset database): reload all.
+    const onResync = (): void => {
+      void client.invalidateQueries();
+    };
+    source.addEventListener("resync", onResync);
     return () => {
       source.close();
     };

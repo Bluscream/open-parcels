@@ -59,8 +59,9 @@ export async function removeOrphanedAutoSources(
     .where("id", "in", sourceIds)
     .where("auto_created", "=", 1)
     .where("kind", "=", "tracking")
+    // Sign-in data is the stored secret. The session store is not: keyless plug-ins keep run
+    // state there (cookies, rate budgets) on every run, so it says nothing about the user.
     .where("secret_blob", "is", null)
-    .where("session_blob", "is", null)
     .where((eb) =>
       eb.not(
         eb.exists(
@@ -321,13 +322,28 @@ export class SourceService {
     await this.bus.notify();
   }
 
-  /** Asks the scheduler to run this source as soon as possible. */
-  async requestRun(id: string): Promise<void> {
+  /**
+   * Asks the scheduler to run this source as soon as possible, but never before its backoff ends:
+   * a captcha pause or a carrier's 429 is honoured whoever asks. Returns the time the run was
+   * deferred to, or null when it is due now.
+   */
+  async requestRun(id: string): Promise<{ deferredUntil: string | null }> {
+    const row = await this.db
+      .selectFrom("sources")
+      .select("backoff_until")
+      .where("id", "=", id)
+      .executeTakeFirst();
+    const now = this.clock.now().getTime();
+    const until = row?.backoff_until ?? null;
+    const backoff = until === null ? Number.NaN : Date.parse(until);
+    const deferredUntil =
+      Number.isFinite(backoff) && backoff > now ? new Date(backoff).toISOString() : null;
     await this.db
       .updateTable("sources")
-      .set({ next_run_at: isoNow(this.clock) })
+      .set({ next_run_at: deferredUntil ?? isoNow(this.clock) })
       .where("id", "=", id)
       .execute();
+    return { deferredUntil };
   }
 
   /** Changes the state and fires `source.state_changed` when it actually changed. */

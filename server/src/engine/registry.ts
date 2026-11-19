@@ -54,6 +54,8 @@ export interface PluginInfo {
   readonly configSchema: z.ZodType;
   readonly secretSchema: z.ZodType;
   readonly browserUserAgentReason: string | null;
+  /** Hosts the image proxy may fetch this carrier's pictures from (see `CarrierPlugin`). */
+  readonly imageHosts: readonly string[];
 }
 
 /**
@@ -187,6 +189,7 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
       configSchema: plugin.configSchema,
       secretSchema: plugin.secretSchema,
       browserUserAgentReason: plugin.http.userAgent?.reason ?? null,
+      imageHosts: plugin.imageHosts ?? [],
     },
     http: plugin.http,
     canFetchAccount: plugin.fetchAccount !== undefined,

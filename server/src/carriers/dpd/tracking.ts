@@ -126,6 +126,15 @@ function lifeCycleSnapshot(barcode: string, data: LifeCycle, report: Report): Pa
   });
 }
 
+/** Key names only (never values), so a changed response can be recognised from the log. */
+function topKeys(body: unknown): string {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return Array.isArray(body) ? "(an array)" : `(a ${typeof body})`;
+  }
+  const keys = Object.keys(body).slice(0, 8);
+  return keys.length === 0 ? "(none)" : keys.join(", ");
+}
+
 type TrackingContext = PluginContext<{ publicTracking: boolean }, unknown>;
 
 /** Looks codes up on DPD Germany's public tracking page, one request per code. */
@@ -147,18 +156,32 @@ export async function trackDe(
     if (response.status === 404) {
       continue;
     }
+    // Messages name the status, the content type and the schema path that broke, never the
+    // code or any value from the body; they end up in the source's detail and the log.
+    const type = (response.headers.get("content-type") ?? "none").split(";")[0]?.trim();
     if (response.status !== 200) {
-      throw new TransientError(`The DPD tracking page answered HTTP ${response.status}.`);
+      throw new TransientError(
+        `DPD tracking answered HTTP ${String(response.status)} (${type ?? "none"}), expected 200 or 404.`,
+      );
     }
     let body: unknown;
     try {
       body = response.json();
     } catch {
-      throw new UnexpectedResponseError("The DPD tracking page did not return JSON.");
+      throw new UnexpectedResponseError(
+        `DPD tracking answered HTTP 200 with ${type ?? "none"} that is not JSON` +
+          ` (${String(response.body.length)} bytes${/<html/i.test(response.body) ? ", an HTML page" : ""}).`,
+      );
     }
     const parsed = responseSchema.safeParse(body);
     if (!parsed.success) {
-      throw new UnexpectedResponseError("The DPD tracking page returned an unexpected shape.");
+      const where = parsed.error.issues
+        .slice(0, 3)
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.code}`)
+        .join("; ");
+      throw new UnexpectedResponseError(
+        `DPD tracking returned JSON of an unexpected shape (${where}); top-level keys: ${topKeys(body)}.`,
+      );
     }
     const data = parsed.data.parcellifecycleResponse.parcelLifeCycleData;
     if (data === null || data === undefined) {

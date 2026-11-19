@@ -40,7 +40,28 @@ const envSchema = z.object({
   OPENPARCELS_QUIET_WINDOW: booleanFlag.default(true),
   /** Folder with the built web UI. Defaults to `web/dist` next to the server; missing means API only. */
   OPENPARCELS_WEB_DIR: z.string().min(1).optional(),
+  /**
+   * Reverse proxies whose X-Forwarded-For is believed, so the sign-in throttle sees real client
+   * addresses: comma-separated addresses or CIDR ranges (`10.0.0.2,172.18.0.0/16`). Unset
+   * trusts nobody; never list addresses clients could connect from directly.
+   */
+  OPENPARCELS_TRUST_PROXY: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (value) => value.split(",").every((part) => /^[\da-f.:]+(\/\d+)?$/i.test(part.trim())),
+      "List proxy addresses or CIDR ranges, separated by commas.",
+    )
+    .optional(),
 });
+
+/** False, or the proxy addresses and ranges whose X-Forwarded-For is believed. */
+export type TrustProxy = false | readonly string[];
+
+function parseTrustProxy(value: string | undefined): TrustProxy {
+  return value === undefined ? false : value.split(",").map((part) => part.trim());
+}
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
@@ -57,6 +78,7 @@ export interface AppConfig {
   readonly timeZone: string;
   readonly quietWindow: boolean;
   readonly webDir: string | undefined;
+  readonly trustProxy: TrustProxy;
   readonly retention: {
     readonly archiveAfterDays: number;
     readonly deleteAfterDays: number;
@@ -99,6 +121,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       values.OPENPARCELS_WEB_DIR === undefined
         ? undefined
         : path.resolve(values.OPENPARCELS_WEB_DIR),
+    trustProxy: parseTrustProxy(values.OPENPARCELS_TRUST_PROXY),
     retention: {
       archiveAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
       deleteAfterDays: values.OPENPARCELS_DELETE_DAYS,

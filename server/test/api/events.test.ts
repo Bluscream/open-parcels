@@ -97,10 +97,12 @@ describe("SSE event stream", () => {
       signal: controller.signal,
     });
     expect(stream.headers.get("content-type")).toContain("text/event-stream");
-    const pending = readMessages(stream, 1);
+    const pending = readMessages(stream, 2);
     await track("00340434000000000001");
-    const [message] = await pending;
+    const [ready, message] = await pending;
     controller.abort();
+    // A connection without Last-Event-ID first learns the current sequence.
+    expect(ready).toMatchObject({ event: "ready", id: "0", data: { seq: 0 } });
     expect(message?.event).toBe("parcel.registered");
     expect(message?.data).toMatchObject({
       parcel: { barcode: "00340434000000000001", status: "registered" },

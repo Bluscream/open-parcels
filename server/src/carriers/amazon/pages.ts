@@ -155,6 +155,17 @@ export function parseOrderTiles(page: string, isStatus: (text: string) => boolea
   return tiles;
 }
 
+/** A link to a later page of the order history: a `startIndex` past 0, or an enabled "next". */
+const NEXT_PAGE_RE = /href="[^"]*[?&](?:amp;)?startIndex=(?!0["&])\d+|<li class="a-last">\s*<a\s/i;
+
+/**
+ * Whether the orders page says older orders follow on another page. Only the first page is read,
+ * so a parcel from an older order would be missing without being gone.
+ */
+export function hasMoreOrderPages(page: string): boolean {
+  return NEXT_PAGE_RE.test(page);
+}
+
 export function looksSignedOut(page: string, finalUrl: string): boolean {
   return finalUrl.includes("/ap/signin") || PASSWORD_FIELD_RE.test(page);
 }

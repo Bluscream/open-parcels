@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mergeDuplicateTrackingSources } from "../../src/engine/source-dedup.js";
-import { SignInRejectedError } from "../../src/plugin/api.js";
+import { SignInRejectedError, TransientError } from "../../src/plugin/api.js";
 import { FakeWorld, fakePost, fakeShop, scan, snapshot } from "../fakes/carriers.js";
 import { createTestContext, type TestContext } from "../helpers.js";
 
@@ -127,6 +127,24 @@ describe("auto-created tracking sources", () => {
     expect(third.sources[0]?.source_id).toBeDefined();
   });
 
+  it("go with the last parcel even after a run stored session state", async () => {
+    const parcel = await add("FP7105");
+    const sourceId = parcel.sources[0]?.source_id ?? "";
+    await runNow(sourceId);
+    expect(post.trackCalls).toEqual([["FP7105"]]);
+    const row = await context.services.db
+      .selectFrom("sources")
+      .select(["session_blob", "secret_blob"])
+      .where("id", "=", sourceId)
+      .executeTakeFirstOrThrow();
+    expect(row.session_blob).not.toBeNull();
+    expect(row.secret_blob).toBeNull();
+
+    await context.services.parcels.delete(parcel.id);
+    expect(await context.services.sources.get(sourceId)).toBeUndefined();
+    expect(await outbox("source.removed")).toHaveLength(1);
+  });
+
   it("never remove a tracking source the user made", async () => {
     const own = await addSource("fakepost", "tracking");
     const parcel = await add("FP7104");
@@ -134,6 +152,20 @@ describe("auto-created tracking sources", () => {
     await context.services.parcels.delete(parcel.id);
     expect(await context.services.sources.get(own)).toBeDefined();
     expect(await outbox("source.removed")).toEqual([]);
+  });
+});
+
+describe("a failed run says what failed", () => {
+  it("puts the plug-in's reason, scrubbed, into the source's detail", async () => {
+    const id = await addSource("fakepost", "account");
+    post.failWith = new TransientError(
+      "Fake tracking answered HTTP 403 (text/html) for 00340434000000000077, expected 200.",
+    );
+    await runNow(id);
+    const source = await context.services.sources.get(id);
+    expect(source?.state).toBe("error");
+    expect(source?.stateDetail).toContain("HTTP 403 (text/html)");
+    expect(source?.stateDetail).not.toContain("00340434000000000077");
   });
 });
 

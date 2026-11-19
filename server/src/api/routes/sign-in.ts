@@ -76,6 +76,7 @@ const STATUS: Readonly<Record<SignInErrorCode, number>> = {
   sign_in_wrong_step: 409,
   sign_in_poll_too_soon: 429,
   sign_in_unavailable: 503,
+  sign_in_captcha: 503,
   no_sign_in: 400,
   invalid_source: 400,
   not_found: 404,

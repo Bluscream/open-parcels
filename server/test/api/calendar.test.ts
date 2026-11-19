@@ -119,6 +119,52 @@ describe("calendar entries", () => {
   });
 });
 
+describe("archived parcels", () => {
+  it("keep their delivery in the calendar and the feed; archived undelivered ones do not show", async () => {
+    const delivered = await context.services.parcels.create({
+      carrier: "dhl",
+      barcode: "00340434000000000011",
+      direction: "incoming",
+      label: "Archived delivery",
+    });
+    const lost = await parcelWithWindow(
+      "00340434000000000012",
+      "2026-11-17T10:00:00Z",
+      "2026-11-17T12:00:00Z",
+    );
+    await context.services.db
+      .updateTable("parcels")
+      .set({
+        delivered: 1,
+        status: "delivered",
+        delivered_at: "2026-11-17T09:30:00Z",
+        archived_at: "2026-11-18T00:00:00Z",
+      })
+      .where("id", "=", delivered.id)
+      .execute();
+    await context.services.db
+      .updateTable("parcels")
+      .set({ archived_at: "2026-11-18T00:00:00Z" })
+      .where("id", "=", lost)
+      .execute();
+
+    const entries = await calendar("2026-11-16T00:00:00Z", "2026-11-20T00:00:00Z");
+    expect(entries.map((entry) => [entry.uid, entry.kind])).toEqual([
+      [`${delivered.id}@open-parcels`, "delivered"],
+    ]);
+    const { path } = (
+      await app.inject({ method: "POST", url: "/api/v1/calendar/feed", headers })
+    ).json<{ path: string }>();
+    const feed = (await app.inject({ url: path })).body;
+    expect(feed).toContain(`UID:${delivered.id}@open-parcels`);
+    expect(feed).not.toContain(lost);
+
+    // Deleted is gone everywhere.
+    await context.services.parcels.delete(delivered.id);
+    expect(await calendar("2026-11-16T00:00:00Z", "2026-11-20T00:00:00Z")).toEqual([]);
+  });
+});
+
 describe("ICS feed", () => {
   it("serves date-only all-day events and timed events under a secret address", async () => {
     await parcelWithWindow("00340434000000000001", "2026-11-19T23:00:00Z", "2026-11-21T23:00:00Z");

@@ -3508,6 +3508,7 @@
         "tags": [
           "sources"
         ],
+        "description": "While the source backs off (a captcha pause or the carrier's rate limit) the run is not brought forward: the answer is 429 `source_backing_off` with `Retry-After`.",
         "parameters": [
           {
             "schema": {
@@ -3536,6 +3537,31 @@
             }
           },
           "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -5543,7 +5569,7 @@
         "tags": [
           "events"
         ],
-        "description": "Each message carries `id` (the outbox sequence), `event` (the event type) and JSON `data`. Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events. `parcel.live_position` messages carry the courier's position while en route; they have no `id` and are never replayed.",
+        "description": "Each message carries `id` (the outbox sequence), `event` (the event type) and JSON `data`. Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events. A connection without one starts with `ready` (its `id` is the current sequence). When the given id is newer than any event or older than what is kept, `resync` (also carrying the current sequence as `id`) tells the client to reload everything over REST. `parcel.live_position` messages carry the courier's position while en route; they have no `id` and are never replayed.",
         "parameters": [
           {
             "schema": {

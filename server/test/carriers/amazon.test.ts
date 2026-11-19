@@ -309,6 +309,32 @@ describe("Amazon account", () => {
     expect(h.calls.filter((call) => call.endsWith("/cookies"))).toHaveLength(0);
   });
 
+  it("treats a bot-wall 403 as transient and never renews cookies for it", async () => {
+    const seeded = harness(storefront([OWN_FLEET], PAGES));
+    await readAccount(seeded.context, rules);
+    const h = harness((url) => {
+      if (url.pathname === "/ap/exchangetoken/cookies") {
+        return json(cookieExchange("amazon.de"));
+      }
+      return html("<html><body>Request blocked.</body></html>", 403);
+    }, seeded.stored);
+    await expect(readAccount(h.context, rules)).rejects.toBeInstanceOf(TransientError);
+    expect(h.calls.filter((call) => call.endsWith("/cookies"))).toHaveLength(0);
+  });
+
+  it("is not complete while older order pages follow", async () => {
+    const paged: Route = (url, init) =>
+      url.pathname === "/your-orders/orders"
+        ? html(
+            `${ordersPage([OWN_FLEET])}<ul class="a-pagination"><li class="a-last">` +
+              `<a href="/your-orders/orders?startIndex=10">Next</a></li></ul>`,
+          )
+        : storefront([OWN_FLEET], PAGES)(url, init);
+    const result = await readAccount(harness(paged).context, rules);
+    expect(result.snapshots).toHaveLength(1);
+    expect(result.complete).toBe(false);
+  });
+
   it("treats a refused refresh token as a refused sign-in", async () => {
     const h = harness(() => json({ response: { error: { code: "InvalidToken" } } }, 400));
     await expect(readAccount(h.context, rules)).rejects.toBeInstanceOf(SignInRejectedError);

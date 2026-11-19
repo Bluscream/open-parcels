@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -35,7 +35,13 @@ export interface TileProxyOptions {
   readonly upstream?: string;
   readonly fetchImpl?: typeof fetch;
   readonly now?: () => number;
+  /** Tiles not refreshed for this long are deleted by `prune()`. */
+  readonly maxAgeMs?: number;
+  readonly maxCacheBytes?: number;
 }
+
+const DEFAULT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_CACHE_BYTES = 200 * 1024 * 1024;
 
 /** Valid slippy-map coordinates only; anything else never reaches the network or the disk. */
 export function validTile(z: number, x: number, y: number): boolean {
@@ -124,6 +130,28 @@ export class TileProxy {
     }
   }
 
+  /**
+   * Deletes tiles older than the age limit, then the oldest until the cache fits its budget.
+   * Returns how many were removed. Empty folders are left; they cost nothing.
+   */
+  async prune(): Promise<number> {
+    const now = this.#options.now?.() ?? Date.now();
+    const maxAge = this.#options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+    const budget = this.#options.maxCacheBytes ?? DEFAULT_CACHE_BYTES;
+    const files = await listTiles(this.#options.cacheDir);
+    let total = files.reduce((sum, file) => sum + file.size, 0);
+    let removed = 0;
+    for (const file of files.sort((a, b) => a.mtimeMs - b.mtimeMs)) {
+      if (now - file.mtimeMs <= maxAge && total <= budget) {
+        break;
+      }
+      await rm(file.path, { force: true });
+      total -= file.size;
+      removed += 1;
+    }
+    return removed;
+  }
+
   async #acquire(): Promise<void> {
     if (this.#active < MAX_UPSTREAM) {
       this.#active += 1;
@@ -142,6 +170,25 @@ export class TileProxy {
       next();
     }
   }
+}
+
+async function listTiles(root: string): Promise<{ path: string; size: number; mtimeMs: number }[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(root, { recursive: true });
+  } catch {
+    return [];
+  }
+  const tiles = await Promise.all(
+    entries
+      .filter((entry) => entry.endsWith(".png"))
+      .map(async (entry) => {
+        const file = path.join(root, entry);
+        const info = await stat(file);
+        return { path: file, size: info.size, mtimeMs: info.mtimeMs };
+      }),
+  );
+  return tiles;
 }
 
 async function readCached(file: string): Promise<{ body: Buffer; mtimeMs: number } | null> {

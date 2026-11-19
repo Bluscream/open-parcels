@@ -178,7 +178,9 @@ export class Scheduler {
       .updateTable("sources")
       .set({
         consecutive_failures: failures,
-        backoff_until: next,
+        // A wait the carrier imposed (its 429, a captcha) binds manual syncs too; our own retry
+        // delay after a network error does not, so the user can always try again by hand.
+        backoff_until: outcome.kind === "rate_limited" || outcome.kind === "captcha" ? next : null,
         next_run_at: next,
         last_run_at: now.toISOString(),
       })

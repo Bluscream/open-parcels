@@ -16,6 +16,8 @@ import {
   type SessionStore,
 } from "../plugin/api.js";
 import { PluginHttp, type FetchLike, type HostLimiter, type HttpPolicy } from "../plugin/http.js";
+import { redactText } from "../log/redact.js";
+import { KeyedMutex } from "./locks.js";
 import type { FailureKind } from "./policy.js";
 import type { LiveTargetOfParcel, Reconciler } from "./reconciler.js";
 import {
@@ -84,16 +86,34 @@ function classify(error: unknown): {
         "The stored sign-in could not be decrypted (was the encryption key changed?). Sign in again.",
     };
   }
+  if (error instanceof TransientError) {
+    // The plug-in said what broke (an HTTP status, a changed response); show it, scrubbed.
+    return {
+      kind: "transient",
+      detail: `The last update failed: ${redactText(error.message)} Retrying later.`,
+    };
+  }
   return { kind: "transient", detail: "The last update failed; retrying later." };
 }
 
 /** Runs one source: calls its plug-in and hands the result to the reconciler. */
 export class SourceRunner {
   #reports: Promise<void> = Promise.resolve();
+  /** At most one request at a time per account: runs, live reads and sign-in steps queue here. */
+  readonly #locks = new KeyedMutex();
 
   constructor(private readonly deps: RunnerDeps) {}
 
+  /** Runs `work` while holding the source's lock; sign-in steps go through this too. */
+  async exclusive<T>(sourceId: string, work: () => Promise<T>): Promise<T> {
+    return this.#locks.exclusive(sourceId, work);
+  }
+
   async run(sourceId: string): Promise<RunOutcome> {
+    return this.exclusive(sourceId, () => this.#run(sourceId));
+  }
+
+  async #run(sourceId: string): Promise<RunOutcome> {
     const { db, registry } = this.deps;
     const row = await db
       .selectFrom("sources")
@@ -154,6 +174,10 @@ export class SourceRunner {
    * none of them ever triggers a new sign-in here.
    */
   async readLive(sourceId: string, target: LiveTarget): Promise<LiveReading | null> {
+    return this.exclusive(sourceId, () => this.#readLive(sourceId, target));
+  }
+
+  async #readLive(sourceId: string, target: LiveTarget): Promise<LiveReading | null> {
     const row = await this.deps.db
       .selectFrom("sources")
       .selectAll()

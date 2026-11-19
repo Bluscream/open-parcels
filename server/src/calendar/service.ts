@@ -117,8 +117,10 @@ export class CalendarService {
         "label",
         "url",
         "pickup_point",
+        "archived_at",
       ])
-      .where("archived_at", "is", null)
+      // A calendar is a history too: archived deliveries stay (decided per row below). Deleted
+      // parcels are gone from the table; removed ones (vanished undelivered) never show.
       .where("removed_at", "is", null)
       // Candidates only; whether a parcel counts as delivered (a manual status wins) is decided
       // below, per row.
@@ -187,7 +189,8 @@ export class CalendarService {
             : new Date(start.getTime() + DELIVERED_MARKER_MS);
           return { ...base, kind: "delivered", late: false, ...this.#span(start, end, dateOnly) };
         }
-        if (row.planned_from === null || row.planned_from >= toIso) {
+        // Archived parcels stay in the calendar only as past deliveries.
+        if (row.archived_at !== null || row.planned_from === null || row.planned_from >= toIso) {
           return undefined;
         }
         const start = new Date(row.planned_from);

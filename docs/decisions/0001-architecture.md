@@ -340,13 +340,22 @@ Everything is under `/api/v1`. The OpenAPI document is at `/api/v1/openapi.json`
   `sign_in_wrong_step` (409), `sign_in_poll_too_soon` (429).
 - `POST /sources/{id}/sign-in/start` and `/sign-in/finish` remain for pasted-link flows: they run
   the same attempt mechanism in one call each.
-- `POST /sources/{id}/sync`.
+- `POST /sources/{id}/sync` (202). While the carrier's own wait runs (a captcha pause, or a 429
+  and its `Retry-After`) the run is not brought forward: 429 `source_backing_off` with
+  `Retry-After` and the remaining wait in the message. Our own retry delay after a network error
+  does not block it.
+- Sign-in errors also include `sign_in_captcha` (503 with `Retry-After`; the step is kept and
+  the try does not count as failed). Every sign-in step, run and live read of one source holds
+  the source's lock, so one account never has two requests in flight; a second submit of a step
+  that was already answered gets `sign_in_wrong_step` (409) or `sign_in_expired`.
 
 **Other routes**
 
 - `GET /carriers` lists the plug-ins with their capabilities, config schemas, the default
   sign-in type (`sign_in`) and every flow (`sign_in_flows`: id, label, type, kinds, conditional).
-- `GET /calendar?from&to` returns the same entries the UI calendar and the ICS feed use.
+- `GET /calendar?from&to` returns the same entries the UI calendar and the ICS feed use. A
+  calendar is a history too: archived parcels keep their delivery entry. Archived undelivered
+  parcels, removed ones and deleted ones do not appear.
 - `GET /orders` and `GET /orders/{id}`.
 - `/tokens` and `/settings`.
 - `/health/live`, `/health/ready`, and `/diagnostics`, which is redacted.
@@ -356,7 +365,15 @@ Everything is under `/api/v1`. The OpenAPI document is at `/api/v1/openapi.json`
 `GET /api/v1/events` is the SSE stream.
 
 - Each message has `id: <outbox seq>`, `event: <type>` and `data: <JSON>`.
-- `Last-Event-ID` replays up to 7 days of events.
+- `Last-Event-ID` replays up to 7 days of events, page by page however many there are; the
+  replay and the live stream join without a gap or a duplicate.
+- A connection without `Last-Event-ID` starts with `event: ready`, whose `id` and `data.seq` are
+  the current sequence. A client that loads its state over REST resumes from there.
+- When `Last-Event-ID` cannot be served — newer than any event (`reason: "ahead"`, e.g. a reset
+  database) or older than retention (`reason: "expired"`) — the server sends `event: resync`
+  with the current sequence as `id` and `data: {seq, reason}`, then continues live. The client
+  reloads everything over REST and continues from that sequence.
+- A client that leaves more than 4 MB unread is disconnected; it reconnects and is replayed.
 - A heartbeat is sent every 25 s.
 
 #### Event types
@@ -419,8 +436,13 @@ and `url`. On top of those:
 `/img/{id}.{sig}`.
 
 - The id is HMAC-signed, so the proxy is not open to arbitrary URLs.
-- It fetches only from hosts the carrier allow-lists, with a size cap, and refuses redirects to
-  private addresses.
+- It fetches only from hosts a carrier plug-in lists in `imageHosts` (`.example.com` also
+  allows subdomains), on every hop, with a 5 MB cap checked against Content-Length and enforced
+  while streaming.
+- It refuses non-public addresses before and at connect time (DNS rebinding): private, loopback,
+  link-local, shared, benchmarking (198.18.0.0/15), documentation, multicast and reserved
+  ranges, and every IPv6 form that embeds IPv4 (mapped, compatible, NAT64, 6to4, Teredo).
+  Plug-in requests refuse such address literals and `localhost` the same way.
 - Images are cached on disk.
 - Delivery photos behind expiring links are fetched at once and kept.
 
@@ -451,6 +473,9 @@ and `url`. On top of those:
 - pino `redact` covers tokens, cookies, Authorization headers and credentials.
 - A value scrubber masks emails, tracking numbers (except a short prefix) and coordinates.
 - Diagnostics use the same scrubber.
+- The request log shows the route pattern for the ICS feed and the image proxy
+  (`/ical/:token.ics`, `/img/:file`) and never a query string; error messages and stacks pass
+  the scrubber too.
 
 **Stored credentials**
 
@@ -462,6 +487,13 @@ and `url`. On top of those:
 - Hermes, DHL NL and IMAP need stored credentials, and those are encrypted.
 - An unfinished interactive sign-in keeps its state encrypted in `sign_in_attempts` until it
   finishes or expires.
+
+**Behind a reverse proxy** the sign-in throttle needs the real client address:
+`OPENPARCELS_TRUST_PROXY` lists the proxies (addresses or CIDR ranges) whose `X-Forwarded-For`
+is believed. Unset, nobody is trusted. The HA ingress listener never trusts a proxy.
+
+**The OpenAPI document** (`/api/v1/openapi.json`) is public on purpose: it describes the API's
+shape only, holds no data, and clients and code generators fetch it before they have a token.
 
 **CORS** is off by default. Enabling it requires an explicit allow-list.
 

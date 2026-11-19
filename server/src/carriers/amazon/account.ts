@@ -13,6 +13,7 @@ import { mintCookies, type AmazonSecret } from "./auth.js";
 import { AMAZON_ID, buildSnapshot, isSkipped, readsAsStatus } from "./build.js";
 import { pastDay, today, type Day } from "./dates.js";
 import {
+  hasMoreOrderPages,
   isTrackPagePath,
   looksLikeCaptcha,
   looksSignedOut,
@@ -113,13 +114,18 @@ export class StorefrontReader {
       if (response.status === 404) {
         return null;
       }
-      if (response.status === 200 && looksLikeCaptcha(response.body, response.url)) {
+      if (looksLikeCaptcha(response.body, response.url)) {
         throw new CaptchaError("Amazon showed a captcha; the source is paused.");
+      }
+      // A 403 is usually Amazon's bot or WAF wall, not a session that ended: only one that shows
+      // the sign-in page counts as signed out. Anything else is transient and never re-signs in.
+      if (response.status === 403 && !looksSignedOut(response.body, response.url)) {
+        throw new TransientError("Amazon answered HTTP 403 without a sign-in page (a bot block).");
       }
       const signedOut =
         response.status === 401 ||
-        response.status === 403 ||
-        (response.status === 200 && looksSignedOut(response.body, response.url));
+        ((response.status === 200 || response.status === 403) &&
+          looksSignedOut(response.body, response.url));
       if (!signedOut) {
         if (response.status !== 200) {
           throw new TransientError(`Amazon answered HTTP ${String(response.status)}.`);
@@ -135,11 +141,17 @@ export class StorefrontReader {
   }
 }
 
-async function readTiles(rules: Rules, reader: StorefrontReader): Promise<OrderTile[] | null> {
+async function readTiles(
+  rules: Rules,
+  reader: StorefrontReader,
+): Promise<{ tiles: OrderTile[]; more: boolean } | null> {
   for (const path of ORDERS_PATHS) {
     const page = await reader.page(path);
     if (page !== null) {
-      return parseOrderTiles(page.body, (text) => readsAsStatus(rules, text));
+      return {
+        tiles: parseOrderTiles(page.body, (text) => readsAsStatus(rules, text)),
+        more: hasMoreOrderPages(page.body),
+      };
     }
   }
   return null;
@@ -237,10 +249,11 @@ async function collect(
   session: AmazonSession,
   reader: StorefrontReader,
 ): Promise<FetchResult> {
-  const tiles = await readTiles(rules, reader);
-  if (tiles === null) {
+  const listing = await readTiles(rules, reader);
+  if (listing === null) {
     throw new UnexpectedResponseError("Amazon's orders page was not found.");
   }
+  const tiles = listing.tiles;
   if (tiles.length === 0) {
     // Legitimate for an account without recent orders, but a changed page looks the same; an
     // incomplete result keeps every known parcel instead of concluding they are gone.
@@ -255,7 +268,9 @@ async function collect(
   const isOld = (lead: OrderTile): boolean => deliveredLongAgo(rules, lead, now, storefront);
   const loads = pickLoads(groups, session, isOld);
   const snapshots: ParcelSnapshot[] = [];
-  let complete = true;
+  // Only the first orders page is read: with older pages behind it, a parcel that is not listed
+  // may still be on its way, so the result must not say "everything".
+  let complete = !listing.more;
   for (const [key, group] of groups) {
     const lead = group[0];
     const remembered = session.shipments[key];

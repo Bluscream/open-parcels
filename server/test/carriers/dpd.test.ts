@@ -336,4 +336,34 @@ describe("DPD Germany public tracking", () => {
     const fake = new FakeDpd().on(TRACK(BARCODE_IN), json({ something: "else" }));
     await expect(track(context(fake).ctx, [BARCODE_IN])).rejects.toBeInstanceOf(TransientError);
   });
+
+  it("says which expectation broke, without the code", async () => {
+    const failure = async (response: Response): Promise<string> => {
+      const fake = new FakeDpd().on(TRACK(BARCODE_IN), response);
+      const error = await track(context(fake).ctx, [BARCODE_IN]).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(TransientError);
+      const message = (error as Error).message;
+      expect(message).not.toContain(BARCODE_IN);
+      return message;
+    };
+    expect(
+      await failure(
+        new Response("<html>blocked</html>", {
+          status: 403,
+          headers: { "content-type": "text/html" },
+        }),
+      ),
+    ).toBe("DPD tracking answered HTTP 403 (text/html), expected 200 or 404.");
+    expect(
+      await failure(
+        new Response("<html>a page</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      ),
+    ).toMatch(/HTTP 200 with text\/html that is not JSON \(\d+ bytes, an HTML page\)/);
+    expect(await failure(json({ parcellifecycleResponse: "nope", other: 1 }))).toMatch(
+      /unexpected shape \(parcellifecycleResponse: invalid_type\); top-level keys: parcellifecycleResponse, other/,
+    );
+  });
 });

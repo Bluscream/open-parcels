@@ -35,6 +35,9 @@ export function registerEventRoutes(app: TypedApp, services: Services): void {
         description:
           "Each message carries `id` (the outbox sequence), `event` (the event type) and JSON `data`. " +
           "Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events. " +
+          "A connection without one starts with `ready` (its `id` is the current sequence). When the " +
+          "given id is newer than any event or older than what is kept, `resync` (also carrying the " +
+          "current sequence as `id`) tells the client to reload everything over REST. " +
           "`parcel.live_position` messages carry the courier's position while en route; they have no `id` and are never replayed.",
         querystring: z.object({ last_event_id: z.coerce.number().int().nonnegative().optional() }),
       },
@@ -55,45 +58,139 @@ export function registerEventRoutes(app: TypedApp, services: Services): void {
         // Disables response buffering in nginx-style reverse proxies.
         "x-accel-buffering": "no",
       });
-      raw.write("retry: 5000\n\n");
 
-      // Subscribe before replaying so nothing committed in between is lost; the seq guard drops duplicates.
-      let lastSent = since ?? Number.MAX_SAFE_INTEGER;
+      // Once hijacked, nothing else ends the response: every exit path goes through `close`.
+      let closed = false;
+      const cleanups: (() => void)[] = [];
+      const close = (): void => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        for (const cleanup of cleanups.splice(0)) {
+          cleanup();
+        }
+        raw.destroy();
+      };
+      request.raw.on("close", close);
+      raw.on("error", close);
+      raw.on("close", close);
+      /**
+       * Writes a chunk. A client that lets more than MAX_BUFFERED_BYTES pile up is cut off; it
+       * reconnects with Last-Event-ID and is replayed from where it was, without a gap.
+       */
+      const write = (chunk: string): void => {
+        if (closed) {
+          return;
+        }
+        raw.write(chunk);
+        if (raw.writableLength > MAX_BUFFERED_BYTES) {
+          services.logger.warn("An event stream client fell too far behind; closing it.");
+          close();
+        }
+      };
+      /** Waits until the socket has room again, so a long replay never floods the buffer. */
+      const drained = async (): Promise<void> => {
+        if (!closed && raw.writableNeedDrain) {
+          await new Promise<void>((resolve) => {
+            raw.once("drain", resolve);
+            cleanups.push(resolve);
+          });
+        }
+      };
+
+      write("retry: 5000\n\n");
+
+      // Subscribe before replaying so nothing committed in between is lost; the seq guard drops
+      // duplicates. Until the replay has caught up, live events wait in `pending`.
+      let lastSent = 0;
       const pending: OutboxEvent[] = [];
-      let replaying = since !== undefined;
+      let replaying = true;
       const send = (event: OutboxEvent): void => {
         if (replaying) {
           pending.push(event);
           return;
         }
-        if (since !== undefined && event.seq <= lastSent) {
+        if (event.seq <= lastSent) {
           return;
         }
         lastSent = event.seq;
-        raw.write(formatEvent(event));
+        write(formatEvent(event));
       };
-      const unsubscribe = services.bus.subscribe(send);
+      cleanups.push(services.bus.subscribe(send));
       // Courier positions: no `id`, so they are never part of a replay.
-      const unsubscribeLive = services.bus.subscribeEphemeral((message) => {
-        raw.write(`event: ${message.type}\ndata: ${JSON.stringify(message.payload)}\n\n`);
-      });
-      const heartbeat = setInterval(() => raw.write(": keep-alive\n\n"), HEARTBEAT_MS);
-      request.raw.on("close", () => {
+      cleanups.push(
+        services.bus.subscribeEphemeral((message) => {
+          write(`event: ${message.type}\ndata: ${JSON.stringify(message.payload)}\n\n`);
+        }),
+      );
+      const heartbeat = setInterval(() => {
+        write(": keep-alive\n\n");
+      }, HEARTBEAT_MS);
+      cleanups.push(() => {
         clearInterval(heartbeat);
-        unsubscribe();
-        unsubscribeLive();
       });
 
-      if (since !== undefined) {
-        for (const event of await services.bus.replaySince(since)) {
-          lastSent = event.seq;
-          raw.write(formatEvent(event));
-        }
-        replaying = false;
-        for (const event of pending.splice(0)) {
-          send(event);
-        }
+      try {
+        lastSent = await catchUp(services, since, write, drained);
+      } catch (error) {
+        services.logger.error({ err: error }, "Replaying events failed.");
+        close();
+        return;
+      }
+      replaying = false;
+      for (const event of pending.splice(0)) {
+        send(event);
       }
     },
   );
+}
+
+/** Bytes a client may leave unread before its stream is closed. */
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Brings a (re)connecting client up to the bus head and returns the seq it now stands at.
+ *
+ * - No `Last-Event-ID`: a `ready` message carries the current seq as its id, so a client that
+ *   loads its state over REST and then reconnects resumes from here.
+ * - A `Last-Event-ID` the server cannot serve (newer than any event, or older than retention):
+ *   a `resync` message, also carrying the current seq. The client reloads everything over REST.
+ * - Otherwise every missed event, page by page, up to the head.
+ */
+async function catchUp(
+  services: Services,
+  since: number | undefined,
+  write: (chunk: string) => void,
+  drained: () => Promise<void>,
+): Promise<number> {
+  const { bus } = services;
+  const head = bus.head;
+  if (since === undefined) {
+    write(controlMessage("ready", head, { seq: head }));
+    return head;
+  }
+  // When the outbox is empty, everything up to the head has expired.
+  const oldest = (await bus.oldestRetained()) ?? head + 1;
+  const reason = since > head ? "ahead" : since < oldest - 1 ? "expired" : null;
+  if (reason !== null) {
+    write(controlMessage("resync", head, { seq: head, reason }));
+    return head;
+  }
+  let cursor = since;
+  for (;;) {
+    const page = await bus.replayPage(cursor);
+    for (const event of page.events) {
+      write(formatEvent(event));
+    }
+    cursor = page.last;
+    if (!page.more) {
+      return cursor;
+    }
+    await drained();
+  }
+}
+
+function controlMessage(type: "ready" | "resync", seq: number, data: unknown): string {
+  return `id: ${String(seq)}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
 }

@@ -82,6 +82,11 @@ export interface CarrierPlugin<Config = unknown, Secret = unknown> {
   /** ISO 3166-1 alpha-2 codes, or `*` for worldwide. */
   readonly countries: readonly string[];
   readonly sourceKinds: readonly PluginSourceKind[];
+  /**
+   * Hosts the image proxy may fetch this carrier's item pictures and delivery photos from; a
+   * leading dot also allows subdomains (`.media-example.com`). Unset: the proxy fetches nothing.
+   */
+  readonly imageHosts?: readonly string[];
   readonly configSchema: z.ZodType<Config>;
   readonly secretSchema: z.ZodType<Secret>;
   /**

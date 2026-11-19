@@ -15,6 +15,7 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
+import type { TrustProxy } from "../config.js";
 import type { Services } from "../services.js";
 import { registerAuth } from "./auth-plugin.js";
 import { ApiError } from "./errors.js";
@@ -109,6 +110,11 @@ function acceptEmptyBodies(app: FastifyInstance): void {
   });
 }
 
+/** Fastify's form of `OPENPARCELS_TRUST_PROXY`: false, or the trusted addresses. */
+function trustProxySetting(value: TrustProxy): false | string[] {
+  return value === false ? false : [...value];
+}
+
 export async function buildApp(services: Services, options: BuildAppOptions = {}): Promise<App> {
   // Typed with the base logger interface so every hook and plug-in uses Fastify's default types.
   // Without the explicit arguments TypeScript infers pino's narrower Logger from `loggerInstance`,
@@ -121,7 +127,10 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
     FastifyBaseLogger
   >({
     loggerInstance: services.logger,
-    trustProxy: false,
+    // The ingress listener only ever talks to Home Assistant directly and trusts no proxy.
+    trustProxy: trustProxySetting(
+      options.trustedIngressAddress === undefined ? services.config.trustProxy : false,
+    ),
     bodyLimit: 1024 * 1024,
   });
   app.setValidatorCompiler(validatorCompiler);

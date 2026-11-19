@@ -1843,6 +1843,13 @@ export type PostApiV1SourcesIdSync404 = {
   message: string;
 };
 
+export type PostApiV1SourcesIdSync429 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
 export type GetApiV1SourcesIdSignInFlows200ItemType =
   (typeof GetApiV1SourcesIdSignInFlows200ItemType)[keyof typeof GetApiV1SourcesIdSignInFlows200ItemType];
 
@@ -2677,6 +2684,7 @@ export const getPostApiV1SourcesIdSyncUrl = (id: string) => {
 };
 
 /**
+ * While the source backs off (a captcha pause or the carrier's rate limit) the run is not brought forward: the answer is 429 `source_backing_off` with `Retry-After`.
  * @summary Run a source now.
  */
 export const postApiV1SourcesIdSync = async (
@@ -2975,7 +2983,7 @@ export const getGetApiV1EventsUrl = (params?: GetApiV1EventsParams) => {
 };
 
 /**
- * Each message carries `id` (the outbox sequence), `event` (the event type) and JSON `data`. Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events. `parcel.live_position` messages carry the courier's position while en route; they have no `id` and are never replayed.
+ * Each message carries `id` (the outbox sequence), `event` (the event type) and JSON `data`. Reconnect with `Last-Event-ID` (or `?last_event_id=`) to replay up to 7 days of missed events. A connection without one starts with `ready` (its `id` is the current sequence). When the given id is newer than any event or older than what is kept, `resync` (also carrying the current sequence as `id`) tells the client to reload everything over REST. `parcel.live_position` messages carry the courier's position while en route; they have no `id` and are never replayed.
  * @summary Server-Sent Events stream of parcel and source events.
  */
 export const getApiV1Events = async (

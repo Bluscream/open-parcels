@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { register, type RegisteredPlugin } from "../../src/engine/registry.js";
 import {
+  CaptchaError,
   defineCarrier,
   pastedRedirect,
   SignInRejectedError,
@@ -59,8 +60,10 @@ export function fakePost(world: FakeWorld): RegisteredPlugin {
         }
         return Promise.resolve(world.result());
       },
-      async track(_context, barcodes) {
+      async track(context, barcodes) {
         world.trackCalls.push([...barcodes]);
+        // Like keyless carriers (UPS), tracking keeps run state in the session store.
+        await context.session.save({ trackRuns: world.trackCalls.length });
         const result = world.result();
         return Promise.resolve({
           ...result,
@@ -127,6 +130,9 @@ const ACCEPTED_CODE = "123456";
 function codeTurn(world: VerifyWorld, user: string, code: string | undefined) {
   if (code === "net") {
     return Promise.reject(new TransientError("The fake carrier is unreachable."));
+  }
+  if (code === "captcha") {
+    return Promise.reject(new CaptchaError("The fake carrier shows a captcha."));
   }
   if (code !== ACCEPTED_CODE) {
     return Promise.reject(new SignInRejectedError("Wrong code."));

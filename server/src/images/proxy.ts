@@ -7,6 +7,7 @@ import { isIP, type LookupFunction } from "node:net";
 import path from "node:path";
 import type { Logger } from "pino";
 import { Agent, fetch as undiciFetch } from "undici";
+import { hostAllowed, isPrivateAddress } from "../net/address.js";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
@@ -25,34 +26,7 @@ export class ImageProxyError extends Error {
   }
 }
 
-/** True for loopback, private, link-local and other non-public addresses (IPv4 and IPv6). */
-export function isPrivateAddress(address: string): boolean {
-  if (isIP(address) === 4) {
-    const [a = 0, b = 0] = address.split(".").map(Number);
-    return (
-      a === 10 ||
-      a === 127 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      a >= 224
-    );
-  }
-  const lower = address.toLowerCase();
-  if (lower.startsWith("::ffff:")) {
-    return isPrivateAddress(lower.slice(7));
-  }
-  return (
-    lower === "::1" ||
-    lower === "::" ||
-    lower.startsWith("fc") ||
-    lower.startsWith("fd") ||
-    lower.startsWith("fe80") ||
-    lower.startsWith("ff")
-  );
-}
+export { isPrivateAddress };
 
 export type Resolver = (host: string) => Promise<string[]>;
 const dnsResolver: Resolver = async (host) =>
@@ -88,6 +62,8 @@ export interface MinimalResponse {
   readonly status: number;
   readonly ok: boolean;
   readonly headers: { get(name: string): string | null };
+  /** Read as a stream when present, so an oversized body is cut off instead of buffered. */
+  readonly body?: ReadableStream<Uint8Array> | null;
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 export type ImageFetch = (
@@ -111,6 +87,43 @@ export interface ImageProxyOptions {
   readonly maxCacheBytes?: number;
   readonly fetchImpl?: ImageFetch;
   readonly resolve?: Resolver;
+  /**
+   * Hosts images may come from: the union of the carriers' `imageHosts`. Every hop, redirects
+   * included, must match. Unset allows any public host (tests only).
+   */
+  readonly allowedHosts?: () => Iterable<string>;
+}
+
+/**
+ * Reads at most `cap` bytes: a declared Content-Length over the cap is refused before reading,
+ * and a stream is cancelled as soon as it passes the cap, so nothing large is ever buffered.
+ */
+export async function readCapped(response: MinimalResponse, cap: number): Promise<Buffer> {
+  const tooLarge = (): ImageProxyError => new ImageProxyError(502, "The image is too large.");
+  const declared = Number(response.headers.get("content-length") ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > cap) {
+    await response.body?.cancel();
+    throw tooLarge();
+  }
+  if (response.body === undefined || response.body === null) {
+    const body = Buffer.from(await response.arrayBuffer());
+    if (body.length > cap) {
+      throw tooLarge();
+    }
+    return body;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (let part = await reader.read(); !part.done; part = await reader.read()) {
+    total += part.value.byteLength;
+    if (total > cap) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    chunks.push(part.value);
+  }
+  return Buffer.concat(chunks);
 }
 
 /**
@@ -202,6 +215,10 @@ export class ImageProxy {
       throw new ImageProxyError(502, "Only https images are proxied.");
     }
     const host = url.hostname.replace(/^\[|\]$/g, "");
+    const allowed = this.options.allowedHosts?.();
+    if (allowed !== undefined && !hostAllowed(host, allowed)) {
+      throw new ImageProxyError(502, "The image host is not on any carrier's allow-list.");
+    }
     const addresses = isIP(host) === 0 ? await this.#resolve(host) : [host];
     if (addresses.length === 0 || addresses.some(isPrivateAddress)) {
       throw new ImageProxyError(502, "The image host is not a public address.");
@@ -226,10 +243,7 @@ export class ImageProxy {
       if (!ALLOWED_TYPES.has(type)) {
         throw new ImageProxyError(502, "The remote file is not a supported image.");
       }
-      const body = Buffer.from(await response.arrayBuffer());
-      if (body.length > MAX_IMAGE_BYTES) {
-        throw new ImageProxyError(502, "The image is too large.");
-      }
+      const body = await readCapped(response, MAX_IMAGE_BYTES);
       await this.#store(name, body, type);
       return { body, type };
     }

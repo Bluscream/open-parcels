@@ -140,17 +140,42 @@ export class EventBus {
     }
   }
 
-  /** Events after `seq` that are still within retention, oldest first, for client replay. */
-  async replaySince(seq: number): Promise<OutboxEvent[]> {
+  /** The newest seq delivered to subscribers; replays never go past it. */
+  get head(): number {
+    return this.#lastSeq;
+  }
+
+  /** The oldest seq still stored, or undefined when the outbox is empty. */
+  async oldestRetained(): Promise<number | undefined> {
+    const row = await this.db
+      .selectFrom("outbox")
+      .select((eb) => eb.fn.min("seq").as("min"))
+      .executeTakeFirst();
+    return row?.min ?? undefined;
+  }
+
+  /**
+   * One page of events after `seq` that are still within retention, oldest first, for client
+   * replay. `last` is the seq of the last row read (whatever its type), the cursor for the next
+   * page; `more` says another page may follow. Callers page until `more` is false.
+   */
+  async replayPage(
+    seq: number,
+    limit = REPLAY_LIMIT,
+  ): Promise<{ events: OutboxEvent[]; last: number; more: boolean }> {
     const rows = await this.db
       .selectFrom("outbox")
       .selectAll()
       .where("seq", ">", seq)
       .where("seq", "<=", this.#lastSeq)
       .orderBy("seq")
-      .limit(REPLAY_LIMIT)
+      .limit(limit)
       .execute();
-    return rows.map(toEvent).filter((event): event is OutboxEvent => event !== undefined);
+    return {
+      events: rows.map(toEvent).filter((event): event is OutboxEvent => event !== undefined),
+      last: rows.at(-1)?.seq ?? seq,
+      more: rows.length === limit,
+    };
   }
 
   async pruneExpired(): Promise<number> {

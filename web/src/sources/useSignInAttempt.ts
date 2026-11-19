@@ -130,6 +130,12 @@ export function useSignInAttempt(sourceId: string) {
               poll(interval * 2);
               return;
             }
+            if (caught instanceof ApiError && caught.code === "sign_in_captcha") {
+              // The attempt is kept; show why and try once the carrier's wait is over.
+              setError(caught);
+              poll(caught.retryAfterSeconds ?? interval * 2);
+              return;
+            }
             setError(caught);
             attemptRef.current = null;
             setState({ phase: "idle" });
