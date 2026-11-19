@@ -74,15 +74,34 @@ export function getTransportMarkerIcon(method?: string): L.DivIcon {
   return TRANSPORT_ICONS[method?.toLowerCase() ?? ""] ?? iconPackage;
 }
 
+/**
+ * Whole words or phrases in the carrier's text: "transport" is not "port", "shipment" not
+ * "ship". German compounds are listed as they are written.
+ */
 const TRANSPORT_WORDS: readonly [string, readonly string[]][] = [
-  ["plane", ["plane", "flight", "air", "aircraft", "airplane", "flug", "luft", "flying"]],
-  ["ship", ["ship", "boat", "schiff", "boot", "ocean", "sea", "vessel", "container", "port"]],
-  ["heli", ["helicopter", "heli", "hubschrauber"]],
-  ["train", ["train", "rail", "bahn", "zug", "railway"]],
+  [
+    "plane",
+    ["plane", "flight", "aircraft", "airplane", "air freight", "luftfracht", "flugzeug", "flying"],
+  ],
+  ["ship", ["ship", "boat", "schiff", "ocean", "sea freight", "seefracht", "vessel", "container"]],
+  ["heli", ["helicopter", "hubschrauber"]],
+  ["train", ["train", "rail", "bahn", "railway"]],
   ["bike", ["bike", "bicycle", "fahrrad", "cycling", "radfahrer"]],
-  ["van", ["van", "delivery vehicle", "zustellfahrzeug", "delivery", "courier", "post", "filiale"]],
+  ["van", ["van", "delivery vehicle", "zustellfahrzeug", "delivery", "courier", "filiale"]],
   ["truck", ["truck", "lkw", "hauler", "laster", "freight", "cargo", "transit", "sorting"]],
 ];
+
+function hasWord(text: string, word: string): boolean {
+  const isLetter = (char: string): boolean => /\p{L}/u.test(char);
+  let from = text.indexOf(word);
+  while (from !== -1) {
+    const before = from === 0 ? "" : text.charAt(from - 1);
+    const after = text.charAt(from + word.length);
+    if (!isLetter(before) && !isLetter(after)) return true;
+    from = text.indexOf(word, from + 1);
+  }
+  return false;
+}
 
 /** Guesses how a parcel travels from its newest history text. */
 export function determineTransportMethod(
@@ -91,7 +110,7 @@ export function determineTransportMethod(
   const newestFirst = [...events].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   for (const event of newestFirst) {
     const text = event.raw_status.toLowerCase();
-    const match = TRANSPORT_WORDS.find(([, words]) => words.some((word) => text.includes(word)));
+    const match = TRANSPORT_WORDS.find(([, words]) => words.some((word) => hasWord(text, word)));
     if (match !== undefined) {
       return match[0];
     }
