@@ -68,6 +68,19 @@ describe("demo courier and demo shop", () => {
       state: "next_stop",
     });
     expect(demoLiveReading("DEMO0000000003", start + 330_000)).toBeNull();
+    // Where it is now is the courier; the last placed scan stays alongside.
+    const driving = now.get("DEMO0000000001");
+    // The scheduler hands the live tracker its targets; this test runs the source directly.
+    context.services.live.setTargets(courier, [
+      {
+        parcelId: driving?.id ?? "",
+        target: { ref: { barcode: "DEMO0000000001" }, mapShown: true },
+      },
+    ]);
+    await context.services.live.pass();
+    const placed = await context.services.parcels.repository.get(driving?.id ?? "");
+    expect(placed?.location).toMatchObject({ source: "courier" });
+    expect(placed?.last_scan).toMatchObject({ source: "event", name: "Berlin" });
 
     await at(540, courier);
     now = await parcels();

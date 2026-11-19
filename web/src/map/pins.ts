@@ -10,34 +10,20 @@ export interface Pin {
   readonly from: LatLng | null;
 }
 
-const LIVE_STATES = new Set(["en_route", "next_stop"]);
-
-/** The current courier position when a live session runs, else the parcel's last known place. */
+/**
+ * Where to put a parcel on the map: the server's `location` (the live courier, else the newest
+ * placed scan). While a courier is shown, `from` is that last scan, for the line to the courier.
+ */
 export function pinFor(parcel: Parcel): Pin | undefined {
-  const live = parcel.live;
   const location = parcel.location;
-  const scanned: LatLng | null = location === null ? null : [location.latitude, location.longitude];
-  if (
-    live !== null &&
-    LIVE_STATES.has(live.state) &&
-    live.latitude !== null &&
-    live.longitude !== null
-  ) {
-    return {
-      parcel,
-      point: [live.latitude, live.longitude],
-      courier: true,
-      at: live.position_at,
-      from: scanned,
-    };
-  }
-  return location === null || scanned === null
-    ? undefined
-    : {
-        parcel,
-        point: scanned,
-        courier: location.source === "courier",
-        at: location.at,
-        from: null,
-      };
+  if (location === null) return undefined;
+  const courier = location.source === "courier";
+  const scan = parcel.last_scan;
+  return {
+    parcel,
+    point: [location.latitude, location.longitude],
+    courier,
+    at: location.at,
+    from: courier && scan !== null ? [scan.latitude, scan.longitude] : null,
+  };
 }

@@ -11,6 +11,8 @@ export function parcelForEvent(parcel: Parcel): Parcel {
       parcel.live === null
         ? null
         : { ...parcel.live, latitude: null, longitude: null, accuracy: null },
+    // While a courier is shown, `location` is the courier: stored events keep the last scan.
+    location: parcel.location?.source === "courier" ? parcel.last_scan : parcel.location,
   };
 }
 

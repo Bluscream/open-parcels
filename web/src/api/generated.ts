@@ -632,6 +632,50 @@ export type GetApiV1Parcels200ItemLocation = {
   at: string | null;
 } | null;
 
+export type GetApiV1Parcels200ItemLastScanSource =
+  (typeof GetApiV1Parcels200ItemLastScanSource)[keyof typeof GetApiV1Parcels200ItemLastScanSource];
+
+export const GetApiV1Parcels200ItemLastScanSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type GetApiV1Parcels200ItemLastScanPrecision =
+  (typeof GetApiV1Parcels200ItemLastScanPrecision)[keyof typeof GetApiV1Parcels200ItemLastScanPrecision];
+
+export const GetApiV1Parcels200ItemLastScanPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type GetApiV1Parcels200ItemLastScan = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: GetApiV1Parcels200ItemLastScanSource;
+  precision: GetApiV1Parcels200ItemLastScanPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
 export type GetApiV1Parcels200ItemOrderItemsItem = {
   title: string;
   /** @nullable */
@@ -768,6 +812,8 @@ export type GetApiV1Parcels200Item = {
   live: GetApiV1Parcels200ItemLive;
   /** @nullable */
   location: GetApiV1Parcels200ItemLocation;
+  /** @nullable */
+  last_scan: GetApiV1Parcels200ItemLastScan;
   /** @nullable */
   order: GetApiV1Parcels200ItemOrder;
   sources: GetApiV1Parcels200ItemSourcesItem[];
@@ -1009,6 +1055,50 @@ export type PostApiV1Parcels201Location = {
   at: string | null;
 } | null;
 
+export type PostApiV1Parcels201LastScanSource =
+  (typeof PostApiV1Parcels201LastScanSource)[keyof typeof PostApiV1Parcels201LastScanSource];
+
+export const PostApiV1Parcels201LastScanSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type PostApiV1Parcels201LastScanPrecision =
+  (typeof PostApiV1Parcels201LastScanPrecision)[keyof typeof PostApiV1Parcels201LastScanPrecision];
+
+export const PostApiV1Parcels201LastScanPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type PostApiV1Parcels201LastScan = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: PostApiV1Parcels201LastScanSource;
+  precision: PostApiV1Parcels201LastScanPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
 export type PostApiV1Parcels201OrderItemsItem = {
   title: string;
   /** @nullable */
@@ -1145,6 +1235,8 @@ export type PostApiV1Parcels201 = {
   live: PostApiV1Parcels201Live;
   /** @nullable */
   location: PostApiV1Parcels201Location;
+  /** @nullable */
+  last_scan: PostApiV1Parcels201LastScan;
   /** @nullable */
   order: PostApiV1Parcels201Order;
   sources: PostApiV1Parcels201SourcesItem[];
@@ -1373,6 +1465,50 @@ export type GetApiV1ParcelsId200Location = {
   at: string | null;
 } | null;
 
+export type GetApiV1ParcelsId200LastScanSource =
+  (typeof GetApiV1ParcelsId200LastScanSource)[keyof typeof GetApiV1ParcelsId200LastScanSource];
+
+export const GetApiV1ParcelsId200LastScanSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type GetApiV1ParcelsId200LastScanPrecision =
+  (typeof GetApiV1ParcelsId200LastScanPrecision)[keyof typeof GetApiV1ParcelsId200LastScanPrecision];
+
+export const GetApiV1ParcelsId200LastScanPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type GetApiV1ParcelsId200LastScan = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: GetApiV1ParcelsId200LastScanSource;
+  precision: GetApiV1ParcelsId200LastScanPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
 export type GetApiV1ParcelsId200OrderItemsItem = {
   title: string;
   /** @nullable */
@@ -1509,6 +1645,8 @@ export type GetApiV1ParcelsId200 = {
   live: GetApiV1ParcelsId200Live;
   /** @nullable */
   location: GetApiV1ParcelsId200Location;
+  /** @nullable */
+  last_scan: GetApiV1ParcelsId200LastScan;
   /** @nullable */
   order: GetApiV1ParcelsId200Order;
   sources: GetApiV1ParcelsId200SourcesItem[];
@@ -1760,6 +1898,50 @@ export type PatchApiV1ParcelsId200Location = {
   at: string | null;
 } | null;
 
+export type PatchApiV1ParcelsId200LastScanSource =
+  (typeof PatchApiV1ParcelsId200LastScanSource)[keyof typeof PatchApiV1ParcelsId200LastScanSource];
+
+export const PatchApiV1ParcelsId200LastScanSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type PatchApiV1ParcelsId200LastScanPrecision =
+  (typeof PatchApiV1ParcelsId200LastScanPrecision)[keyof typeof PatchApiV1ParcelsId200LastScanPrecision];
+
+export const PatchApiV1ParcelsId200LastScanPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type PatchApiV1ParcelsId200LastScan = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: PatchApiV1ParcelsId200LastScanSource;
+  precision: PatchApiV1ParcelsId200LastScanPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
 export type PatchApiV1ParcelsId200OrderItemsItem = {
   title: string;
   /** @nullable */
@@ -1896,6 +2078,8 @@ export type PatchApiV1ParcelsId200 = {
   live: PatchApiV1ParcelsId200Live;
   /** @nullable */
   location: PatchApiV1ParcelsId200Location;
+  /** @nullable */
+  last_scan: PatchApiV1ParcelsId200LastScan;
   /** @nullable */
   order: PatchApiV1ParcelsId200Order;
   sources: PatchApiV1ParcelsId200SourcesItem[];

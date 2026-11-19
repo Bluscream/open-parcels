@@ -99,6 +99,7 @@ export function parcel(overrides: Partial<Parcel> = {}): Parcel {
     items: [],
     live: null,
     location: null,
+    last_scan: null,
     order: null,
     sources: [],
     lookup: { state: "found", since: null, checked_at: null },

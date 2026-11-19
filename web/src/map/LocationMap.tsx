@@ -23,8 +23,6 @@ interface Stop {
   readonly label: string;
 }
 
-const LIVE_STATES = new Set(["en_route", "next_stop"]);
-
 /** The scans that came with coordinates, oldest first, without repeats of the same place. */
 function stopsOf(parcel: ParcelDetail): Stop[] {
   const stops: Stop[] = [];
@@ -52,13 +50,10 @@ export default function LocationMap({ parcel }: { readonly parcel: ParcelDetail 
   // The React Compiler memoises these, so the animated lines only redraw when points change.
   const stops = stopsOf(parcel);
   const live = parcel.live;
+  // Where the parcel is now comes from the server; a courier is one of its answers.
+  const location = parcel.location;
   const courier: LatLng | null =
-    live !== null &&
-    LIVE_STATES.has(live.state) &&
-    live.latitude !== null &&
-    live.longitude !== null
-      ? [live.latitude, live.longitude]
-      : null;
+    location?.source === "courier" ? [location.latitude, location.longitude] : null;
   const travelled: LatLng[] = [
     ...stops.map((stop) => stop.point),
     ...(courier === null ? [] : [courier]),

@@ -113,6 +113,32 @@ interface OrderInfo {
   readonly parcels: number;
 }
 
+const ON_THE_ROAD = new Set(["en_route", "next_stop"]);
+
+/**
+ * The one answer to "where is the parcel now", for every client: the courier while a live
+ * session shows one, else the newest scan with coordinates, else unknown.
+ */
+function currentLocation(live: Live | null, lastScan: Parcel["location"]): Parcel["location"] {
+  if (
+    live !== null &&
+    ON_THE_ROAD.has(live.state) &&
+    live.latitude !== null &&
+    live.longitude !== null
+  ) {
+    return {
+      latitude: live.latitude,
+      longitude: live.longitude,
+      source: "courier",
+      precision: "exact",
+      name: null,
+      address: null,
+      at: live.position_at,
+    };
+  }
+  return lastScan;
+}
+
 /** Orders with their lines and how many parcels they have. */
 function buildOrders(
   orders: readonly { id: string; shop: string; order_number: string }[],
@@ -454,7 +480,11 @@ export class ParcelRepository {
       archived_at: row.archived_at,
       items,
       live: related.live.get(row.id) ?? null,
-      location: related.places.get(row.id) ?? null,
+      location: currentLocation(
+        related.live.get(row.id) ?? null,
+        related.places.get(row.id) ?? null,
+      ),
+      last_scan: related.places.get(row.id) ?? null,
       order:
         order === undefined
           ? null

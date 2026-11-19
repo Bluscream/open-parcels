@@ -146,7 +146,10 @@ export const parcelSchema = z.object({
   archived_at: isoDateTime.nullable(),
   items: z.array(itemSchema),
   live: liveSchema.nullable(),
+  /** Where the parcel is now: the live courier while one is shown, else `last_scan`. */
   location: locationSchema.nullable(),
+  /** The newest scan that came with coordinates, also while a courier is shown. */
+  last_scan: locationSchema.nullable(),
   order: z
     .object({ shop: z.string(), order_number: z.string(), items: z.array(orderItemSchema) })
     .nullable(),
