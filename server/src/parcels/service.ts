@@ -64,14 +64,23 @@ export class ParcelService {
   async create(given: NewParcelInput): Promise<Parcel> {
     // Stored in the carrier's own spelling, the one its answers come back in.
     const input = { ...given, barcode: normaliseBarcode(given.carrier, given.barcode) };
-    const existing = await this.repository.findIdByBarcode(input.carrier, input.barcode);
-    if (existing !== undefined) {
-      throw new DuplicateParcelError(existing);
+    // Checked first so a duplicate never links a tracking source, and again inside the write.
+    const known = await this.repository.findIdByBarcode(input.carrier, input.barcode);
+    if (known !== undefined) {
+      throw new DuplicateParcelError(known);
     }
     const sourceId = await this.linkTracking(input.carrier);
     const id = crypto.randomUUID();
     const now = isoNow(this.clock);
     await this.db.transaction().execute(async (trx) => {
+      // Checked inside the transaction, so two adds of one code can never both pass the check.
+      const existing = await new ParcelRepository(trx, this.presentation).findIdByBarcode(
+        input.carrier,
+        input.barcode,
+      );
+      if (existing !== undefined) {
+        throw new DuplicateParcelError(existing);
+      }
       await trx
         .insertInto("parcels")
         .values({

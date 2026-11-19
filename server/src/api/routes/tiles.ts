@@ -1,10 +1,15 @@
 import { z } from "zod";
 import type { Services } from "../../services.js";
-import { TileError } from "../../tiles/proxy.js";
+import { TILE_MAX_ZOOM, TileError } from "../../tiles/proxy.js";
 import type { TypedApp } from "../app.js";
 import { requireScope } from "../auth-plugin.js";
 
-const coordinate = z.coerce.number().int().min(0);
+/** At the deepest zoom a column or row is below 2^19; anything larger is refused up front. */
+const coordinate = z.coerce
+  .number()
+  .int()
+  .min(0)
+  .max(2 ** TILE_MAX_ZOOM - 1);
 
 export function registerTileRoutes(app: TypedApp, services: Services): void {
   app.get(
@@ -14,7 +19,11 @@ export function registerTileRoutes(app: TypedApp, services: Services): void {
       schema: {
         tags: ["map"],
         summary: "An OpenStreetMap tile, fetched and cached by this server.",
-        params: z.object({ z: coordinate, x: coordinate, y: coordinate }),
+        params: z.object({
+          z: z.coerce.number().int().min(0).max(TILE_MAX_ZOOM),
+          x: coordinate,
+          y: coordinate,
+        }),
       },
     },
     async (request, reply) => {

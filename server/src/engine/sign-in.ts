@@ -332,16 +332,20 @@ export class SignInService {
     }
   }
 
+  /**
+   * Counts a failed try in the row itself, never from the copy read before the carrier call, so
+   * failures that end at the same time are all counted.
+   */
   async #fail(attempt: LoadedAttempt): Promise<void> {
-    if (attempt.failures + 1 >= MAX_FAILURES) {
-      await this.cancel(attempt.sourceId, attempt.id);
-      return;
-    }
-    await this.deps.db
+    const row = await this.deps.db
       .updateTable("sign_in_attempts")
-      .set({ failures: attempt.failures + 1 })
+      .set((eb) => ({ failures: eb("failures", "+", 1) }))
       .where("id", "=", attempt.id)
-      .execute();
+      .returning("failures")
+      .executeTakeFirst();
+    if (row !== undefined && row.failures >= MAX_FAILURES) {
+      await this.cancel(attempt.sourceId, attempt.id);
+    }
   }
 
   /** Stores the next step, or the finished secret. */
@@ -390,11 +394,16 @@ export class SignInService {
         })
         .execute();
     } else {
-      await this.deps.db
+      const updated = await this.deps.db
         .updateTable("sign_in_attempts")
         .set({ blob, expires_at: expiresAt, poll_not_before: pollNotBefore })
         .where("id", "=", id)
-        .execute();
+        .executeTakeFirst();
+      // Cancelled (the dialog closed, a new start) while the carrier answered: never hand back a
+      // step of an attempt that no longer exists.
+      if (updated.numUpdatedRows === 0n) {
+        throw new SignInError("sign_in_expired", "Start the sign-in again; this attempt is gone.");
+      }
     }
     return { status: "step", attemptId: id, flow, expiresAt, step: turn.step };
   }

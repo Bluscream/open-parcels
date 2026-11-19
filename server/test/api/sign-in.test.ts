@@ -237,6 +237,34 @@ describe("interactive sign-in", () => {
     expect((await post(url)).json()).toMatchObject({ error: "sign_in_expired" });
   });
 
+  it("never hands back a step of an attempt cancelled while the carrier answered", async () => {
+    const id = await newSource();
+    const first = await start(id);
+    world.duringContinue = async () => {
+      await context.services.db.deleteFrom("sign_in_attempts").execute();
+    };
+    const late = await answer(id, first.attempt_id, { username: USER, password: TYPED });
+    expect(late.json()).toMatchObject({ error: "sign_in_expired" });
+  });
+
+  it("counts every failed try in the stored row, not in a copy read before the call", async () => {
+    const id = await newSource();
+    const otp = await upToMethod(id, "sms");
+    // Another failure lands while this try's carrier call runs.
+    world.duringContinue = async () => {
+      await context.services.db
+        .updateTable("sign_in_attempts")
+        .set((eb) => ({ failures: eb("failures", "+", 1) }))
+        .execute();
+    };
+    await answer(id, otp.attempt_id, { code: "1" });
+    const row = await context.services.db
+      .selectFrom("sign_in_attempts")
+      .select("failures")
+      .executeTakeFirstOrThrow();
+    expect(row.failures).toBe(2);
+  });
+
   it("cancels an attempt", async () => {
     const id = await newSource();
     const first = await start(id);

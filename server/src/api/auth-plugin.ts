@@ -65,6 +65,27 @@ async function resolveAuth(
     : { kind: "session", csrfToken: session.csrfToken, scopes: SCOPES };
 }
 
+/**
+ * A check that the credential this request came with is still valid: the session not signed out
+ * or expired, the token not revoked. Long-lived responses (the event stream) call it to end
+ * themselves when their access ends.
+ */
+export function credentialCheck(request: FastifyRequest, store: AuthStore): () => Promise<boolean> {
+  const auth = request.auth;
+  if (auth === null) {
+    return () => Promise.resolve(false);
+  }
+  if (auth.kind === "ingress") {
+    return () => Promise.resolve(true);
+  }
+  if (auth.kind === "token") {
+    const token = bearerToken(request) ?? "";
+    return async () => (await store.findToken(token))?.id === auth.tokenId;
+  }
+  const cookie = request.cookies[SESSION_COOKIE] ?? "";
+  return () => store.sessionAlive(cookie);
+}
+
 /** Browser sessions must echo the CSRF token on state-changing requests. */
 function checkCsrf(request: FastifyRequest, auth: AuthContext): void {
   if (auth.kind !== "session" || SAFE_METHODS.has(request.method)) {

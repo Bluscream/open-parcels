@@ -117,6 +117,15 @@ describe("carriers and sources API", () => {
         })
       ).statusCode,
     ).toBe(204);
+    // Sign-in data that does not fit the plug-in is refused before it is stored.
+    const malformed = await app.inject({
+      method: "PUT",
+      url: `/api/v1/sources/${id}/secret`,
+      headers,
+      payload: { secret: { unexpected: 1 } },
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json()).toMatchObject({ error: "invalid_source" });
     expect(
       (await app.inject({ method: "POST", url: `/api/v1/sources/${id}/sync`, headers })).statusCode,
     ).toBe(202);

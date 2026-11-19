@@ -122,6 +122,8 @@ export class VerifyWorld {
   polls = 0;
   /** The poll that says "approved" (1-based); polls before it keep waiting. */
   approveOnPoll = Number.POSITIVE_INFINITY;
+  /** Runs inside each continue, before it answers: what happens while the carrier thinks. */
+  duringContinue: (() => Promise<void>) | undefined;
 }
 
 const verifyStateSchema = z.object({ user: z.string(), method: z.string().optional() });
@@ -173,8 +175,9 @@ export function fakeVerify(world: VerifyWorld): RegisteredPlugin {
               state: null,
             });
           },
-          continue(_context, rawState, input) {
+          async continue(_context, rawState, input) {
             world.continues += 1;
+            await world.duringContinue?.();
             if (rawState === null) {
               return Promise.resolve({
                 step: {

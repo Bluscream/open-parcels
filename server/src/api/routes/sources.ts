@@ -212,13 +212,17 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
         summary: "Replace the sign-in data (credentials or API key) and run the source.",
         params: idParams,
         body: z.object({ secret: z.unknown() }),
-        response: { 204: z.null(), 404: errorBodySchema },
+        response: { 204: z.null(), 400: errorBodySchema, 404: errorBodySchema },
       },
     },
     async (request, reply) => {
       if ((await services.sources.get(request.params.id)) === undefined) {
         throw notFound("The source");
       }
+      // Checked against the plug-in's own schema before anything is stored.
+      await services.sources
+        .checkSecret(request.params.id, request.body.secret)
+        .catch(asBadRequest);
       await services.sources.setSecret(request.params.id, request.body.secret);
       if ((await services.sources.get(request.params.id))?.kind === "mail") {
         await services.mail.connect(request.params.id);

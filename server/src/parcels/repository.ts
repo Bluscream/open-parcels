@@ -17,7 +17,12 @@ export interface ParcelFilter {
   readonly carrier?: string;
   readonly includeArchived?: boolean;
   readonly limit?: number;
+  /** Rows to skip, for paging through more parcels than one page holds. */
+  readonly offset?: number;
 }
+
+/** Parcels per page when no limit is given. */
+export const PARCEL_PAGE_DEFAULT = 500;
 
 function asStatus(value: string | null): ParcelStatus | null {
   return value !== null && PARCEL_STATUSES.includes(value as ParcelStatus)
@@ -109,9 +114,12 @@ export class ParcelRepository {
     if (filter.carrier !== undefined) {
       query = query.where("carrier", "=", filter.carrier);
     }
+    // The id breaks ties, so pages never repeat or skip a parcel changed at the same instant.
     const rows = await query
       .orderBy("updated_at", "desc")
-      .limit(filter.limit ?? 500)
+      .orderBy("id", "asc")
+      .limit(filter.limit ?? PARCEL_PAGE_DEFAULT)
+      .offset(filter.offset ?? 0)
       .execute();
     const related = await this.#loadRelated(rows, withHistory);
     return rows.map((row) => this.#toParcel(row, related));

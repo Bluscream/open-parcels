@@ -226,6 +226,31 @@ export class SourceService {
     );
   }
 
+  /**
+   * Checks sign-in data against the source's plug-in before it is stored, so a malformed secret
+   * is refused at once instead of failing every later run. Throws InvalidSourceConfigError.
+   */
+  async checkSecret(id: string, secret: unknown): Promise<void> {
+    const row = await this.db
+      .selectFrom("sources")
+      .select(["plugin", "kind"])
+      .where("id", "=", id)
+      .executeTakeFirst();
+    if (row === undefined) {
+      return;
+    }
+    if (row.kind === "mail") {
+      if (!mailSecretSchema.safeParse(secret).success) {
+        throw new InvalidSourceConfigError("The mailbox needs a username and a password.");
+      }
+      return;
+    }
+    const plugin = this.registry.get(row.plugin);
+    if (plugin !== undefined && !plugin.info.secretSchema.safeParse(secret).success) {
+      throw new InvalidSourceConfigError(`The sign-in data does not fit ${plugin.info.name}.`);
+    }
+  }
+
   async setSecret(id: string, secret: unknown): Promise<void> {
     await this.db
       .updateTable("sources")

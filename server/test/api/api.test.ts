@@ -364,6 +364,31 @@ describe("parcels", () => {
     ]);
   });
 
+  it("pages through the list, each parcel exactly once", async () => {
+    const session = await signIn(context, app);
+    const headers = { cookie: session.cookie, "x-csrf-token": session.csrf };
+    for (let n = 1; n <= 5; n += 1) {
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/parcels",
+        headers,
+        payload: { carrier: "hermes", barcode: `H000000000000000000${String(n)}` },
+      });
+    }
+    const seen: string[] = [];
+    const pageAt = (offset: string) =>
+      app.inject({ url: `/api/v1/parcels?limit=2&offset=${offset}`, headers });
+    let next: string | undefined = "0";
+    while (next !== undefined) {
+      const page: Awaited<ReturnType<typeof pageAt>> = await pageAt(next);
+      seen.push(...page.json<{ id: string }[]>().map((parcel) => parcel.id));
+      const header: unknown = page.headers["x-next-offset"];
+      next = typeof header === "string" ? header : undefined;
+    }
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5);
+  });
+
   it("validates input", async () => {
     const session = await signIn(context, app);
     const headers = { cookie: session.cookie, "x-csrf-token": session.csrf };

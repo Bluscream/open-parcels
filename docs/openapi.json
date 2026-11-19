@@ -639,6 +639,7 @@
         "tags": [
           "parcels"
         ],
+        "description": "Pages of `limit` parcels (default 500), from `offset`. A full page carries the `X-Next-Offset` header with the offset of the next page; the last page has none.",
         "parameters": [
           {
             "schema": {
@@ -711,6 +712,16 @@
             },
             "in": "query",
             "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "query",
+            "name": "offset",
             "required": false
           }
         ],
@@ -3474,6 +3485,31 @@
               }
             }
           },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "404": {
             "description": "Default Response",
             "content": {
@@ -5511,7 +5547,7 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 9007199254740991
+              "maximum": 19
             },
             "in": "path",
             "name": "z",
@@ -5521,7 +5557,7 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 9007199254740991
+              "maximum": 524287
             },
             "in": "path",
             "name": "x",
@@ -5531,7 +5567,7 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 9007199254740991
+              "maximum": 524287
             },
             "in": "path",
             "name": "y",

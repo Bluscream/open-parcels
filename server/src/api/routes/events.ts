@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { OutboxEvent } from "../../events/types.js";
 import type { Services } from "../../services.js";
 import type { TypedApp } from "../app.js";
-import { requireScope } from "../auth-plugin.js";
+import { credentialCheck, requireScope } from "../auth-plugin.js";
 
 /** Comment lines keep proxies (and Home Assistant ingress) from closing an idle stream. */
 const HEARTBEAT_MS = 25_000;
@@ -124,8 +124,22 @@ export function registerEventRoutes(app: TypedApp, services: Services): void {
           write(`event: ${message.type}\ndata: ${JSON.stringify(message.payload)}\n\n`);
         }),
       );
+      // Each heartbeat also checks the credential: a signed-out session or a revoked token ends
+      // the stream within one heartbeat instead of streaming on until the client goes away.
+      const stillAllowed = credentialCheck(request, services.auth);
       const heartbeat = setInterval(() => {
-        write(": keep-alive\n\n");
+        stillAllowed().then(
+          (allowed) => {
+            if (allowed) {
+              write(": keep-alive\n\n");
+            } else {
+              close();
+            }
+          },
+          (error: unknown) => {
+            services.logger.warn({ err: error }, "Checking an event stream's access failed.");
+          },
+        );
       }, HEARTBEAT_MS);
       cleanups.push(() => {
         clearInterval(heartbeat);

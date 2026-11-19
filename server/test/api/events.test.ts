@@ -1,6 +1,8 @@
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { FastifyRequest } from "fastify";
 import type { App } from "../../src/api/app.js";
+import { credentialCheck } from "../../src/api/auth-plugin.js";
 import { createTestContext, signIn, type TestContext } from "../helpers.js";
 
 let context: TestContext;
@@ -88,6 +90,30 @@ describe("SSE event stream", () => {
   it("requires authentication", async () => {
     const response = await fetch(`${baseUrl}/api/v1/events`);
     expect(response.status).toBe(401);
+  });
+
+  it("knows when the stream's token is revoked or its session signed out", async () => {
+    const tokenId = (await context.services.auth.findToken(token))?.id ?? "";
+    const byToken = {
+      auth: { kind: "token", tokenId, scopes: ["read"] },
+      headers: { authorization: `Bearer ${token}` },
+      cookies: {},
+    } as unknown as FastifyRequest;
+    const tokenAllowed = credentialCheck(byToken, context.services.auth);
+    expect(await tokenAllowed()).toBe(true);
+    await context.services.auth.deleteToken(tokenId);
+    expect(await tokenAllowed()).toBe(false);
+
+    const session = await context.services.auth.createSession(null);
+    const bySession = {
+      auth: { kind: "session", csrfToken: session.csrfToken, scopes: ["read"] },
+      headers: {},
+      cookies: { op_session: session.cookieValue },
+    } as unknown as FastifyRequest;
+    const sessionAllowed = credentialCheck(bySession, context.services.auth);
+    expect(await sessionAllowed()).toBe(true);
+    await context.services.auth.deleteSession(session.cookieValue);
+    expect(await sessionAllowed()).toBe(false);
   });
 
   it("pushes new events live", async () => {

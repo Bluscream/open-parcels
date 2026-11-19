@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DIRECTIONS, parcelSchema, parcelStatusSchema } from "../../domain/parcel.js";
 import { detectCarrier } from "../../migrate/legacy-carrier.js";
+import { PARCEL_PAGE_DEFAULT } from "../../parcels/repository.js";
 import { DuplicateParcelError } from "../../parcels/service.js";
 import type { Services } from "../../services.js";
 import type { TypedApp } from "../app.js";
@@ -22,6 +23,9 @@ export function registerParcelRoutes(app: TypedApp, services: Services): void {
       schema: {
         tags: ["parcels"],
         summary: "List parcels, newest change first.",
+        description:
+          "Pages of `limit` parcels (default 500), from `offset`. A full page carries the " +
+          "`X-Next-Offset` header with the offset of the next page; the last page has none.",
         querystring: z.object({
           active: booleanQuery.optional(),
           status: parcelStatusSchema.optional(),
@@ -29,13 +33,16 @@ export function registerParcelRoutes(app: TypedApp, services: Services): void {
           include_archived: booleanQuery.optional(),
           include_history: booleanQuery.optional(),
           limit: z.coerce.number().int().min(1).max(1000).optional(),
+          offset: z.coerce.number().int().min(0).optional(),
         }),
         response: { 200: z.array(parcelSchema) },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const query = request.query;
-      return services.parcels.repository.list(
+      const limit = query.limit ?? PARCEL_PAGE_DEFAULT;
+      const offset = query.offset ?? 0;
+      const parcels = await services.parcels.repository.list(
         {
           ...(query.active === undefined ? {} : { active: query.active }),
           ...(query.status === undefined ? {} : { status: query.status }),
@@ -43,10 +50,15 @@ export function registerParcelRoutes(app: TypedApp, services: Services): void {
           ...(query.include_archived === undefined
             ? {}
             : { includeArchived: query.include_archived }),
-          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          limit,
+          offset,
         },
         query.include_history === true,
       );
+      if (parcels.length === limit) {
+        void reply.header("x-next-offset", String(offset + limit));
+      }
+      return parcels;
     },
   );
 

@@ -110,6 +110,16 @@ export class AuthStore {
     return { csrfToken: row.csrf_token, expiresAt };
   }
 
+  /** Whether a session is still signed in, without extending it (an open stream is not use). */
+  async sessionAlive(cookieValue: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("sessions")
+      .select("expires_at")
+      .where("id_hash", "=", sha256Hex(cookieValue))
+      .executeTakeFirst();
+    return row !== undefined && Date.parse(row.expires_at) > this.clock.now().getTime();
+  }
+
   async deleteSession(cookieValue: string): Promise<void> {
     await this.db.deleteFrom("sessions").where("id_hash", "=", sha256Hex(cookieValue)).execute();
   }
