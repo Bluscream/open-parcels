@@ -54,7 +54,8 @@ describe("helthjem", () => {
     expect(snap?.status).toBe("at_pickup_point");
     expect(snap?.pickup).toBe(true);
     expect(snap?.pickupPoint).toBe("Test Point");
-    expect(snap?.plannedFrom).toBe("2026-04-10T00:00:00.000Z");
+    // A date-only estimate is that day in Norway: local midnight, not UTC midnight.
+    expect(snap?.plannedFrom).toBe("2026-04-09T22:00:00.000Z");
     expect(snap?.plannedTo).toBeNull();
     expect(snap?.history[0]).toEqual({
       at: "2026-04-09T08:00:00.000Z",

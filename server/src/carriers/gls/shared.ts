@@ -62,8 +62,12 @@ export const COUNTRIES = [...NATIONAL_COUNTRIES, ...Object.keys(GROUP_COUNTRIES)
 /** GLS sends text fields as strings only; numbers are never read as text. */
 export const text = (value: unknown): string | null => anyText(value, { numbers: false });
 
-/** ISO 8601 for a timestamp string that carries its own offset; null when it does not parse. */
-export const isoTime = (value: unknown): string | null => kitIsoTime(value, { naive: "runtime" });
+/**
+ * ISO 8601 UTC for a GLS timestamp; one without an offset is local time in the national
+ * network's `zone`. Null when it does not parse.
+ */
+export const isoTime = (value: unknown, zone: string): string | null =>
+  kitIsoTime(value, { naive: { zone } });
 
 /** A wall-clock date (`YYYY-MM-DD` or `YY-MM-DD`) and time in `timeZone`, as ISO 8601 UTC. */
 export function localTime(date: unknown, time: unknown, timeZone: string): string | null {

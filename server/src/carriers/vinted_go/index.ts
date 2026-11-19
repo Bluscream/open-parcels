@@ -23,8 +23,8 @@ import {
 
 import { emailSignIn, fetchVintedAccount } from "./account.js";
 
-/** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
-const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
+/** Offset-less timestamps are the carrier's local time; numbers are epoch ms. */
+const LOCAL_TIME = { naive: { zone: "Europe/Paris" }, epoch: "ms" } as const;
 
 const CARRIER_ID = "vinted_go";
 const API_HOST = "carrier.vintedgo.com";
@@ -64,7 +64,7 @@ function mapGroup(group: string | null): Status | null {
 function history(events: readonly Json[]): SnapshotEvent[] {
   const entries: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = isoTime(event["timestamp"], RUNTIME_TIME);
+    const at = isoTime(event["timestamp"], LOCAL_TIME);
     const group = text(event["group"]);
     const rawStatus = text(event["message"]) ?? group;
     if (at !== null && rawStatus !== null) {
@@ -77,7 +77,7 @@ function history(events: readonly Json[]): SnapshotEvent[] {
 /** The newest event by time; events without a usable time count as oldest. */
 function latest(events: readonly Json[]): Json | undefined {
   const time = (event: Json): number =>
-    Date.parse(isoTime(event["timestamp"], RUNTIME_TIME) ?? "") || 0;
+    Date.parse(isoTime(event["timestamp"], LOCAL_TIME) ?? "") || 0;
   return events.reduce<Json | undefined>(
     (best, event) => (best === undefined || time(event) >= time(best) ? event : best),
     undefined,
@@ -103,7 +103,7 @@ export function vintedSnapshot(
     rawStatus: current === undefined ? null : (text(current["message"]) ?? group),
     delivered,
     deliveredAt:
-      delivered && current !== undefined ? isoTime(current["timestamp"], RUNTIME_TIME) : null,
+      delivered && current !== undefined ? isoTime(current["timestamp"], LOCAL_TIME) : null,
     pickup: status === "at_pickup_point",
     url: `https://vintedgo.com/en/tracking/${encodeURIComponent(barcode)}`,
     history: history(events),

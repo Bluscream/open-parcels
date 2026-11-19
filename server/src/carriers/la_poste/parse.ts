@@ -15,7 +15,7 @@ export const CARRIER_ID = "la_poste";
 
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "Europe/Paris" }, epoch: "ms" });
 
 /**
  * A code in the product's vocabulary ("colissimo:" or "chronopost:" in the shared table). An

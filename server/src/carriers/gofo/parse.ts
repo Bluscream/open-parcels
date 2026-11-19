@@ -25,7 +25,9 @@ export function isoTime(value: unknown, wallClock: boolean): string | null {
     return null;
   }
   if (!wallClock) {
-    return kitIsoTime(value.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"), { naive: "runtime" });
+    return kitIsoTime(value.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"), {
+      naive: { zone: "America/Los_Angeles" },
+    });
   }
   const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(value);
   if (match === null) {

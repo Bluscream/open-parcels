@@ -14,6 +14,7 @@ import { CARRIER_ID, isoTime, latestHistory, mapGls, text } from "./shared.js";
 export const PL_HOST = "mygls.gls-poland.com.pl";
 /** The carrier's own "unknown number" answer, sent with HTTP 400. */
 const UNKNOWN_PARCEL = "mygls-tracking-400(111)";
+const PL_ZONE = "Europe/Warsaw";
 
 /** The keyless national lookup, by number alone; it carries the full event history. */
 export async function lookUpPl(http: PluginHttp, barcode: string): Promise<Json | null> {
@@ -47,7 +48,7 @@ export function plSnapshot(
   const rows = asList(raw["eventReasons"]).filter(isObject);
   const events = latestHistory(
     rows.flatMap((row) => {
-      const at = isoTime(row["packageStatusDate"]);
+      const at = isoTime(row["packageStatusDate"], PL_ZONE);
       const name = text(row["packageStatusName"]);
       const rawStatus = text(row["packageStatusDescription"]) ?? name;
       return at === null || rawStatus === null
@@ -69,7 +70,7 @@ export function plSnapshot(
     status,
     rawStatus: events[0]?.rawStatus ?? text(raw["progressBar"]) ?? ident,
     delivered,
-    deliveredAt: delivered ? (isoTime(raw["stateDate"]) ?? events[0]?.at ?? null) : null,
+    deliveredAt: delivered ? (isoTime(raw["stateDate"], PL_ZONE) ?? events[0]?.at ?? null) : null,
     pickup: status === "at_pickup_point",
     url: `https://gls-group.com/PL/en/parcel-tracking/?match=${encodeURIComponent(number)}`,
     history: events,

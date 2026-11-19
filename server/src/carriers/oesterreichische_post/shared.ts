@@ -29,7 +29,7 @@ export function isoTime(value: unknown): string | null {
   if (raw !== null && LOCAL_TIME.test(raw)) {
     return kitIsoTime(raw, { naive: { zone: "Europe/Vienna" }, keepFraction: true });
   }
-  return kitIsoTime(raw ?? value, { naive: "runtime", epoch: "ms" });
+  return kitIsoTime(raw ?? value, { naive: { zone: "Europe/Vienna" }, epoch: "ms" });
 }
 /** The state keys arrive in camelCase; the vocabulary is written in UPPER_SNAKE. */
 export function normalizeKey(key: unknown): string | null {

@@ -15,7 +15,7 @@ export const text = (value: unknown): string | null => kitText(value, { numbers:
 
 /** Strings as `new Date()` reads them, numbers as epoch milliseconds. */
 export const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "Europe/Madrid" }, epoch: "ms" });
 /** A Paack event label from the shared table, which maps too little rather than wrongly. */
 export function mapLabel(label: string | null): ParcelStatus | null {
   return ruleStatus(CARRIER_ID, label);
