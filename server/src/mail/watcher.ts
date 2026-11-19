@@ -211,10 +211,13 @@ export class MailWatcher {
 
   async #sync(sourceId: string, connection: Connection, folders: readonly string[]): Promise<void> {
     const snapshots: ParcelSnapshot[] = [];
+    // Built on a copy and committed only once the mails are stored: a failed batch is read again
+    // on the next sync, whatever else runs on the connection in between.
+    let progress = connection.progress;
     // The first folder is opened last so it stays selected for IDLE.
     for (const folder of [...folders].reverse()) {
       const { uidValidity } = await connection.client.open(folder);
-      const known = connection.progress[folder];
+      const known = progress[folder];
       let lastUid = known?.uidValidity === uidValidity ? known.lastUid : 0;
       const messages: AsyncIterable<FetchedMessage> =
         known?.uidValidity === uidValidity
@@ -228,16 +231,17 @@ export class MailWatcher {
         lastUid = Math.max(lastUid, message.uid);
         snapshots.push(...this.#interpret(sourceId, await toMailInput(message.source)));
       }
-      connection.progress = { ...connection.progress, [folder]: { uidValidity, lastUid } };
+      progress = { ...progress, [folder]: { uidValidity, lastUid } };
     }
     if (snapshots.length > 0) {
       await this.deps.reconciler.ingest(sourceId, { snapshots, complete: false });
       await this.deps.followUp(sourceId);
     }
+    connection.progress = progress;
     await this.deps.db
       .updateTable("sources")
       .set({
-        session_blob: this.deps.secrets.encryptJson(connection.progress, sessionAad(sourceId)),
+        session_blob: this.deps.secrets.encryptJson(progress, sessionAad(sourceId)),
         last_run_at: isoNow(this.deps.clock),
         last_ok_at: isoNow(this.deps.clock),
       })
