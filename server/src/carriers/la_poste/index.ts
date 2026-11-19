@@ -7,6 +7,7 @@ import {
   isObject,
   readJson,
   trackEach,
+  TransientError,
   unknownReporter,
   UnexpectedResponseError,
   type Json,
@@ -18,9 +19,13 @@ import { CARRIER_ID, toSnapshot } from "./parse.js";
 const API_HOST = "www.laposte.fr";
 const BARCODE_PATTERN = carrierPattern("la_poste");
 
+/** `returnCode`s that say the shipment is unknown or not scanned yet. */
+const NOT_FOUND: ReadonlySet<number> = new Set([104, 105, 404]);
+
 /**
  * One keyless endpoint serves La Poste, Colissimo and Chronopost. It answers a one-element list
- * whose `returnCode` is 200 for a known shipment; any other code means unknown or not scanned.
+ * whose `returnCode` is 200 for a known shipment and one of `NOT_FOUND` for an unknown one; any
+ * other code (a server error in the body, say) is a transient failure, never "not found".
  */
 async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   const url = new URL(
@@ -40,8 +45,13 @@ async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   if (payload.length !== 1 || !isObject(envelope)) {
     throw new UnexpectedResponseError("La Poste answered with an unexpected list.");
   }
-  if (envelope["returnCode"] !== 200) {
+  const returnCode = envelope["returnCode"];
+  if (typeof returnCode === "number" && NOT_FOUND.has(returnCode)) {
     return null;
+  }
+  if (returnCode !== 200) {
+    // A server error carried in the body, or a code not known to mean "unknown shipment".
+    throw new TransientError(`La Poste answered return code ${String(returnCode)}.`);
   }
   const shipment = envelope["shipment"];
   if (!isObject(shipment)) {
