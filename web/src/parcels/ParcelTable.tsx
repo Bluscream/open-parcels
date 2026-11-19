@@ -1,3 +1,4 @@
+import { apiUrl } from "../api/fetcher";
 import { Link } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo, useState, type ReactNode } from "react";
@@ -20,7 +21,7 @@ export function ItemThumbs({ items }: { readonly items: Parcel["items"] }): Reac
   return (
     <span className="thumbs">
       {images.slice(0, 3).map((src) => (
-        <img key={src} src={src} alt="" loading="lazy" width={32} height={32} />
+        <img key={src} src={apiUrl(src)} alt="" loading="lazy" width={32} height={32} />
       ))}
     </span>
   );

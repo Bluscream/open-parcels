@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { apiUrl } from "../api/fetcher";
 
 export interface ListedItem {
   readonly title: string;
@@ -36,7 +37,7 @@ export function ItemList(props: {
             {item.image_url === null ? (
               <span className="item-thumb" aria-hidden="true" />
             ) : (
-              <img src={item.image_url} alt="" width={48} height={48} loading="lazy" />
+              <img src={apiUrl(item.image_url)} alt="" width={48} height={48} loading="lazy" />
             )}
             <span className="item-text">
               <span>
