@@ -5,15 +5,19 @@ import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import type { LatLng } from "./mapIcons";
 
 const ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-function tileUrl(): string {
+/**
+ * OpenStreetMap's own tiles: no key needed, fine for a single household's light use under the
+ * OSM tile usage policy. Dark mode is a CSS filter on the tile pane (see `.map-dark`).
+ */
+const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+function prefersDark(): boolean {
   const forced = document.documentElement.dataset["theme"];
-  const dark =
-    forced === undefined
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-      : forced === "dark";
-  return `https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
+  return forced === undefined
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+    : forced === "dark";
 }
 
 /** Keeps the map sized to its container and fitted to the given points. */
@@ -48,7 +52,11 @@ export function SharedMap(props: {
   readonly children?: ReactNode;
 }): ReactNode {
   return (
-    <div className="map-frame" role="region" aria-label={props.label}>
+    <div
+      className={prefersDark() ? "map-frame map-dark" : "map-frame"}
+      role="region"
+      aria-label={props.label}
+    >
       <MapContainer
         center={props.center ?? [51, 10]}
         zoom={props.zoom ?? 5}
@@ -56,7 +64,7 @@ export function SharedMap(props: {
         style={{ height: "100%", width: "100%", borderRadius: "12px", zIndex: 0 }}
       >
         <MapResizer bounds={props.bounds} />
-        <TileLayer attribution={ATTRIBUTION} url={tileUrl()} />
+        <TileLayer attribution={ATTRIBUTION} url={TILE_URL} maxZoom={19} />
         {props.children}
       </MapContainer>
     </div>

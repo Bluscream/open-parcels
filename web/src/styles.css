@@ -561,6 +561,11 @@ tbody tr:hover {
   position: relative;
 }
 
+/* Dark map from the standard light tiles: only the tiles are filtered, never the markers. */
+.map-dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+}
+
 .map-card {
   min-height: 320px;
   padding: 0;
