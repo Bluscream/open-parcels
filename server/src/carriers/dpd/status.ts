@@ -43,10 +43,7 @@ export const KNOWN_SLOT_TEXTS = new Set(
   ].map((text) => text.toLowerCase()),
 );
 
-/** The public page for one parcel, from the shared carrier registry when it lists one. */
-export function publicUrl(barcode: string): string {
-  return (
-    rulesTrackingUrl("dpd", barcode, "de") ??
-    `https://tracking.dpd.de/status/de_DE/parcel/${encodeURIComponent(barcode)}`
-  );
+/** The public page for one parcel, from the shared carrier registry. */
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl("dpd", barcode, "de");
 }

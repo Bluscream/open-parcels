@@ -9,6 +9,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import {
   carrierKey,
@@ -133,7 +134,7 @@ export function ukrposhtaSnapshot(
         ? null
         : isoTime(deliveredEvent.event["date"], { naive: { zone: ZONE }, dateOnly: false }),
     pickup: status === "at_pickup_point",
-    url: `https://track.ukrposhta.ua/en/?barcode=${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     history: history(classified),
     raw: { trackingNumber: barcode, events },
   });

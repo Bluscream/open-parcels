@@ -21,6 +21,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "helthjem";
@@ -123,7 +124,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     plannedFrom: delivered ? null : isoTime(asObject(raw["estimatedDelivery"])["date"]),
     pickup: status === "at_pickup_point",
     pickupPoint: text(servicePoint["name"]),
-    url: `${SITE}/sporing/?trackingReference=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history: sorted,
     raw,
   });

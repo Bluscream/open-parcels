@@ -15,6 +15,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { DELIVERED_EVENT_CODE, mapEvent, resolveStatus } from "./status.js";
 
@@ -165,7 +166,7 @@ export function toSnapshot(
     plannedTo: planned.to,
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? pickupPoint(dated) : null,
-    url: `https://${TRACKING_HOST}/track-reperage/${options.lang}#/details/${encodeURIComponent(pin)}`,
+    url: rulesTrackingUrl(CARRIER_ID, pin, options.lang),
     sender: text(detail["custNm"]),
     history: history(dated, options.lang),
     raw: detail,

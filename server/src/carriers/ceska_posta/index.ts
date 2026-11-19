@@ -19,6 +19,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type PluginLogger,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import {
   buildHistory,
@@ -136,7 +137,7 @@ function toSnapshot(
     plannedTo: delivered ? null : (window?.to ?? null),
     pickup: status === "at_pickup_point",
     pickupPoint: joinParts(text(place["name"]), text(place["address"])),
-    url: `https://${PACKAGE_HOST}/cs/sledovat-balik/-/balik/${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     sender: sender === "-" ? null : sender,
     weightKg: weight === null || weight <= 0 ? null : weight,
     history,

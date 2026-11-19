@@ -6,6 +6,7 @@ import {
   isObject,
   num,
   parseJsonBody,
+  rulesTrackingUrl,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -146,10 +147,10 @@ function pickupPoint(found: Json, scans: readonly Json[]): string | null {
   return text(shop["name"]);
 }
 
-export function esUrl(country: "ES" | "PT", barcode: string, postcode: string): string {
-  const host = country === "PT" ? "mygls.gls-portugal.pt" : "mygls.gls-spain.es";
-  const language = country === "PT" ? "pt" : "es";
-  return `https://${host}/e/${encodeURIComponent(barcode)}/${encodeURIComponent(compactPostcode(postcode))}/${language}`;
+export function esUrl(country: "ES" | "PT", barcode: string, postcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode, country === "PT" ? "pt" : "es", {
+    postcode: compactPostcode(postcode),
+  });
 }
 
 /** Turns one Spanish or Portuguese shipment into a snapshot, under the code the user tracks. */

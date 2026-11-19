@@ -29,9 +29,6 @@ export function mapCode(code: string | null): ParcelStatus | null {
   return ruleStatus(CARRIER_ID, code);
 }
 
-export function publicUrl(barcode: string): string {
-  return (
-    rulesTrackingUrl(CARRIER_ID, barcode, "en") ??
-    `https://www.ontrac.com/tracking/?number=${encodeURIComponent(barcode)}`
-  );
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode, "en");
 }

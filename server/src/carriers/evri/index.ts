@@ -16,6 +16,7 @@ import {
   trackEach,
   unknownReporter,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { EvriTracking, HOST } from "./api.js";
 
@@ -107,7 +108,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     pickup:
       raw["parcelShopDelivery"] === true ||
       (stage !== null && rulesStatus(CARRIER_ID, { code: stage })?.pickup === true),
-    url: `https://www.evri.com/track/parcel/${encodeURIComponent(barcode)}/details`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(asObject(raw["sender"])["displayName"]),
     history: entries,
     raw: safeRaw(raw, events),

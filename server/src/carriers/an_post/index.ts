@@ -15,6 +15,7 @@ import {
   type Json,
   type ParcelSnapshot,
   type PluginContext,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { IDENTITY_HOST, idToken } from "./auth.js";
 
@@ -50,7 +51,7 @@ export function anPostSnapshot(item: Json, report: (key: string) => void): Parce
     plannedFrom: delivered
       ? null
       : isoTime(item["estimatedDeliveryDateTime"], { naive: { zone: ZONE } }),
-    url: `https://www.anpost.com/Post-Parcels/Track/Search?trackingNumber=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(item["retailerName"]),
     receiver: text(item["recipientName"]) ?? text(item["receiverName"]),
     raw: Object.fromEntries(Object.entries(item).filter(([name]) => !WITHHELD.has(name))),

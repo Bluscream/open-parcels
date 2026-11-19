@@ -9,6 +9,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "la_poste";
@@ -85,7 +86,7 @@ export function toSnapshot(
     delivered,
     deliveredAt: delivered ? isoTime(raw["deliveryDate"]) : null,
     pickup: status === "at_pickup_point",
-    url: `https://www.laposte.fr/outils/suivre-vos-envois?code=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(asObject(raw["contextData"])["merchantName"]),
     history,
     raw,

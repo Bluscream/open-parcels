@@ -92,13 +92,18 @@ export function ruleFieldsStatus(
   return rulesStatus(carrier, { fields })?.status ?? null;
 }
 
-/** The shared tracking-page URL for `carrier` (a rules id), or undefined when it has none. */
+/**
+ * The carrier's public tracking page from the shared rules (`carrier` is a rules id), or null
+ * when they list none. `locale` picks a language or regional site (e.g. `fr`, `en-NZ`); `params`
+ * fills a template's other placeholders, such as `{postcode}`.
+ */
 export function rulesTrackingUrl(
   carrier: string,
   trackingNumber: string,
   locale?: string,
-): string | undefined {
-  return trackingUrl(loadRules(), carrier, trackingNumber, locale);
+  params?: Readonly<Record<string, string>>,
+): string | null {
+  return trackingUrl(loadRules(), carrier, trackingNumber, locale, params) ?? null;
 }
 
 /**

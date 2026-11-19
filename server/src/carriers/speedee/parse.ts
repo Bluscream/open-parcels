@@ -151,9 +151,7 @@ export function pageSnapshot(
     status,
     rawStatus: stem(summaryStatus),
     deliveredAt: delivered ? centralTime(facts.get("delivered on") ?? "") : null,
-    url:
-      rulesTrackingUrl(CARRIER_ID, barcode) ??
-      `https://www.speedeedelivery.com/track/?tracking=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history,
     raw: { summaryStatus, scans },
   });

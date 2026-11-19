@@ -8,6 +8,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "sunyou";
@@ -80,7 +81,7 @@ export function orderSnapshot(
     status,
     rawStatus: newest === undefined ? null : (text(newest.event["eventCode"]) ?? code),
     deliveredAt: status === "delivered" ? (newest?.at ?? null) : null,
-    url: `https://sypost.net/search?orderNo=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history,
     raw: kept,
   });

@@ -21,6 +21,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "correos";
@@ -99,7 +100,7 @@ function toSnapshot(raw: Json, code: string, report: (c: string) => void): Parce
     deliveredAt: delivered && latest !== undefined ? eventTime(latest) : null,
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? text(raw["nom_codired"]) : null,
-    url: `https://www.correos.es/es/es/herramientas/localizador/envios/detalle?tracking-number=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     weightKg: grams === null || grams <= 0 ? null : grams / 1000,
     history: newestFirst(history),
     raw,

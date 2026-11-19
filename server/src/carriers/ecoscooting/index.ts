@@ -23,6 +23,7 @@ import {
   trackEach,
   unknownReporter,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "ecoscooting";
@@ -138,7 +139,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     plannedTo: departed === undefined ? null : endOfDeliveryDay(departed),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(raw),
-    url: `https://www.ecoscooting.com/tracking/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     weightKg: weightKg(raw),
     history: history(events),
     raw,

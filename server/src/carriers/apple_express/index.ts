@@ -21,6 +21,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "apple_express";
@@ -140,7 +141,7 @@ export function appleExpressSnapshot(
     plannedFrom:
       windowEnd === null ? null : new Date(Date.parse(windowEnd) - WINDOW_MS).toISOString(),
     plannedTo: windowEnd,
-    url: `https://track.appleexpress.com/en-US/orderNumber/${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     history: newestFirst(history),
     raw,
   });

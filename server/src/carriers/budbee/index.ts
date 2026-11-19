@@ -18,6 +18,7 @@ import {
   text,
   trackEach,
   type Json,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "budbee";
@@ -187,7 +188,7 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
     plannedTo: delivered ? null : plannedTo,
     pickup: status === "at_pickup_point",
     pickupPoint: lockerName(raw),
-    url: `https://track.budbee.com/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: unmasked(dig(raw, "merchant", "name")),
     receiver: unmasked(dig(raw, "consumer", "name")),
     raw,

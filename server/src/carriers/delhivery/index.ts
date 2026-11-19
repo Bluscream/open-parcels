@@ -21,6 +21,7 @@ import {
   type Json,
   type ParcelStatus as Status,
   type PluginHttp,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "delhivery";
@@ -114,7 +115,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
       ? (isoTime(asObject(raw["status"])["statusDateTime"], ZONE) ?? events[0]?.at ?? null)
       : null,
     plannedFrom: delivered ? null : isoTime(raw["PromiseDeliveryDate"], ZONE),
-    url: `https://www.delhivery.com/track-v2/package/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(raw["clientName"]),
     receiver: text(raw["consignee"]),
     history: events,

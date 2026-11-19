@@ -7,6 +7,7 @@ import {
   type Json,
   type ParcelSnapshot,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { text } from "./shared.js";
 
@@ -120,7 +121,7 @@ export function scanSnapshot(input: ScanInput, report: (code: string) => void): 
     deliveredAt: delivered ? (lastDelivery?.at ?? null) : null,
     pickup: status === "at_pickup_point",
     pickupPoint: point,
-    url: `https://moja.posta.si/tracking?trackingNumber=${encodeURIComponent(input.barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, input.barcode),
     sender: input.sender,
     receiver: input.receiver,
     history,

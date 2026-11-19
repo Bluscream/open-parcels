@@ -4,6 +4,7 @@ import {
   rulesStatus,
   text as kitText,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "packeta";
@@ -42,6 +43,6 @@ export function isoTime(value: unknown): string | null {
     ? kitIsoTime(value, { naive: { zone: "Europe/Prague" }, keepFraction: true })
     : kitIsoTime(value, { naive: { zone: "Europe/Prague" } });
 }
-export function publicUrl(barcode: string): string {
-  return `https://${TRACKING_HOST}/en/?id=${encodeURIComponent(barcode)}`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }

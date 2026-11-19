@@ -10,6 +10,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "slovenska_posta";
@@ -85,7 +86,7 @@ export function resultSnapshot(
       atPoint && latest !== undefined
         ? text(asObject(latest.event["postOffice"])["name"], STRINGS)
         : null,
-    url: `https://www.posta.sk/en/tracking-of-items#parcel=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history,
     raw,
   });

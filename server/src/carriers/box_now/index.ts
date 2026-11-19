@@ -19,16 +19,18 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "box_now";
 const PLAUSIBLE = carrierPattern("box_now");
 
 const COUNTRIES = {
-  gr: { tld: "gr", page: "https://boxnow.gr/homepage-gr?track=", zone: "Europe/Athens" },
-  bg: { tld: "bg", page: "https://boxnow.bg/homepage?track=", zone: "Europe/Sofia" },
-  hr: { tld: "hr", page: "https://boxnow.hr/?track=", zone: "Europe/Zagreb" },
-  cy: { tld: "cy", page: "https://boxnow.cy/?track=", zone: "Asia/Nicosia" },
+  // `locale` picks the country's tracking page in the shared rules.
+  gr: { tld: "gr", locale: "el", zone: "Europe/Athens" },
+  bg: { tld: "bg", locale: "bg", zone: "Europe/Sofia" },
+  hr: { tld: "hr", locale: "hr", zone: "Europe/Zagreb" },
+  cy: { tld: "cy", locale: "el-CY", zone: "Asia/Nicosia" },
 } as const;
 type Country = keyof typeof COUNTRIES;
 const apiHost = (country: Country): string => `api-production.boxnow.${COUNTRIES[country].tld}`;
@@ -69,7 +71,7 @@ export function boxNowSnapshot(
   country: Country,
   report: (key: string) => void,
 ): ParcelSnapshot {
-  const { zone, page } = COUNTRIES[country];
+  const { zone, locale } = COUNTRIES[country];
   const dated: Dated[] = asArray(raw["events"])
     .filter(isObject)
     .flatMap((event) => {
@@ -115,7 +117,7 @@ export function boxNowSnapshot(
     deliveredAt: delivered ? (newest?.at ?? null) : null,
     pickup,
     pickupPoint: pickup && newest !== undefined ? text(newest.event["locationDisplayName"]) : null,
-    url: `${page}${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode, locale),
     history: newestFirst(history),
     // Only what the mapping needs: the answer also carries payment and service details.
     raw: {

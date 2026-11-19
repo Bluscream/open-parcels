@@ -4,6 +4,7 @@ import {
   asObject,
   isObject,
   readObject,
+  rulesTrackingUrl,
   text,
   TransientError,
   UnexpectedResponseError,
@@ -25,19 +26,21 @@ const NESTED = ["progressTracker", "eventHistory", "addresses"] as const;
 
 interface Region {
   readonly tld: string;
+  /** Picks the regional tracking page in the shared rules; undefined for the default (.com). */
+  readonly locale: string | undefined;
   /** The zone the tracker's offset-less times are read in; null when it cannot be known. */
   readonly zone: string | null;
 }
 
 const REGIONS: Readonly<Record<string, Region>> = {
-  UK: { tld: "co.uk", zone: "Europe/London" },
-  GB: { tld: "co.uk", zone: "Europe/London" },
-  IT: { tld: "it", zone: "Europe/Rome" },
-  ES: { tld: "es", zone: "Europe/Madrid" },
+  UK: { tld: "co.uk", locale: "en-GB", zone: "Europe/London" },
+  GB: { tld: "co.uk", locale: "en-GB", zone: "Europe/London" },
+  IT: { tld: "it", locale: "it", zone: "Europe/Rome" },
+  ES: { tld: "es", locale: "es", zone: "Europe/Madrid" },
 };
-const FRANCE: Region = { tld: "fr", zone: "Europe/Paris" };
+const FRANCE: Region = { tld: "fr", locale: "fr", zone: "Europe/Paris" };
 /** US numbers span several zones, so their local times are kept for ordering only. */
-const US: Region = { tld: "com", zone: null };
+const US: Region = { tld: "com", locale: undefined, zone: null };
 
 /** The regional tracker for a number's prefix; the tracker's answer decides whether it serves it. */
 export function regionFor(barcode: string): Region {
@@ -48,8 +51,8 @@ export function regionFor(barcode: string): Region {
   return REGIONS[code.slice(0, 2)] ?? FRANCE;
 }
 
-export function publicUrl(barcode: string): string {
-  return `https://track.amazon.${regionFor(barcode).tld}/tracking/${encodeURIComponent(barcode)}`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl("amazon_shipping", barcode, regionFor(barcode).locale);
 }
 
 function decodeNested(payload: Json): Json {
@@ -87,16 +90,16 @@ export async function lookUp(
   report: (kind: string, key: string) => void,
 ): Promise<Json | null> {
   const { tld } = regionFor(barcode);
-  const response = await http.request(
-    new URL(`https://track.amazon.${tld}/api/tracker/${encodeURIComponent(barcode)}`),
-    {
-      headers: {
-        accept: "application/json",
-        "accept-language": "en-US,en;q=0.9",
-        referer: publicUrl(barcode),
-      },
+  const path = encodeURIComponent(barcode);
+  const response = await http.request(new URL(`https://track.amazon.${tld}/api/tracker/${path}`), {
+    headers: {
+      accept: "application/json",
+      "accept-language": "en-US,en;q=0.9",
+      // The tracker's own page, as a browser on it would send; part of the request, so not
+      // taken from the shared rules' display link.
+      referer: `https://track.amazon.${tld}/tracking/${path}`,
     },
-  );
+  });
   if (response.status !== 200) {
     throw new TransientError(`Amazon Shipping tracking answered HTTP ${response.status}.`);
   }

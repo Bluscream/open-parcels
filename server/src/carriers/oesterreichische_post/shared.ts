@@ -4,6 +4,7 @@ import {
   ruleStatus,
   text as kitText,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "oesterreichische_post";
@@ -45,6 +46,6 @@ export function mapStatus(key: string | null): ParcelStatus | null {
   return ruleStatus(CARRIER_ID, key);
 }
 
-export function publicUrl(barcode: string): string {
-  return `https://www.post.at/s/sendungsdetails?snr=${encodeURIComponent(barcode)}`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }

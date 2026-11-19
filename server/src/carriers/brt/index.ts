@@ -21,6 +21,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "brt";
@@ -170,7 +171,7 @@ export function shipmentSnapshot(
     pickupPoint: pickup ? receiver : null,
     receiver: pickup ? null : receiver,
     sender: text(shipment["senderName"]),
-    url: `https://www.mybrt.it/it/mybrt/my-parcels/incoming?parcelNumber=${encodeURIComponent(number)}`,
+    url: rulesTrackingUrl(CARRIER_ID, number),
     weightKg: num(detail?.["weight"]),
     history: detail === null ? [] : history(detail),
     raw: shipment,

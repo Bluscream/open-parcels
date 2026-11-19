@@ -69,18 +69,14 @@ function resolve(
   return { status: fallback, rawStatus: itemStatus ?? code };
 }
 
-export function publicUrl(barcode: string, country: string): string {
-  return (
-    rulesTrackingUrl(CARRIER_ID, barcode) ??
-    `https://www.gofo.com/${country.toLowerCase()}/track?number=${encodeURIComponent(barcode)}`
-  );
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }
 
 /** One result item as a snapshot. No delivery window: those fields have never been seen filled. */
 export function toSnapshot(
   raw: Json,
   barcode: string,
-  country: string,
   options: { readonly wallClock: boolean; readonly report: (code: string) => void },
 ): ParcelSnapshot {
   const { status, rawStatus } = resolve(raw, options.report);
@@ -106,7 +102,7 @@ export function toSnapshot(
     delivered,
     deliveredAt: delivered ? isoTime(deliveryEvent["processDate"], options.wallClock) : null,
     pickup: status === "at_pickup_point",
-    url: publicUrl(barcode, country),
+    url: publicUrl(barcode),
     weightKg: num(raw["weight"]),
     history: newestFirst(history),
     raw,

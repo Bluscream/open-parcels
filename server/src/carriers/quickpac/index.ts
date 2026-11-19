@@ -18,6 +18,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "quickpac";
@@ -101,7 +102,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
       : null,
     // Code 2600 carries the state; the address itself sits behind a personal token.
     pickup: status === "at_pickup_point",
-    url: `https://quickpac.ch/de/tracking?identcode=${encodeURIComponent(identCode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, identCode),
     history,
     raw,
   });

@@ -1,7 +1,5 @@
 import {
   carrierPattern,
-  loadRules,
-  trackingUrl,
   type PluginHttp,
   asArray,
   asObject,
@@ -20,6 +18,7 @@ import {
   type PluginContext,
   ruleStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { z } from "zod";
 
@@ -99,9 +98,7 @@ export function fourPxSnapshot(
     rawStatus: text(latest["tkDesc"]) ?? code,
     delivered,
     deliveredAt: delivered ? isoTime(latest["tkDate"], { naive: "reject" }) : null,
-    url:
-      trackingUrl(loadRules(), CARRIER_ID, resolved) ??
-      `https://${HOST}/#/result/0/${encodeURIComponent(resolved)}`,
+    url: rulesTrackingUrl(CARRIER_ID, resolved),
     history: history(tracks),
     raw,
   });

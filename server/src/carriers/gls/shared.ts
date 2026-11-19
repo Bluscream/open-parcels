@@ -104,11 +104,8 @@ export function mapGls(
   });
 }
 
-export function publicUrl(barcode: string): string {
-  return (
-    rulesTrackingUrl(CARRIER_ID, barcode) ??
-    `https://gls-group.com/EU/en/parcel-tracking?match=${encodeURIComponent(barcode)}`
-  );
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }
 
 /** History newest first, capped. */

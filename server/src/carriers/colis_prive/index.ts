@@ -13,6 +13,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { parseResultPage, type ResultPage, type Row } from "./page.js";
 
@@ -90,7 +91,7 @@ export function toSnapshot(
     deliveredAt: delivered ? stageDay(page.rows, lang, "delivered") : null,
     plannedFrom: outDay,
     plannedTo: outDay === null ? null : new Date(Date.parse(outDay) + 86_399_000).toISOString(),
-    url: `${PAGE_URL}?numColis=${encodeURIComponent(code + postal)}&lang=${lang}`,
+    url: rulesTrackingUrl(CARRIER_ID, code + postal, undefined, { lang }),
     sender: page.sender,
     history: history(page.rows, lang),
     // Only what was read; never the page or the recipient block.

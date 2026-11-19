@@ -10,6 +10,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import {
   expectStatus,
@@ -105,7 +106,7 @@ export function vintedSnapshot(
     deliveredAt:
       delivered && current !== undefined ? isoTime(current["timestamp"], LOCAL_TIME) : null,
     pickup: status === "at_pickup_point",
-    url: `https://vintedgo.com/en/tracking/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history: history(events),
     raw: { tracking_events: events },
   });

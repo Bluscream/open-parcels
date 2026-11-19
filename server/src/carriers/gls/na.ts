@@ -15,6 +15,7 @@ import {
   type PluginHttp,
   type SnapshotEvent,
   echoRef,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { CARRIER_ID, compactPostcode, latestHistory, mapGls, publicUrl, text } from "./shared.js";
 
@@ -242,7 +243,7 @@ export function caSnapshot(
     rawStatus,
     delivered,
     deliveredAt: delivered ? naTime(current["date"]) : null,
-    url: `https://gls-group.com/CA/en/send-and-receive/track-a-shipment/?match=${encodeURIComponent(number)}`,
+    url: rulesTrackingUrl(CARRIER_ID, number, "en-CA"),
     sender: party(shipment["sender"]),
     receiver: party(shipment["consignee"]),
     weightKg: num(shipment["totalWeight"]),

@@ -18,6 +18,7 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { EXPRESS_HOST, expressSnapshot, isExpressCode, lookUpExpress } from "./express.js";
 import { lookUpPortal, PORTAL_HOST } from "./portal.js";
@@ -73,7 +74,7 @@ function portalSnapshot(raw: Json, code: string, report: (c: string) => void): P
     deliveredAt: status === "delivered" ? cttTime(firstWith("12")?.["DateTime"]) : null,
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? text(firstWith("14")?.["Local"]) : null,
-    url: `https://www.ctt.pt/feapl_2/app/open/objectSearch/objectSearch.jspx?objects=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(raw["Sender"]),
     receiver: text(raw["Recipient"]),
     history: newestFirst(history),

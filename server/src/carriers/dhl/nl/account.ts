@@ -18,6 +18,7 @@ import {
   type PluginContext,
   type PluginHttp,
 } from "../../../plugin/api.js";
+import { dutchTrackingUrl } from "../constants.js";
 import { mapEvent } from "../gateway.js";
 
 export const NL_HOST = "my.dhlecommerce.nl";
@@ -143,9 +144,7 @@ function trackingUrl(parcel: Json, barcode: string): string | null {
   const postal =
     text(asObject(asObject(parcel["receiver"])["address"])["postalCode"]) ??
     text(asObject(asObject(parcel["destination"])["address"])["postalCode"]);
-  return postal === null
-    ? null
-    : `https://${NL_HOST}/portal/tracktrace/${encodeURIComponent(barcode)}/${encodeURIComponent(postal.replace(/\s/g, ""))}`;
+  return postal === null ? null : dutchTrackingUrl(barcode, postal);
 }
 
 /** One parcel of the account. Returns and sent shipments travel away from the user. */

@@ -229,9 +229,7 @@ export function informedSnapshot(
     plannedFrom: planned.from,
     plannedTo: planned.to,
     sender: text(raw["shipperName"]),
-    url:
-      rulesTrackingUrl("usps", barcode) ??
-      `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl("usps", barcode),
     raw,
   });
 }

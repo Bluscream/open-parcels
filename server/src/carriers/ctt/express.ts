@@ -16,6 +16,7 @@ import {
   type ParcelStatus,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 /** Offset-less times are UTC; numbers are epoch milliseconds. */
 const isoTime = (value: unknown): string | null =>
@@ -104,7 +105,7 @@ export function expressSnapshot(
       status === "at_pickup_point" && newest !== undefined
         ? text(asObject(newest.event["detail"])["delivery_location"])
         : null,
-    url: `https://www.cttexpress.com/localizador-de-envios/?sc=${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl("ctt", code, "es"),
     history: newestFirst(history),
     raw,
   });

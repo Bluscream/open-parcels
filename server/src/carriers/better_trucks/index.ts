@@ -19,6 +19,7 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "better_trucks";
@@ -80,7 +81,7 @@ export function betterTrucksSnapshot(
     deliveredAt: delivered ? isoTime(current["object_created"], { naive: { zone } }) : null,
     // A point estimate; once delivered it is rewritten to the delivery time, so it is dropped.
     plannedFrom: delivered ? null : isoTime(raw["eta"], { naive: { zone } }),
-    url: `https://${HOST}/track/${encodeURIComponent(resolved)}`,
+    url: rulesTrackingUrl(CARRIER_ID, resolved),
     history: newestFirst(history),
     raw,
   });
