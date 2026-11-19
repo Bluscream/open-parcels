@@ -115,10 +115,12 @@ export const SETTINGS = {
   }),
   OPENPARCELS_SECURE_COOKIES: setting({
     group: "Server",
-    description: "Mark session cookies Secure. Turn on when served over HTTPS only.",
+    description:
+      "Mark session cookies Secure. Turn on when served over HTTPS only. Environment only: " +
+      "turned on over plain HTTP it would block the sign-in needed to turn it off again.",
     schema: booleanFlag,
     default: false,
-    apply: "live",
+    apply: "env",
     kind: "boolean",
   }),
   OPENPARCELS_PUBLIC_URL: setting({
