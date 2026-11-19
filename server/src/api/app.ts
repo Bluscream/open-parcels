@@ -23,6 +23,7 @@ import { registerDiagnosticsRoutes } from "./routes/diagnostics.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerImageRoutes } from "./routes/images.js";
+import { registerTileRoutes } from "./routes/tiles.js";
 import { registerParcelRoutes } from "./routes/parcels.js";
 import { registerSessionRoutes } from "./routes/session.js";
 import { registerSignInRoutes } from "./routes/sign-in.js";
@@ -124,6 +125,7 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   registerSignInRoutes(typed, services);
   registerCalendarRoutes(typed, services);
   registerImageRoutes(typed, services);
+  registerTileRoutes(typed, services);
   registerDiagnosticsRoutes(typed, services);
   registerEventRoutes(typed, services);
 

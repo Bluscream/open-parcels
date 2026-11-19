@@ -4,7 +4,7 @@ import fastifyStatic from "@fastify/static";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 /** Paths the single-page app never answers, so an unknown API route stays a JSON 404. */
-const SERVER_PREFIXES = ["/api/", "/ical/", "/img/"] as const;
+const SERVER_PREFIXES = ["/api/", "/ical/", "/img/", "/tiles/"] as const;
 const BASE_PLACEHOLDER = "%OPENPARCELS_BASE%";
 /** Home Assistant ingress prefixes look like `/api/hassio_ingress/<token>`. */
 const INGRESS_PATH = /^\/api\/hassio_ingress\/[\w-]{1,128}$/;

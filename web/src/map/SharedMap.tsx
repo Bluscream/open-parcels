@@ -8,10 +8,12 @@ const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 /**
- * OpenStreetMap's own tiles: no key needed, fine for a single household's light use under the
- * OSM tile usage policy. Dark mode is a CSS filter on the tile pane (see `.map-dark`).
+ * OpenStreetMap tiles through this server's own cache (`/tiles/…`): the tile servers refuse
+ * browsers that strip the Referer, and the server identifies itself and caches as OSM's tile
+ * usage policy asks. Resolved against the base URI so it also works under HA ingress. Dark mode
+ * is a CSS filter on the tile pane (see `.map-dark`).
  */
-const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_URL = `${new URL("tiles/", document.baseURI).toString()}{z}/{x}/{y}.png`;
 
 function prefersDark(): boolean {
   const forced = document.documentElement.dataset["theme"];

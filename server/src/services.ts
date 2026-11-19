@@ -26,6 +26,7 @@ import { MailWatcher } from "./mail/watcher.js";
 import type { Presentation } from "./parcels/repository.js";
 import { ParcelService } from "./parcels/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
+import { TileProxy } from "./tiles/proxy.js";
 
 /**
  * One-time code that has to accompany the first owner password. It is printed to the container
@@ -68,6 +69,7 @@ export interface Services {
   readonly registry: PluginRegistry;
   readonly sources: SourceService;
   readonly images: ImageProxy;
+  readonly tiles: TileProxy;
   readonly mail: MailWatcher;
   readonly reconciler: Reconciler;
   readonly runner: SourceRunner;
@@ -140,6 +142,11 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     secretKey: deps.secrets.derive("image proxy"),
     cacheDir: path.join(deps.config.dataDir, "images"),
     logger,
+  });
+  const tiles = new TileProxy({
+    cacheDir: path.join(deps.config.dataDir, "tiles"),
+    userAgent:
+      "open-parcels/2.0 (self-hosted parcel tracker; +https://github.com/Bluscream/open-parcels)",
   });
   // Filled in once the live tracker exists; reads before that see no positions.
   const presentation: Presentation = {
@@ -225,6 +232,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     registry,
     sources,
     images,
+    tiles,
     mail,
     reconciler,
     runner,
