@@ -22,9 +22,13 @@ const BASE = `https://${ACCOUNT_HOST}/api/v12/`;
  */
 const appKey = (): string => carrierKey("hermes", "app_key");
 
+/**
+ * The account's sign-in. The password is missing when the source was imported with only a token
+ * pair; once those tokens are refused, the user has to sign in again.
+ */
 export interface Credentials {
   readonly username: string;
-  readonly password: string;
+  readonly password?: string | undefined;
 }
 
 const tokensSchema = z.object({ accessToken: z.string().min(1), refreshToken: z.string().min(1) });
@@ -90,11 +94,8 @@ export class HermesAccount {
     return parsed.data;
   }
 
-  login(credentials: Credentials): Promise<Tokens> {
-    return this.#tokens("users/login", {
-      username: credentials.username,
-      password: credentials.password,
-    });
+  login(username: string, password: string): Promise<Tokens> {
+    return this.#tokens("users/login", { username, password });
   }
 
   refresh(tokens: Tokens): Promise<Tokens> {
@@ -114,8 +115,14 @@ export class HermesAccount {
 }
 
 async function signIn(client: HermesAccount, credentials: Credentials): Promise<Tokens> {
+  if (credentials.password === undefined) {
+    // Nothing is sent: without a password a sign-in can only fail, and must never be retried.
+    throw new SignInRejectedError(
+      "Hermes needs a sign-in: the stored tokens are not valid and no password is stored.",
+    );
+  }
   try {
-    return await client.login(credentials);
+    return await client.login(credentials.username, credentials.password);
   } catch (error) {
     if (error instanceof Refused) {
       throw new SignInRejectedError("Hermes refused the username or password.");

@@ -24,9 +24,13 @@ const configSchema = z.looseObject({
 });
 type Config = z.infer<typeof configSchema>;
 
-/** Tracking sources need nothing; account sources store the username and password, encrypted. */
+/**
+ * Tracking sources need nothing; account sources store the username and password, encrypted. An
+ * account imported with only a token pair has no password: it runs on the tokens in its session
+ * store until Hermes refuses them, then needs a sign-in.
+ */
 const secretSchema = z
-  .object({ username: z.string().min(1), password: z.string().min(1) })
+  .object({ username: z.string().min(1), password: z.string().min(1).optional() })
   .nullable();
 type Secret = z.infer<typeof secretSchema>;
 
