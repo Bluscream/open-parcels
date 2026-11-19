@@ -157,6 +157,7 @@ describe("migrations", () => {
         "0002-reconciler",
         "0003-sign-in-attempts",
         "0004-lookup-state",
+        "0005-archive-reason",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

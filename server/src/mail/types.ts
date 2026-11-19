@@ -20,6 +20,19 @@ export const mailSecretSchema = z.object({
 });
 export type MailSecret = z.infer<typeof mailSecretSchema>;
 
+/**
+ * The default name of a mailbox source: the account, so two mailboxes on one server differ.
+ * A username that is already an address keeps its own domain and names the server after it.
+ */
+export function mailboxLabel(username: string, host: string): string {
+  return username.includes("@") ? `Mailbox ${username} (${host})` : `Mailbox ${username}@${host}`;
+}
+
+/** True for the names older versions gave mailboxes by default, which hid the account. */
+export function isGenericMailboxLabel(label: string, host: string): boolean {
+  return label === "Mailbox" || label === `Mailbox ${host}`;
+}
+
 /** Progress per folder, kept in the encrypted session store. */
 export const mailProgressSchema = z.record(
   z.string(),

@@ -9,7 +9,7 @@ import { BUILTIN_CARRIERS } from "../engine/builtin-carriers.js";
 import { linkUntrackedParcels, trackingSourceIn } from "../engine/linking.js";
 import { PluginRegistry } from "../engine/registry.js";
 import { secretAad } from "../engine/sources.js";
-import { MAIL_PLUGIN } from "../mail/types.js";
+import { MAIL_PLUGIN, mailboxLabel } from "../mail/types.js";
 import { fixesCarrier, resolveLegacyCarrier } from "./legacy-carrier.js";
 import { DELIBERATELY_SKIPPED, isMailService, parseLegacyImap, serviceKey } from "./legacy-imap.js";
 
@@ -363,7 +363,7 @@ async function insertMailbox(
         id,
         plugin: MAIL_PLUGIN,
         kind: "mail",
-        label: `Mailbox ${config.host}`,
+        label: mailboxLabel(secret.username, config.host),
         config: JSON.stringify(config),
         secret_blob: input.secrets.encryptJson(secret, secretAad(id)),
         session_blob: null,

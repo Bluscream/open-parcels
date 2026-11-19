@@ -1,4 +1,5 @@
 import ical, { ICalCalendarMethod } from "ical-generator";
+import { findCarrier, loadRules } from "open-parcels-rules";
 import { localParts } from "../engine/tz.js";
 import type { CalendarEntry } from "./service.js";
 
@@ -36,8 +37,10 @@ export function renderIcs(entries: readonly CalendarEntry[], options: IcsOptions
       options.publicUrl === undefined
         ? null
         : new URL(`parcels/${entry.parcelId}`, options.publicUrl).toString();
+    const carrier = findCarrier(loadRules(), entry.carrier)?.name ?? entry.carrier;
+    const title = `${entry.title} (${carrier})`;
     const lines = [
-      `Carrier: ${entry.carrier}`,
+      `Carrier: ${carrier}`,
       `Tracking: ${entry.barcode}`,
       `Status: ${entry.status.replaceAll("_", " ")}`,
     ];
@@ -46,7 +49,7 @@ export function renderIcs(entries: readonly CalendarEntry[], options: IcsOptions
     }
     calendar.createEvent({
       id: entry.uid,
-      summary: entry.kind === "delivered" ? `Delivered: ${entry.title}` : entry.title,
+      summary: entry.kind === "delivered" ? `Delivered: ${title}` : title,
       description: lines.join("\n"),
       ...(entry.allDay
         ? {

@@ -19,6 +19,8 @@ import {
   type MailInput,
   type MailInterpreter,
   type MailProgress,
+  isGenericMailboxLabel,
+  mailboxLabel,
 } from "./types.js";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -125,6 +127,13 @@ export class MailWatcher {
     const secret = mailSecretSchema.parse(
       this.deps.secrets.decryptJson(row.secret_blob, secretAad(row.id)),
     );
+    if (isGenericMailboxLabel(row.label, config.host)) {
+      await this.deps.db
+        .updateTable("sources")
+        .set({ label: mailboxLabel(secret.username, config.host) })
+        .where("id", "=", row.id)
+        .execute();
+    }
     const client = this.deps.clientFactory(config, secret);
     const connection: Connection = {
       client,

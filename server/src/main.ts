@@ -6,7 +6,9 @@ import { systemClock } from "./clock.js";
 import { loadConfig } from "./config.js";
 import { loadSecretKey, SecretBox } from "./crypto/secrets.js";
 import { migrateToLatest, openDatabase } from "./db/database.js";
+import { cleanupMailFalsePositives } from "./engine/mail-cleanup.js";
 import { applyRetention } from "./engine/retention.js";
+import { loadRules } from "open-parcels-rules";
 import { announceToHomeAssistant, isSupervised, supervisedEnvironment } from "./ha/supervisor.js";
 import { createLogger } from "./log/logger.js";
 import { createServices, type Services } from "./services.js";
@@ -64,6 +66,14 @@ async function main(): Promise<void> {
     });
     await ingress.listen({ host: config.host, port: config.ingressPort });
     servers.push(ingress);
+  }
+
+  const cleanup = await cleanupMailFalsePositives(db, systemClock, loadRules());
+  if (cleanup.ran) {
+    logger.info(
+      { archived: cleanup.archived, boilerplateItemsRemoved: cleanup.boilerplateItemsRemoved },
+      "Mail false-positive cleanup finished.",
+    );
   }
 
   await services.reconciler.repair();

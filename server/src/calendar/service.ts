@@ -116,8 +116,9 @@ export class CalendarService {
         const first = own[0];
         const title =
           row.label ??
+          // The carrier is shown next to the title by each reader, so it is not repeated here.
           (first === undefined
-            ? `${row.carrier} ${row.barcode}`
+            ? row.barcode
             : own.length > 1
               ? `${first.title} +${own.length - 1}`
               : first.title);

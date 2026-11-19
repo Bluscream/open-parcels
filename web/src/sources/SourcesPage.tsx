@@ -1,16 +1,38 @@
 import { useState, type ReactNode } from "react";
-import { useDeleteSource, useSources, useSyncSource, useUpdateSource } from "../api/queries";
-import type { Source } from "../api/types";
+import {
+  useCarriers,
+  useDeleteSource,
+  useSources,
+  useSyncSource,
+  useUpdateSource,
+} from "../api/queries";
+import type { Carrier, Source } from "../api/types";
 import { ErrorNotice, Spinner } from "../components/ui";
 import { formatRelative } from "../lib/format";
 import { SourceStateBadge } from "../parcels/badges";
+import { MAIL_PLUGIN } from "./mail";
 import { SignInDialog } from "./SignInDialog";
 import { SourceDialog } from "./SourceDialog";
 
 type Editing = { readonly mode: "add" } | { readonly mode: "edit"; readonly source: Source } | null;
 
+/**
+ * False when every sign-in flow the source's plug-in offers for its kind needs nothing (type
+ * `none`), so a "Sign in" button would lead nowhere. Mailboxes always sign in; unknown plug-ins
+ * and a source the server says needs a sign-in keep the button.
+ */
+export function canSignIn(source: Source, carriers: readonly Carrier[] | undefined): boolean {
+  if (source.plugin === MAIL_PLUGIN || source.state === "needs_sign_in") return true;
+  const carrier = carriers?.find((c) => c.id === source.plugin);
+  if (carrier === undefined) return true;
+  return carrier.sign_in_flows.some(
+    (flow) => flow.type !== "none" && (flow.kinds as readonly string[]).includes(source.kind),
+  );
+}
+
 function SourceRow(props: {
   readonly source: Source;
+  readonly signIn: boolean;
   readonly onEdit: () => void;
   readonly onSignIn: () => void;
 }): ReactNode {
@@ -36,13 +58,15 @@ function SourceRow(props: {
       </p>
       <ErrorNotice error={sync.error ?? update.error ?? remove.error} />
       <div className="actions">
-        <button
-          type="button"
-          className={source.state === "needs_sign_in" ? "button primary" : "button"}
-          onClick={props.onSignIn}
-        >
-          {source.has_secret ? "Sign in again" : "Sign in"}
-        </button>
+        {props.signIn ? (
+          <button
+            type="button"
+            className={source.state === "needs_sign_in" ? "button primary" : "button"}
+            onClick={props.onSignIn}
+          >
+            {source.has_secret ? "Sign in again" : "Sign in"}
+          </button>
+        ) : null}
         <button
           type="button"
           className="button"
@@ -84,6 +108,7 @@ function SourceRow(props: {
 
 export function SourcesPage(): ReactNode {
   const sources = useSources();
+  const carriers = useCarriers();
   const [editing, setEditing] = useState<Editing>(null);
   const [signingIn, setSigningIn] = useState<Source | null>(null);
 
@@ -114,6 +139,7 @@ export function SourcesPage(): ReactNode {
             <SourceRow
               key={source.id}
               source={source}
+              signIn={canSignIn(source, carriers.data)}
               onEdit={() => {
                 setEditing({ mode: "edit", source });
               }}

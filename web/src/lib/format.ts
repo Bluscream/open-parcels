@@ -1,4 +1,5 @@
 import type { LookupState, ParcelStatus, SourceState } from "../api/types";
+import { UI_LOCALE } from "./locale";
 
 export const STATUS_LABELS: Readonly<Record<ParcelStatus, string>> = {
   registered: "Registered",
@@ -24,14 +25,15 @@ export const SOURCE_STATE_LABELS: Readonly<Record<SourceState, string>> = {
   disabled: "Disabled",
 };
 
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-const dateOnly = new Intl.DateTimeFormat(undefined, {
+const locales = UI_LOCALE;
+const dateTime = new Intl.DateTimeFormat(locales, { dateStyle: "medium", timeStyle: "short" });
+const dateOnly = new Intl.DateTimeFormat(locales, {
   weekday: "short",
   day: "numeric",
   month: "short",
 });
-const timeOnly = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const timeOnly = new Intl.DateTimeFormat(locales, { timeStyle: "short" });
+const relative = new Intl.RelativeTimeFormat(locales, { numeric: "auto" });
 
 export function formatDateTime(value: string | null | undefined): string {
   if (value === null || value === undefined) {

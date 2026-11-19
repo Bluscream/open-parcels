@@ -32,14 +32,17 @@ function MapResizer({ bounds }: { readonly bounds: readonly LatLng[] | undefined
         map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom: 13 });
       }
     };
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const observer = new ResizeObserver(() => {
       map.invalidateSize();
-      setTimeout(fit, 10);
+      clearTimeout(timer);
+      timer = setTimeout(fit, 10);
     });
     const container = map.getContainer();
     observer.observe(container);
     fit();
     return () => {
+      clearTimeout(timer);
       observer.disconnect();
     };
   }, [map, bounds]);

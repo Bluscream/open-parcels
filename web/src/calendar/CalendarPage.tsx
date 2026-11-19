@@ -1,4 +1,5 @@
 import type { DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
+import allLocales from "@fullcalendar/core/locales-all";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
 import multiMonthPlugin from "@fullcalendar/multimonth";
@@ -6,8 +7,17 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
-import { useCalendar } from "../api/queries";
+import { useCalendar, useCarriers } from "../api/queries";
 import { ErrorNotice } from "../components/ui";
+import { UI_HOUR12, UI_LOCALE } from "../lib/locale";
+
+/** FullCalendar matches "en-DE" to its "en" locale (12-hour); the hour cycle comes from Intl. */
+const TIME_FORMAT = {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: UI_HOUR12,
+  meridiem: UI_HOUR12 ? "short" : false,
+} as const;
 
 function initialRange(): { from: string; to: string } {
   const now = new Date();
@@ -19,20 +29,22 @@ function initialRange(): { from: string; to: string } {
 export default function CalendarPage(): ReactNode {
   const [range, setRange] = useState(initialRange);
   const calendar = useCalendar(range.from, range.to);
+  const carriers = useCarriers();
   const navigate = useNavigate();
 
   const events = useMemo<EventInput[]>(
     () =>
       (calendar.data ?? []).map((entry) => ({
         id: entry.uid,
-        title: `${entry.title} (${entry.carrier})`,
+        // The title is the label, first item or barcode; the carrier is added here, once.
+        title: `${entry.title} · ${carriers.data?.find((c) => c.id === entry.carrier)?.name ?? entry.carrier}`,
         start: entry.start,
         end: entry.end,
         allDay: entry.all_day,
         classNames: [`cal-${entry.kind}`, ...(entry.late ? ["cal-late"] : [])],
         extendedProps: { parcelId: entry.parcel_id },
       })),
-    [calendar.data],
+    [calendar.data, carriers.data],
   );
 
   const onDates = (arg: DatesSetArg): void => {
@@ -64,6 +76,10 @@ export default function CalendarPage(): ReactNode {
             center: "title",
             right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek,multiMonthYear",
           }}
+          locales={allLocales}
+          locale={UI_LOCALE}
+          eventTimeFormat={TIME_FORMAT}
+          slotLabelFormat={TIME_FORMAT}
           firstDay={1}
           height="auto"
           events={events}

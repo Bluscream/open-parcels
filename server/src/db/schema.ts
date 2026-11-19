@@ -106,6 +106,8 @@ export interface ParcelTable {
   updated_at: Timestamp;
   removed_at: Timestamp | null;
   archived_at: Timestamp | null;
+  /** Why the app archived the parcel on its own; null for retention or a user's archive. */
+  archive_reason: ColumnType<string | null, string | null | undefined>;
   /** What a carrier last said about the code: pending (never answered), found or not_found. */
   lookup_state: ColumnType<
     "pending" | "found" | "not_found",

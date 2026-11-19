@@ -5,6 +5,7 @@ import * as m0001 from "./migrations/0001-initial.js";
 import * as m0002 from "./migrations/0002-reconciler.js";
 import * as m0003 from "./migrations/0003-sign-in-attempts.js";
 import * as m0004 from "./migrations/0004-lookup-state.js";
+import * as m0005 from "./migrations/0005-archive-reason.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -16,6 +17,7 @@ const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0002-reconciler": m0002,
   "0003-sign-in-attempts": m0003,
   "0004-lookup-state": m0004,
+  "0005-archive-reason": m0005,
 };
 
 const staticProvider: MigrationProvider = {
