@@ -74,6 +74,18 @@ export function Dialog(props: {
       dialog.close();
     }
   }, [props.open]);
+  // Focus goes back to whatever opened the dialog once it closes.
+  useEffect(() => {
+    if (!props.open) {
+      return undefined;
+    }
+    const opener = document.activeElement;
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) {
+        opener.focus();
+      }
+    };
+  }, [props.open]);
   if (!props.open) {
     return null;
   }
@@ -82,8 +94,11 @@ export function Dialog(props: {
       ref={ref}
       className={props.wide === true ? "dialog dialog-wide" : "dialog"}
       aria-labelledby={titleId}
-      onClose={props.onClose}
-      onCancel={props.onClose}
+      // Escape fires `cancel` and then `close`; only `cancel` is handled, so onClose runs once.
+      onCancel={(event) => {
+        event.preventDefault();
+        props.onClose();
+      }}
     >
       <header className="dialog-header">
         <h2 id={titleId}>{props.title}</h2>

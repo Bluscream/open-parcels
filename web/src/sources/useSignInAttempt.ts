@@ -13,11 +13,21 @@ import type { StepInput } from "./StepRenderer";
 
 export type AttemptState =
   | { readonly phase: "idle" }
-  | { readonly phase: "step"; readonly attempt: SignInStepResult }
+  | {
+      readonly phase: "step";
+      readonly attempt: SignInStepResult;
+      /** Counts the steps of the attempt, so a step's form starts empty even when it repeats. */
+      readonly seq: number;
+    }
   | { readonly phase: "done" };
 
-/** Errors after which the attempt is gone and must be started again. */
-const TERMINAL = new Set(["sign_in_expired", "sign_in_timeout", "sign_in_failed"]);
+/**
+ * Errors after which the attempt is gone and must be started again. A refused or failed answer
+ * (a mistyped code) is not one of them: the server keeps the step, so the user can try again
+ * without a new sign-in and possibly a new SMS. Too many tries end the attempt, and the next
+ * answer then says so with `sign_in_expired`.
+ */
+const TERMINAL = new Set(["sign_in_expired", "sign_in_timeout"]);
 
 /**
  * Drives one interactive sign-in: start, answer steps, poll approval steps at the server's
@@ -38,7 +48,11 @@ export function useSignInAttempt(sourceId: string) {
         void client.invalidateQueries({ queryKey: keys.sources });
       } else {
         attemptRef.current = result.attempt_id;
-        setState({ phase: "step", attempt: result });
+        setState((previous) => ({
+          phase: "step",
+          attempt: result,
+          seq: previous.phase === "step" ? previous.seq + 1 : 0,
+        }));
       }
     },
     [client],
@@ -90,6 +104,18 @@ export function useSignInAttempt(sourceId: string) {
       deleteApiV1SourcesIdSignInAttemptsAttempt(sourceId, attempt).catch(() => undefined);
     }
   }, [sourceId]);
+
+  // Closing the dialog unmounts the sign-in: the attempt left open is cancelled on the server too.
+  useEffect(
+    () => () => {
+      const attempt = attemptRef.current;
+      attemptRef.current = null;
+      if (attempt !== null) {
+        deleteApiV1SourcesIdSignInAttemptsAttempt(sourceId, attempt).catch(() => undefined);
+      }
+    },
+    [sourceId],
+  );
 
   // Approval steps: ask the server at its own interval until the step changes.
   const step = state.phase === "step" ? state.attempt.step : null;

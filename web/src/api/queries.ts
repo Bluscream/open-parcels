@@ -136,9 +136,16 @@ export function useDiagnostics() {
  * Everything that shows parcels: the lists and details, and the calendar, which must not stay
  * stale after an edit while the live stream is offline.
  */
-export async function invalidateParcelViews(client: QueryClient): Promise<void> {
+export async function invalidateParcelViews(
+  client: QueryClient,
+  except?: readonly unknown[],
+): Promise<void> {
+  const skipped = except === undefined ? null : JSON.stringify(except);
   await Promise.all([
-    client.invalidateQueries({ queryKey: keys.parcels }),
+    client.invalidateQueries({
+      queryKey: keys.parcels,
+      predicate: (query) => skipped === null || JSON.stringify(query.queryKey) !== skipped,
+    }),
     client.invalidateQueries({ queryKey: ["calendar"] }),
   ]);
 }
@@ -166,7 +173,12 @@ export function useDeleteParcel() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteApiV1ParcelsId(id),
-    onSuccess: () => invalidateParcelViews(client),
+    onSuccess: async (_result, id) => {
+      // The lists refresh, but never the deleted parcel's own detail: asking for it again while
+      // its page is still open would only get a 404. It is dropped once nothing shows it.
+      await client.cancelQueries({ queryKey: keys.parcel(id), exact: true });
+      await invalidateParcelViews(client, keys.parcel(id));
+    },
   });
 }
 

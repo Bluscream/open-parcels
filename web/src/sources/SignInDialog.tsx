@@ -87,6 +87,8 @@ function InteractiveSignIn(props: {
       ) : (
         <>
           <StepRenderer
+            // A new key per step: a choice or code typed for one step never carries into the next.
+            key={`${state.attempt.attempt_id}:${String(state.seq)}`}
             step={state.attempt.step}
             busy={attempt.busy}
             onSubmit={(input) => {

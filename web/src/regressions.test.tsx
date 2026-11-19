@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CalendarEntry, Source } from "./api/types";
 import { toCalendarEvent } from "./calendar/events";
 import { describeLookup } from "./lib/format";
@@ -30,6 +30,64 @@ describe("parcel list", () => {
     const table = await screen.findByRole("table", { name: "Parcels" });
     expect(screen.getByLabelText("All")).toBeChecked();
     expect(within(table).getByText("Archived")).toBeInTheDocument();
+  });
+});
+
+describe("an ended session and a deleted parcel", () => {
+  const ID = "00000000-0000-4000-8000-0000000000b2";
+  const SIGNED_OUT = {
+    authenticated: false,
+    method: null,
+    scopes: [],
+    csrf_token: null,
+    setup_required: false,
+  };
+
+  it("goes back to sign-in when a change is refused with 401", async () => {
+    let signedIn = true;
+    mockApi({
+      "GET /api/v1/session": () => ({ body: signedIn ? SIGNED_IN : SIGNED_OUT }),
+      [`GET /api/v1/parcels/${ID}`]: () => ({ body: { ...parcel({ id: ID }), sources: [] } }),
+      [`PATCH /api/v1/parcels/${ID}`]: () => {
+        signedIn = false;
+        return { status: 401, body: { error: "unauthorized", message: "Sign in again." } };
+      },
+      "GET /api/v1/parcels": () => ({ body: [] }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    const user = userEvent.setup();
+    renderApp(`/parcels/${ID}`);
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
+    expect(await screen.findByLabelText("Owner password")).toBeInTheDocument();
+  });
+
+  it("does not ask for a deleted parcel's detail again", async () => {
+    let deleted = false;
+    const calls = mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      [`GET /api/v1/parcels/${ID}`]: () =>
+        deleted
+          ? { status: 404, body: { error: "not_found", message: "Gone." } }
+          : { body: { ...parcel({ id: ID }), sources: [] } },
+      [`DELETE /api/v1/parcels/${ID}`]: () => {
+        deleted = true;
+        return { status: 204 };
+      },
+      "GET /api/v1/parcels": () => ({ body: [] }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    renderApp(`/parcels/${ID}`);
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    await screen.findByRole("table", { name: "Parcels" }).catch(() => undefined);
+    await waitFor(() => {
+      expect(deleted).toBe(true);
+    });
+    const detailReads = calls.filter(
+      (call) => call.method === "GET" && call.path === `/api/v1/parcels/${ID}`,
+    );
+    expect(detailReads).toHaveLength(1);
   });
 });
 

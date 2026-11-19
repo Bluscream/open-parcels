@@ -1,6 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState, type SyntheticEvent, type ReactNode } from "react";
-import { useDeleteParcel, useUpdateParcel } from "../api/queries";
+import { keys, useDeleteParcel, useUpdateParcel } from "../api/queries";
 import { PARCEL_STATUSES, type ParcelDetail, type ParcelStatus } from "../api/types";
 import { ErrorNotice, Field } from "../components/ui";
 import { STATUS_LABELS } from "../lib/format";
@@ -11,6 +12,7 @@ const CARRIER_STATUS = "";
 export function ParcelEditor({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
   const update = useUpdateParcel(parcel.id);
   const remove = useDeleteParcel();
+  const client = useQueryClient();
   const navigate = useNavigate();
   const [label, setLabel] = useState(parcel.label ?? "");
   const [manual, setManual] = useState<ParcelStatus | "">(parcel.manual_status ?? CARRIER_STATUS);
@@ -34,7 +36,10 @@ export function ParcelEditor({ parcel }: { readonly parcel: ParcelDetail }): Rea
     }
     remove.mutate(parcel.id, {
       onSuccess: () => {
-        void navigate({ to: "/" });
+        void navigate({ to: "/" }).then(() => {
+          // Off its page now, so the deleted parcel's cached detail can go.
+          client.removeQueries({ queryKey: keys.parcel(parcel.id), exact: true });
+        });
       },
     });
   };

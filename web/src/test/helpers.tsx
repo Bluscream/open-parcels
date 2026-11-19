@@ -1,7 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
 import { vi } from "vitest";
+import { createQueryClient } from "../api/client";
 import { setCsrfToken } from "../api/fetcher";
 import type { Parcel } from "../api/types";
 import { App } from "../App";
@@ -49,7 +50,12 @@ export function mockApi(routes: Record<string, Handler>): Recorded[] {
 }
 
 export function renderApp(path = "/"): RenderResult {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // The app's own client, so its 401 handling is what the tests see; no retries in tests.
+  const client = createQueryClient();
+  client.setDefaultOptions({
+    ...client.getDefaultOptions(),
+    queries: { ...client.getDefaultOptions().queries, retry: false },
+  });
   const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }));
   return render(
     <QueryClientProvider client={client}>
