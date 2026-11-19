@@ -39,6 +39,8 @@ describe("My bpost account", () => {
       ),
     ]);
     const result = await world.fetchAccount({}, SECRET);
+    // Only the first page of details is read, so the answer never counts as the whole inbox.
+    expect(result.complete).toBe(false);
     expect(world.calls[0]?.headers.get("x-api-key")).toBe(carrierKey("bpost", "app_key"));
     expect(world.calls[0]?.headers.get("appversion")).toBe(carrierKey("bpost", "app_version"));
     expect(world.calls[1]?.headers.get("authorization")).toBe("a1");

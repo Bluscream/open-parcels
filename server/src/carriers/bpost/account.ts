@@ -283,5 +283,7 @@ export async function fetchBpostAccount(
   const snapshots = entries
     .map((raw) => accountSnapshot(raw, report))
     .filter((parcel): parcel is ParcelSnapshot => parcel !== null);
-  return { snapshots, complete: true };
+  // The details call is the app's first page (`isFirstPageCall`) and how it pages further is not
+  // known, so the answer may be partial: it never lets a parcel missing from it count as gone.
+  return { snapshots, complete: false };
 }
