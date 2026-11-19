@@ -131,6 +131,16 @@ describe("Cargus account", () => {
     expect(world.requests()).toEqual([TOKEN]);
   });
 
+  it("renews the token at most once per run, not once per list", async () => {
+    const world = new World(cargus, [
+      on(LIST, json({}, 401), json([]), json({}, 401)),
+      on(TOKEN, json({ access_token: "a2", refresh_token: "r2", expires_in: 3600 })),
+    ]);
+    world.stored = tokens;
+    await expect(world.fetchAccount(CONFIG, SECRET)).rejects.toBeInstanceOf(TransientError);
+    expect(world.requests().filter((key) => key === TOKEN)).toHaveLength(1);
+  });
+
   it("needs the phone number", async () => {
     const world = new World(cargus, []);
     await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
