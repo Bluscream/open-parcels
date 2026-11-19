@@ -50,7 +50,10 @@ const COLUMNS = [
   column.accessor("status", {
     header: "Status",
     cell: (info) => (
-      <StatusBadge status={info.getValue()} manual={info.row.original.manual_status !== null} />
+      <StatusBadge
+        status={info.row.original.manual_status ?? info.getValue()}
+        manual={info.row.original.manual_status !== null}
+      />
     ),
     filterFn: "equalsString",
   }),

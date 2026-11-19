@@ -79,11 +79,29 @@ export class ParcelRepository {
     if (filter.includeArchived !== true) {
       query = query.where("archived_at", "is", null);
     }
+    // A status set by hand wins over the carrier's, for filters as everywhere else.
     if (filter.active !== undefined) {
-      query = query.where("delivered", "=", filter.active ? 0 : 1);
+      const isDelivered = filter.active ? 0 : 1;
+      query = query.where((eb) =>
+        eb.or([
+          eb.and([eb("manual_status", "is", null), eb("delivered", "=", isDelivered)]),
+          eb.and([
+            eb("manual_status", "is not", null),
+            filter.active
+              ? eb("manual_status", "!=", "delivered")
+              : eb("manual_status", "=", "delivered"),
+          ]),
+        ]),
+      );
     }
     if (filter.status !== undefined) {
-      query = query.where("status", "=", filter.status);
+      const status = filter.status;
+      query = query.where((eb) =>
+        eb.or([
+          eb.and([eb("manual_status", "is", null), eb("status", "=", status)]),
+          eb("manual_status", "=", status),
+        ]),
+      );
     }
     if (filter.carrier !== undefined) {
       query = query.where("carrier", "=", filter.carrier);

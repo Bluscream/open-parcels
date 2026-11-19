@@ -320,6 +320,19 @@ describe("parcels", () => {
 
     const listed = (await app.inject({ url: "/api/v1/parcels", headers })).json<unknown[]>();
     expect(listed).toHaveLength(1);
+    // Marked delivered by hand: it leaves the active list and counts as delivered.
+    const active = (await app.inject({ url: "/api/v1/parcels?active=true", headers })).json<
+      unknown[]
+    >();
+    expect(active).toHaveLength(0);
+    const done = (await app.inject({ url: "/api/v1/parcels?active=false", headers })).json<
+      unknown[]
+    >();
+    expect(done).toHaveLength(1);
+    const byStatus = (await app.inject({ url: "/api/v1/parcels?status=delivered", headers })).json<
+      unknown[]
+    >();
+    expect(byStatus).toHaveLength(1);
     expect(
       (await app.inject({ method: "DELETE", url: `/api/v1/parcels/${parcel.id}`, headers }))
         .statusCode,

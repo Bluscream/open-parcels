@@ -185,7 +185,10 @@ function Header({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
         >
           {markedDelivered ? "Mark not delivered" : "Mark delivered"}
         </button>
-        <StatusBadge status={parcel.status} manual={parcel.manual_status !== null} />
+        <StatusBadge
+          status={parcel.manual_status ?? parcel.status}
+          manual={parcel.manual_status !== null}
+        />
       </div>
     </div>
   );
