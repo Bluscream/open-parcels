@@ -10,6 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useCalendar, useCarriers } from "../api/queries";
 import { ErrorNotice } from "../components/ui";
 import { UI_HOUR12, UI_LOCALE } from "../lib/locale";
+import { toCalendarEvent } from "./events";
 
 /** FullCalendar matches "en-DE" to its "en" locale (12-hour); the hour cycle comes from Intl. */
 const TIME_FORMAT = {
@@ -34,16 +35,12 @@ export default function CalendarPage(): ReactNode {
 
   const events = useMemo<EventInput[]>(
     () =>
-      (calendar.data ?? []).map((entry) => ({
-        id: entry.uid,
-        // The title is the label, first item or barcode; the carrier is added here, once.
-        title: `${entry.title} · ${carriers.data?.find((c) => c.id === entry.carrier)?.name ?? entry.carrier}`,
-        start: entry.start,
-        end: entry.end,
-        allDay: entry.all_day,
-        classNames: [`cal-${entry.kind}`, ...(entry.late ? ["cal-late"] : [])],
-        extendedProps: { parcelId: entry.parcel_id },
-      })),
+      (calendar.data ?? []).map((entry) =>
+        toCalendarEvent(
+          entry,
+          carriers.data?.find((c) => c.id === entry.carrier)?.name ?? entry.carrier,
+        ),
+      ),
     [calendar.data, carriers.data],
   );
 

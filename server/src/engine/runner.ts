@@ -24,7 +24,7 @@ import {
   type PluginRegistry,
   type RegisteredPlugin,
 } from "./registry.js";
-import { secretAad, sessionAad } from "./sources.js";
+import { NOT_SIGNED_IN_YET, secretAad, sessionAad } from "./sources.js";
 import { recordUnknown } from "./vocab.js";
 
 export type RunOutcome =
@@ -123,7 +123,14 @@ export class SourceRunner {
       }
       return { ok: true, ...summary };
     } catch (error) {
-      const outcome = classify(error);
+      const classified = classify(error);
+      // Nothing was ever stored, so nothing was rejected: the source simply awaits its sign-in.
+      const outcome =
+        classified.kind === "sign_in_rejected" &&
+        row.secret_blob === null &&
+        row.session_blob === null
+          ? { ...classified, detail: NOT_SIGNED_IN_YET }
+          : classified;
       if (outcome.kind === "transient" && !(error instanceof TransientError)) {
         // Not a failure the plug-in signalled: most likely a bug. Keep the stack for diagnosis.
         log.error({ err: error }, "Source run failed unexpectedly.");

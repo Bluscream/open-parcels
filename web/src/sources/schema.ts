@@ -27,11 +27,37 @@ export function asSchema(value: unknown): JsonSchema {
   return typeof value === "object" && value !== null ? value : {};
 }
 
-/** Field names that hold secrets render as password inputs. */
-const SECRET_NAME = /pass|secret|token|key|pin|code/i;
+/** Words that make a field a secret on their own: `apiKey`, `refresh_token`, `password`. */
+const SECRET_WORDS = new Set([
+  "pass",
+  "passwd",
+  "password",
+  "passphrase",
+  "passcode",
+  "secret",
+  "token",
+  "key",
+  "apikey",
+  "pin",
+  "otp",
+]);
+/** A code is secret only when it opens or proves something; postal and tracking codes are not. */
+const SECRET_CODE_WORDS = new Set(["access", "auth", "security", "verification", "pin", "otp"]);
 
+/**
+ * Field names that hold secrets render as password inputs. Judged word by word, so
+ * `postalCode`, `countryCode` or `keyword` stay visible while `apiKey` and `pinCode` are masked.
+ */
 export function isSecretField(name: string): boolean {
-  return SECRET_NAME.test(name);
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[\s_-]+/);
+  return words.some(
+    (word, index) =>
+      SECRET_WORDS.has(word) ||
+      (word === "code" && index > 0 && SECRET_CODE_WORDS.has(words[index - 1] ?? "")),
+  );
 }
 
 /** `["string","null"]` and `anyOf: [X, {type: null}]` both mean "X, optional". */

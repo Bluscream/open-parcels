@@ -220,7 +220,9 @@ The reconciler is the only writer of parcels. It:
   gaps;
 - applies the suite's status rule: map the status, else take the newest history entry that maps,
   else `unknown`, with one warning per new value;
-- handles hand-off: an Amazon parcel carried by DHL becomes one parcel with two sources;
+- handles hand-off: an Amazon parcel carried by DHL becomes one parcel with two sources. When a
+  shop reports a code without naming the carrier, and exactly one parcel of another carrier has
+  that code, the hand-off is inferred; a startup repair folds such pairs stored earlier;
 - derives events by comparing old and new state, inside the same transaction that writes the
   outbox row.
 
@@ -368,11 +370,15 @@ Everything is under `/api/v1`. The OpenAPI document is at `/api/v1/openapi.json`
 | `parcel.outgoing_registered`, `parcel.outgoing_delivered` | The outgoing pair |
 | `parcel.live_updated` | A live session starts or ends, its state changes, or `stops_away` changes. Never for a position change alone |
 | `parcel.removed` | An active parcel has been gone, undelivered, for 6 h. Nothing is judged while one of its sources is failing |
+| `parcel.deleted` | A parcel was deleted: by the user, or folded into another parcel with the same code (`merged_into`: its id) |
 | `source.state_changed` | A source changes state, including "needs sign-in" |
+| `source.run_finished` | A source run ended, successfully or not (`ok`). Clients refresh run times and counts |
+| `source.removed` | A source was deleted, or merged into another (`merged_into`: its id). Clients drop its device |
 | `vocab.unknown` | An unmapped status value is seen for the first time |
 
 The payload is the normalised parcel without `raw`, with `live` stripped of coordinates and the
-trail, plus `old_*` and `new_*` for whatever changed.
+trail, plus `old_*` and `new_*` for whatever changed. Source events carry
+`source: {id, plugin, label, kind}` instead.
 
 #### Parcel shape
 
@@ -380,12 +386,17 @@ The suite contract keys: `carrier`, `barcode`, `sender`, `receiver`, `status`, `
 `delivered`, `delivered_at`, `planned_from`, `planned_to`, `pickup`, `pickup_point`, `history`
 and `url`. On top of those:
 
-- `id`, `items`, `live`, `location`, `order`, `sources`, `manual_status`, `label` and
+- `status` and `delivered` are the **effective** values: a manual status wins, so every client
+  (lists, map, orders, calendar, Home Assistant) agrees without re-deriving it;
+- `id`, `items`, `live`, `location`, `order`, `manual_status`, `label`, `archived_at` and
   `updated_at`;
+- `carrier_status` and `carrier_delivered`: what the carrier itself last said, for display;
+- `sources`: `{source_id, plugin, label, kind, role, last_seen_at}` per linked source;
 - `lookup: {state, since, checked_at}`: what a tracking source last heard from the carrier about
   the code. `pending` (never answered, or no tracking source follows it), `found`, or
   `not_found` (asked, and the carrier did not return it). `since` is when the state began,
-  `checked_at` the last time the carrier was asked. Not found fires no event;
+  `checked_at` the last time the carrier was asked. Not found fires no event. An account or shop
+  source of the same carrier that currently lists the parcel makes it `found`;
 - the runner logs at info level how many codes it asked about and how many were found, never
   the codes;
 - `raw` only on request, with `?include=raw`.
@@ -396,8 +407,12 @@ and `url`. On top of those:
 
 - The token is a read-only, revocable secret, because calendar apps can't send headers.
 - Each event's UID is `<parcel-id>@open-parcels`.
-- Windows that cover whole days become all-day events. When a real time window arrives, the same
-  UID narrows to it.
+- Windows that cover whole days become all-day events. So does a time at local midnight with no
+  window (a delivery or an estimate known only by its date), never a short slot at midnight.
+  When a real time window arrives, the same UID narrows to it.
+- `GET /calendar` gives all-day entries `start_date` and `end_date` (local days, end exclusive);
+  readers place them by those, never by the instants, so the day does not shift with the
+  reader's time zone.
 
 #### Image proxy
 

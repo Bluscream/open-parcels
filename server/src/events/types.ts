@@ -11,7 +11,10 @@ export const EVENT_TYPES = [
   "parcel.outgoing_delivered",
   "parcel.live_updated",
   "parcel.removed",
+  "parcel.deleted",
   "source.state_changed",
+  "source.run_finished",
+  "source.removed",
   "vocab.unknown",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];

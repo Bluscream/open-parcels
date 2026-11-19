@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 import type { Clock } from "../clock.js";
 import type { Database } from "../db/schema.js";
-import { PARCEL_STATUSES, type ParcelStatus } from "../domain/parcel.js";
+import { effectiveDelivered, PARCEL_STATUSES, type ParcelStatus } from "../domain/parcel.js";
 import { localParts } from "../engine/tz.js";
 
 /** How long a delivered parcel's marker lasts on the calendar. */
@@ -23,6 +23,12 @@ export interface CalendarEntry {
   readonly start: string;
   readonly end: string;
   readonly allDay: boolean;
+  /**
+   * For all-day entries, the local calendar days as `YYYY-MM-DD`, the end exclusive (as in ICS).
+   * Readers use these instead of `start`/`end`, so the days never shift with the reader's zone.
+   */
+  readonly startDate: string | null;
+  readonly endDate: string | null;
   /** Undelivered and its window has passed. */
   readonly late: boolean;
   readonly imageUrl: string | null;
@@ -46,10 +52,44 @@ export function isWholeDays(start: Date, end: Date, timeZone: string): boolean {
   return startsAtMidnight && (endsAtMidnight || endsAtDayEnd);
 }
 
+/** A time at local midnight carries a date only: the source knew the day, not the hour. */
+export function isDateOnly(at: Date, timeZone: string): boolean {
+  const parts = localParts(at, timeZone);
+  return parts.hour === 0 && parts.minute === 0;
+}
+
+function isoDay(year: number, month: number, day: number): string {
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10);
+}
+
+/**
+ * The local days an all-day entry covers, end exclusive. An end that is not at midnight (an
+ * inclusive 23:59) belongs to its own day, so the exclusive end is the day after it.
+ */
+export function allDayRange(
+  start: Date,
+  end: Date,
+  timeZone: string,
+): { startDate: string; endDate: string } {
+  const from = localParts(start, timeZone);
+  const to = localParts(end, timeZone);
+  const startDate = isoDay(from.year, from.month, from.day);
+  const endsAtMidnight = to.hour === 0 && to.minute === 0;
+  let endDate = isoDay(to.year, to.month, to.day + (endsAtMidnight ? 0 : 1));
+  if (endDate <= startDate) {
+    endDate = isoDay(from.year, from.month, from.day + 1);
+  }
+  return { startDate, endDate };
+}
+
 function asStatus(value: string | null): ParcelStatus {
+  return asManual(value) ?? "unknown";
+}
+
+function asManual(value: string | null): ParcelStatus | null {
   return value !== null && PARCEL_STATUSES.includes(value as ParcelStatus)
     ? (value as ParcelStatus)
-    : "unknown";
+    : null;
 }
 
 export class CalendarService {
@@ -80,19 +120,16 @@ export class CalendarService {
       ])
       .where("archived_at", "is", null)
       .where("removed_at", "is", null)
+      // Candidates only; whether a parcel counts as delivered (a manual status wins) is decided
+      // below, per row.
       .where((eb) =>
         eb.or([
           eb.and([
-            eb("delivered", "=", 0),
             eb("planned_from", "is not", null),
             eb("planned_from", "<", toIso),
             eb(eb.fn.coalesce("planned_to", "planned_from"), ">=", fromIso),
           ]),
-          eb.and([
-            eb("delivered", "=", 1),
-            eb("delivered_at", ">=", fromIso),
-            eb("delivered_at", "<", toIso),
-          ]),
+          eb.and([eb("delivered_at", ">=", fromIso), eb("delivered_at", "<", toIso)]),
         ]),
       )
       .execute();
@@ -133,36 +170,55 @@ export class CalendarService {
           url: row.url,
           pickupPoint: row.pickup_point,
         };
-        if (row.delivered === 1 && row.delivered_at !== null) {
+        const delivered = effectiveDelivered(row.delivered === 1, asManual(row.manual_status));
+        if (delivered) {
+          if (
+            row.delivered_at === null ||
+            row.delivered_at < fromIso ||
+            row.delivered_at >= toIso
+          ) {
+            return undefined;
+          }
           const start = new Date(row.delivered_at);
-          return {
-            ...base,
-            kind: "delivered",
-            start: start.toISOString(),
-            end: new Date(start.getTime() + DELIVERED_MARKER_MS).toISOString(),
-            allDay: false,
-            late: false,
-          };
+          // A delivery known only by its day is that whole day, not half an hour at midnight.
+          const dateOnly = isDateOnly(start, this.timeZone);
+          const end = dateOnly
+            ? new Date(start.getTime() + 24 * 60 * 60_000)
+            : new Date(start.getTime() + DELIVERED_MARKER_MS);
+          return { ...base, kind: "delivered", late: false, ...this.#span(start, end, dateOnly) };
         }
-        if (row.planned_from === null) {
+        if (row.planned_from === null || row.planned_from >= toIso) {
           return undefined;
         }
         const start = new Date(row.planned_from);
-        // A single point estimate becomes a one-hour slot.
+        // A date without a time is that whole day; another single point estimate is an hour.
+        const pointIsDay = row.planned_to === null && isDateOnly(start, this.timeZone);
         const end =
-          row.planned_to === null
-            ? new Date(start.getTime() + 60 * 60_000)
-            : new Date(row.planned_to);
+          row.planned_to !== null
+            ? new Date(row.planned_to)
+            : new Date(start.getTime() + (pointIsDay ? 24 * 60 : 60) * 60_000);
+        if (end.toISOString() < fromIso) {
+          return undefined;
+        }
         return {
           ...base,
           kind: "expected",
-          start: start.toISOString(),
-          end: end.toISOString(),
-          allDay: isWholeDays(start, end, this.timeZone),
           late: end < now,
+          ...this.#span(start, end, pointIsDay || isWholeDays(start, end, this.timeZone)),
         };
       })
       .filter((entry): entry is CalendarEntry => entry !== undefined)
       .sort((a, b) => a.start.localeCompare(b.start));
+  }
+
+  #span(start: Date, end: Date, allDay: boolean) {
+    const days = allDay ? allDayRange(start, end, this.timeZone) : null;
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      allDay,
+      startDate: days?.startDate ?? null,
+      endDate: days?.endDate ?? null,
+    };
   }
 }

@@ -4,6 +4,7 @@ import type { Kysely, Transaction } from "kysely";
 import { isoNow, type Clock } from "../clock.js";
 import type { SecretBox } from "../crypto/secrets.js";
 import type { Database } from "../db/schema.js";
+import { isPlausibleOrder, shopFromDomain } from "../domain/order.js";
 import type { ParcelStatus } from "../domain/parcel.js";
 import { BUILTIN_CARRIERS } from "../engine/builtin-carriers.js";
 import { linkUntrackedParcels, trackingSourceIn } from "../engine/linking.js";
@@ -131,19 +132,45 @@ interface ImportedOrder {
   readonly shop: string;
 }
 
+/** Shops named by the old parcels' names ("example-shop.de"), per old order id. */
+function shopsFromLabels(parcels: readonly Row[]): Map<string, string> {
+  const shops = new Map<string, string>();
+  for (const parcel of parcels) {
+    const shop = shopFromDomain(text(parcel["name"]));
+    const orderId = parcel["order_id"];
+    if (shop !== null && typeof orderId === "string") {
+      shops.set(orderId, shop);
+    }
+  }
+  return shops;
+}
+
+/**
+ * The old app's shop. It named a shop after anything its mail parser recognised (a mail paid with
+ * Amazon Pay became an Amazon order), so a number that cannot be that shop's falls back to the
+ * shop its parcel was named after, else `unknown`.
+ */
+function legacyShop(row: Row, orderNumber: string, labelShops: ReadonlyMap<string, string>) {
+  const named = text(row["source"] ?? row["shop"])?.toLowerCase() ?? "unknown";
+  return isPlausibleOrder(named, orderNumber)
+    ? named
+    : (labelShops.get(String(row["id"])) ?? "unknown");
+}
+
 async function importOrders(
   trx: Transaction<Database>,
   rows: readonly Row[],
-  now: string,
-  counters: Counters,
+  labelShops: ReadonlyMap<string, string>,
+  context: { now: string; counters: Counters },
 ): Promise<Map<string, ImportedOrder>> {
+  const { now, counters } = context;
   const ids = new Map<string, ImportedOrder>();
   for (const row of rows) {
     const orderNumber = text(row["order_number"]);
     if (orderNumber === null) {
       continue;
     }
-    const shop = text(row["source"] ?? row["shop"])?.toLowerCase() ?? "unknown";
+    const shop = legacyShop(row, orderNumber, labelShops);
     const existing = await trx
       .selectFrom("orders")
       .select("id")
@@ -431,8 +458,14 @@ export async function importLegacy(options: LegacyImportOptions): Promise<Legacy
   try {
     await options.db.transaction().execute(async (trx) => {
       const now = isoNow(options.clock);
-      const orders = await importOrders(trx, readAll(legacy, "orders"), now, counters);
-      const parcelIds = await importParcels(trx, readAll(legacy, "parcels"), orders, now, counters);
+      const legacyParcels = readAll(legacy, "parcels");
+      const orders = await importOrders(
+        trx,
+        readAll(legacy, "orders"),
+        shopsFromLabels(legacyParcels),
+        { now, counters },
+      );
+      const parcelIds = await importParcels(trx, legacyParcels, orders, now, counters);
       await importEvents(trx, readAll(legacy, "parcel_events"), parcelIds, counters);
       await importCredentials(
         {

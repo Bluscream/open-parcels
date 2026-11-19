@@ -40,10 +40,7 @@ export function ParcelCard({ parcel }: { readonly parcel: Parcel }): ReactNode {
       {parcel.lookup.state === "not_found" ? (
         <LookupBadge state="not_found" />
       ) : (
-        <StatusBadge
-          status={parcel.manual_status ?? parcel.status}
-          manual={parcel.manual_status !== null}
-        />
+        <StatusBadge status={parcel.status} manual={parcel.manual_status !== null} />
       )}
     </Link>
   );

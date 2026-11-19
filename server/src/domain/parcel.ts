@@ -78,6 +78,8 @@ export type Location = z.infer<typeof locationSchema>;
 export const parcelSourceRefSchema = z.object({
   source_id: z.string(),
   plugin: z.string(),
+  label: z.string(),
+  kind: z.enum(["account", "tracking", "shop", "mail"]),
   role: z.enum(["primary", "handoff", "mail"]),
   last_seen_at: isoDateTime,
 });
@@ -101,6 +103,9 @@ export type Lookup = z.infer<typeof lookupSchema>;
  * The normalised parcel every client sees. The first block mirrors the Home Assistant suite's
  * contract key for key; the rest are this service's additions. Keys are never omitted: unknown
  * values are null.
+ *
+ * `status` and `delivered` are the effective values: a manual status wins (§2.5). What the carrier
+ * itself last said stays available as `carrier_status` and `carrier_delivered`.
  */
 export const parcelSchema = z.object({
   carrier: z.string(),
@@ -122,6 +127,9 @@ export const parcelSchema = z.object({
   direction: z.enum(DIRECTIONS),
   label: z.string().nullable(),
   manual_status: parcelStatusSchema.nullable(),
+  carrier_status: parcelStatusSchema,
+  carrier_delivered: z.boolean(),
+  archived_at: isoDateTime.nullable(),
   items: z.array(itemSchema),
   live: liveSchema.nullable(),
   location: locationSchema.nullable(),
@@ -134,6 +142,17 @@ export const parcelSchema = z.object({
 export type Parcel = z.infer<typeof parcelSchema>;
 
 /** A parcel counts as active until it is delivered; a manual status always wins. */
-export function effectiveStatus(parcel: Pick<Parcel, "status" | "manual_status">): ParcelStatus {
+export function effectiveStatus(parcel: {
+  readonly status: ParcelStatus;
+  readonly manual_status: ParcelStatus | null;
+}): ParcelStatus {
   return parcel.manual_status ?? parcel.status;
+}
+
+/** Delivered as far as anyone should care: a manual status wins over the carrier's flag. */
+export function effectiveDelivered(
+  carrierDelivered: boolean,
+  manualStatus: ParcelStatus | null,
+): boolean {
+  return manualStatus === null ? carrierDelivered : manualStatus === "delivered";
 }

@@ -12,7 +12,11 @@ const PARCEL_EVENTS = [
   "parcel.outgoing_delivered",
   "parcel.live_updated",
   "parcel.removed",
+  "parcel.deleted",
 ] as const;
+
+/** Source events: a state change, a finished run (new run times and counts), a removal. */
+const SOURCE_EVENTS = ["source.state_changed", "source.run_finished", "source.removed"] as const;
 
 export type LiveState = "connecting" | "live" | "offline";
 
@@ -48,12 +52,17 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       void client.invalidateQueries({ queryKey: keys.parcels });
       void client.invalidateQueries({ queryKey: ["calendar"] });
       const id = parcelIdOf(event.data);
-      if (id !== undefined) {
+      if (id !== undefined && event.type === "parcel.deleted") {
+        client.removeQueries({ queryKey: keys.parcel(id) });
+      } else if (id !== undefined) {
         void client.invalidateQueries({ queryKey: keys.parcel(id) });
       }
     };
     const onSource = (): void => {
       void client.invalidateQueries({ queryKey: keys.sources });
+      // A run may have changed parcels without a parcel event (lookup state, last seen), and a
+      // removed source takes its links with it.
+      void client.invalidateQueries({ queryKey: keys.parcels });
     };
     source.onopen = () => {
       setState("live");
@@ -64,7 +73,9 @@ export function useLiveUpdates(enabled: boolean): LiveState {
     for (const type of PARCEL_EVENTS) {
       source.addEventListener(type, onParcel);
     }
-    source.addEventListener("source.state_changed", onSource);
+    for (const type of SOURCE_EVENTS) {
+      source.addEventListener(type, onSource);
+    }
     return () => {
       source.close();
     };

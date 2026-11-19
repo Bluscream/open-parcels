@@ -7,6 +7,7 @@ import {
 import { lazy, type ReactNode } from "react";
 import { StatusPage } from "./admin/StatusPage";
 import { TokensPage } from "./admin/TokensPage";
+import { NotFoundPage } from "./layout/NotFoundPage";
 import { Shell } from "./layout/Shell";
 import { OrdersPage } from "./orders/OrdersPage";
 import { ParcelDetailPage } from "./parcels/ParcelDetailPage";
@@ -17,7 +18,7 @@ import { SourcesPage } from "./sources/SourcesPage";
 const MapPage = lazy(() => import("./map/MapPage"));
 const CalendarPage = lazy(() => import("./calendar/CalendarPage"));
 
-const rootRoute = createRootRoute({ component: Shell });
+const rootRoute = createRootRoute({ component: Shell, notFoundComponent: NotFoundPage });
 
 const parcelRoute = createRoute({
   getParentRoute: () => rootRoute,

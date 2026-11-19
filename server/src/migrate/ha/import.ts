@@ -65,7 +65,12 @@ class DryRunRollback extends Error {
 
 export const markerKey = (entryId: string): string => `ha_import:${entryId}`;
 
-const markerSchema = z.object({ sourceId: z.string(), credentials: z.string() });
+/** `adopted`: the entry was mapped onto a source that existed before; it is never rewritten. */
+const markerSchema = z.object({
+  sourceId: z.string(),
+  credentials: z.string(),
+  adopted: z.boolean().optional(),
+});
 type Marker = z.infer<typeof markerSchema>;
 
 /** A fingerprint of the sign-in data as HA had it, to tell a changed HA entry from a re-run. */
@@ -132,6 +137,30 @@ async function writeSource(ctx: Context, plan: SourcePlan): Promise<Written> {
           .select(["id", "plugin"])
           .where("id", "=", marker.sourceId)
           .executeTakeFirst();
+  if (marker?.adopted === true && existing?.plugin === plan.plugin) {
+    return { id: existing.id, action: "updated", credentialsWritten: false };
+  }
+  // A keyless tracking source holds nothing of its own: adopt the plug-in's existing one (created
+  // on first use, say) instead of adding a second, keeping that source's id and label.
+  const adopted =
+    existing === undefined && plan.kind === "tracking" && plan.secret === null
+      ? await ctx.trx
+          .selectFrom("sources")
+          .select(["id", "plugin"])
+          .where("plugin", "=", plan.plugin)
+          .where("kind", "=", "tracking")
+          .where("secret_blob", "is", null)
+          .orderBy("created_at")
+          .executeTakeFirst()
+      : undefined;
+  if (adopted !== undefined) {
+    await writeMarker(ctx, plan.entryId, {
+      sourceId: adopted.id,
+      credentials: fingerprint,
+      adopted: true,
+    });
+    return { id: adopted.id, action: "updated", credentialsWritten: false };
+  }
   if (marker !== null && existing?.plugin === plan.plugin) {
     // Same HA sign-in as last time: the source may have rotated its tokens since, so keep them.
     const fresh = marker.credentials !== fingerprint;

@@ -858,6 +858,28 @@
                           "unknown"
                         ]
                       },
+                      "carrier_status": {
+                        "type": "string",
+                        "enum": [
+                          "registered",
+                          "in_transit",
+                          "out_for_delivery",
+                          "at_pickup_point",
+                          "delivered",
+                          "returning",
+                          "problem",
+                          "unknown"
+                        ]
+                      },
+                      "carrier_delivered": {
+                        "type": "boolean"
+                      },
+                      "archived_at": {
+                        "nullable": true,
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
                       "items": {
                         "type": "array",
                         "items": {
@@ -1038,6 +1060,18 @@
                             "plugin": {
                               "type": "string"
                             },
+                            "label": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "account",
+                                "tracking",
+                                "shop",
+                                "mail"
+                              ]
+                            },
                             "role": {
                               "type": "string",
                               "enum": [
@@ -1055,6 +1089,8 @@
                           "required": [
                             "source_id",
                             "plugin",
+                            "label",
+                            "kind",
                             "role",
                             "last_seen_at"
                           ],
@@ -1122,6 +1158,9 @@
                       "direction",
                       "label",
                       "manual_status",
+                      "carrier_status",
+                      "carrier_delivered",
+                      "archived_at",
                       "items",
                       "live",
                       "location",
@@ -1325,6 +1364,28 @@
                         "unknown"
                       ]
                     },
+                    "carrier_status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "in_transit",
+                        "out_for_delivery",
+                        "at_pickup_point",
+                        "delivered",
+                        "returning",
+                        "problem",
+                        "unknown"
+                      ]
+                    },
+                    "carrier_delivered": {
+                      "type": "boolean"
+                    },
+                    "archived_at": {
+                      "nullable": true,
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -1505,6 +1566,18 @@
                           "plugin": {
                             "type": "string"
                           },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "account",
+                              "tracking",
+                              "shop",
+                              "mail"
+                            ]
+                          },
                           "role": {
                             "type": "string",
                             "enum": [
@@ -1522,6 +1595,8 @@
                         "required": [
                           "source_id",
                           "plugin",
+                          "label",
+                          "kind",
                           "role",
                           "last_seen_at"
                         ],
@@ -1589,6 +1664,9 @@
                     "direction",
                     "label",
                     "manual_status",
+                    "carrier_status",
+                    "carrier_delivered",
+                    "archived_at",
                     "items",
                     "live",
                     "location",
@@ -1816,6 +1894,28 @@
                         "unknown"
                       ]
                     },
+                    "carrier_status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "in_transit",
+                        "out_for_delivery",
+                        "at_pickup_point",
+                        "delivered",
+                        "returning",
+                        "problem",
+                        "unknown"
+                      ]
+                    },
+                    "carrier_delivered": {
+                      "type": "boolean"
+                    },
+                    "archived_at": {
+                      "nullable": true,
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -1996,6 +2096,18 @@
                           "plugin": {
                             "type": "string"
                           },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "account",
+                              "tracking",
+                              "shop",
+                              "mail"
+                            ]
+                          },
                           "role": {
                             "type": "string",
                             "enum": [
@@ -2013,6 +2125,8 @@
                         "required": [
                           "source_id",
                           "plugin",
+                          "label",
+                          "kind",
                           "role",
                           "last_seen_at"
                         ],
@@ -2080,6 +2194,9 @@
                     "direction",
                     "label",
                     "manual_status",
+                    "carrier_status",
+                    "carrier_delivered",
+                    "archived_at",
                     "items",
                     "live",
                     "location",
@@ -2314,6 +2431,28 @@
                         "unknown"
                       ]
                     },
+                    "carrier_status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "in_transit",
+                        "out_for_delivery",
+                        "at_pickup_point",
+                        "delivered",
+                        "returning",
+                        "problem",
+                        "unknown"
+                      ]
+                    },
+                    "carrier_delivered": {
+                      "type": "boolean"
+                    },
+                    "archived_at": {
+                      "nullable": true,
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -2494,6 +2633,18 @@
                           "plugin": {
                             "type": "string"
                           },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "account",
+                              "tracking",
+                              "shop",
+                              "mail"
+                            ]
+                          },
                           "role": {
                             "type": "string",
                             "enum": [
@@ -2511,6 +2662,8 @@
                         "required": [
                           "source_id",
                           "plugin",
+                          "label",
+                          "kind",
                           "role",
                           "last_seen_at"
                         ],
@@ -2578,6 +2731,9 @@
                     "direction",
                     "label",
                     "manual_status",
+                    "carrier_status",
+                    "carrier_delivered",
+                    "archived_at",
                     "items",
                     "live",
                     "location",
@@ -5129,6 +5285,20 @@
                       "all_day": {
                         "type": "boolean"
                       },
+                      "start_date": {
+                        "nullable": true,
+                        "description": "All-day entries: the first local day.",
+                        "type": "string",
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      "end_date": {
+                        "nullable": true,
+                        "description": "All-day entries: the day after the last (exclusive).",
+                        "type": "string",
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
                       "late": {
                         "type": "boolean"
                       },
@@ -5156,6 +5326,8 @@
                       "start",
                       "end",
                       "all_day",
+                      "start_date",
+                      "end_date",
                       "late",
                       "image_url",
                       "url",
@@ -5292,6 +5464,51 @@
             },
             "in": "path",
             "name": "file",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/tiles/{z}/{x}/{y}.png": {
+      "get": {
+        "summary": "An OpenStreetMap tile, fetched and cached by this server.",
+        "tags": [
+          "map"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "z",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "x",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "y",
             "required": true
           }
         ],

@@ -14,6 +14,11 @@ export function StatusBadge(props: {
   );
 }
 
+/** Archived parcels are kept but hidden from the default list. */
+export function ArchivedBadge(): ReactNode {
+  return <span className="badge archived">Archived</span>;
+}
+
 export function LookupBadge({ state }: { readonly state: LookupState }): ReactNode {
   return <span className={`badge lookup-${state}`}>{LOOKUP_LABELS[state]}</span>;
 }

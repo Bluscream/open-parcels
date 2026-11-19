@@ -1,4 +1,4 @@
-import type { LookupState, ParcelStatus, SourceState } from "../api/types";
+import type { LookupState, ParcelStatus, Source, SourceState } from "../api/types";
 import { UI_LOCALE } from "./locale";
 
 export const STATUS_LABELS: Readonly<Record<ParcelStatus, string>> = {
@@ -23,6 +23,13 @@ export const SOURCE_STATE_LABELS: Readonly<Record<SourceState, string>> = {
   needs_sign_in: "Needs sign-in",
   error: "Error",
   disabled: "Disabled",
+};
+
+export const SOURCE_KIND_LABELS: Readonly<Record<Source["kind"], string>> = {
+  account: "account",
+  tracking: "tracking",
+  shop: "shop",
+  mail: "mailbox",
 };
 
 const locales = UI_LOCALE;

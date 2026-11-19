@@ -58,7 +58,8 @@ function SourceRow(props: {
       </p>
       <ErrorNotice error={sync.error ?? update.error ?? remove.error} />
       <div className="actions">
-        {props.signIn ? (
+        {/* A disabled source neither runs nor signs in; enabling it comes first. */}
+        {enabled && props.signIn ? (
           <button
             type="button"
             className={source.state === "needs_sign_in" ? "button primary" : "button"}
@@ -67,16 +68,18 @@ function SourceRow(props: {
             {source.has_secret ? "Sign in again" : "Sign in"}
           </button>
         ) : null}
-        <button
-          type="button"
-          className="button"
-          disabled={!enabled || sync.isPending}
-          onClick={() => {
-            sync.mutate(source.id);
-          }}
-        >
-          {sync.isPending ? "Syncing…" : "Sync now"}
-        </button>
+        {enabled ? (
+          <button
+            type="button"
+            className="button"
+            disabled={sync.isPending}
+            onClick={() => {
+              sync.mutate(source.id);
+            }}
+          >
+            {sync.isPending ? "Syncing…" : "Sync now"}
+          </button>
+        ) : null}
         <button type="button" className="button" onClick={props.onEdit}>
           Edit
         </button>
@@ -160,7 +163,8 @@ export function SourcesPage(): ReactNode {
           }}
           onCreated={(source) => {
             setEditing(null);
-            if (source.state === "needs_sign_in") {
+            // A new source that signs in and has nothing stored goes straight to its sign-in.
+            if (!source.has_secret && canSignIn(source, carriers.data)) {
               setSigningIn(source);
             }
           }}

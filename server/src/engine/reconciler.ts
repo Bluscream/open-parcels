@@ -8,7 +8,7 @@ import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
 import { ParcelRepository, RAW_PRESENTATION, type Presentation } from "../parcels/repository.js";
 import type { FetchResult, LiveTarget } from "../plugin/api.js";
-import type { ParcelSnapshot, SnapshotEvent } from "../plugin/snapshot.js";
+import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../plugin/snapshot.js";
 import { healState, mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
 import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
@@ -124,6 +124,40 @@ async function storedHistory(trx: Trx, parcelId: string): Promise<SnapshotEvent[
   }));
 }
 
+/**
+ * Long enough to be a carrier's tracking code rather than a shop's own shipment key, so a shared
+ * value across carriers means the same parcel.
+ */
+function isCarrierCode(barcode: string): boolean {
+  return /^[A-Z0-9]{8,40}$/i.test(barcode);
+}
+
+/**
+ * Parcels stored under a shop's name (a plug-in that has a shop source) with this code, other than
+ * `carrier`'s. Imported parcels count too, linked to the shop or not.
+ */
+async function shopTwins(
+  trx: Trx,
+  barcode: string,
+  carrier: string,
+): Promise<{ carrier: string; barcode: string }[]> {
+  return trx
+    .selectFrom("parcels")
+    .select(["parcels.carrier", "parcels.barcode"])
+    .where("parcels.barcode", "=", barcode)
+    .where("parcels.carrier", "!=", carrier)
+    .where((eb) =>
+      eb.exists(
+        eb
+          .selectFrom("sources")
+          .select("sources.id")
+          .where("sources.kind", "=", "shop")
+          .whereRef("sources.plugin", "=", "parcels.carrier"),
+      ),
+    )
+    .execute();
+}
+
 async function findParcel(
   trx: Trx,
   carrier: string,
@@ -214,6 +248,11 @@ export class Reconciler {
    * delivered in status only), from their stored history. Idempotent; run at startup.
    */
   async repair(): Promise<number> {
+    const twins = await this.db.transaction().execute((trx) => this.#foldStoredTwins(trx));
+    if (twins > 0) {
+      await this.bus.notify();
+      this.logger.info({ folded: twins }, "Folded shop parcels into their carriers' parcels.");
+    }
     const candidates = await this.db
       .selectFrom("parcels")
       .select("id")
@@ -275,8 +314,12 @@ export class Reconciler {
   async #applySnapshot(
     trx: Trx,
     source: SourceRow,
-    snapshot: ParcelSnapshot,
+    reported: ParcelSnapshot,
   ): Promise<{ parcelId: string; created: boolean; events: number }> {
+    const snapshot = await this.#withInferredHandoff(trx, source, reported);
+    if (snapshot.handoff === null && source.kind !== "shop" && source.kind !== "mail") {
+      await this.#adoptShopTwin(trx, snapshot);
+    }
     const key = snapshot.handoff ?? { carrier: snapshot.carrier, barcode: snapshot.barcode };
     const authority: Authority =
       snapshot.handoff === null && source.kind !== "mail" ? "carrier" : "secondary";
@@ -350,6 +393,111 @@ export class Reconciler {
   }
 
   /**
+   * A shop that reports a carrier's code without naming the carrier (an unmapped carrier code, a
+   * page without tracking details) still hands the parcel off: when exactly one parcel of another
+   * carrier has the same code, the shop's snapshot becomes a hand-off to it.
+   */
+  async #withInferredHandoff(
+    trx: Trx,
+    source: SourceRow,
+    snapshot: ParcelSnapshot,
+  ): Promise<ParcelSnapshot> {
+    if (snapshot.handoff !== null || source.kind !== "shop" || !isCarrierCode(snapshot.barcode)) {
+      return snapshot;
+    }
+    const twins = await trx
+      .selectFrom("parcels")
+      .select(["carrier", "barcode"])
+      .where("barcode", "=", snapshot.barcode)
+      .where("carrier", "!=", snapshot.carrier)
+      .execute();
+    const [twin] = twins;
+    return twins.length === 1 && twin !== undefined
+      ? { ...snapshot, handoff: { carrier: twin.carrier, barcode: twin.barcode } }
+      : snapshot;
+  }
+
+  /**
+   * The reverse: a carrier reports a code that a shop already stored under its own name. The shop's
+   * parcel is folded into the carrier's, so the code is one parcel with two sources.
+   */
+  async #adoptShopTwin(trx: Trx, snapshot: ParcelSnapshot): Promise<void> {
+    if (!isCarrierCode(snapshot.barcode)) {
+      return;
+    }
+    const twins = await shopTwins(trx, snapshot.barcode, snapshot.carrier);
+    const [twin] = twins;
+    if (twins.length !== 1 || twin === undefined) {
+      return;
+    }
+    const target = await findParcel(trx, snapshot.carrier, snapshot.barcode);
+    await this.#foldShopDuplicate(
+      trx,
+      {
+        ...snapshot,
+        carrier: twin.carrier,
+        barcode: twin.barcode,
+        handoff: { carrier: snapshot.carrier, barcode: snapshot.barcode },
+      },
+      target,
+    );
+  }
+
+  /**
+   * Repairs codes stored twice, once by a shop and once by the carrier that delivers it, from
+   * before hand-offs were inferred. Each pair becomes one parcel under the carrier. Idempotent.
+   */
+  async #foldStoredTwins(trx: Trx): Promise<number> {
+    const shopPlugins = await trx
+      .selectFrom("sources")
+      .select("plugin")
+      .where("kind", "=", "shop")
+      .distinct()
+      .execute();
+    if (shopPlugins.length === 0) {
+      return 0;
+    }
+    const rows = await trx
+      .selectFrom("parcels")
+      .select(["carrier", "barcode"])
+      .where(
+        "carrier",
+        "in",
+        shopPlugins.map((row) => row.plugin),
+      )
+      .execute();
+    let folded = 0;
+    for (const shop of rows) {
+      if (!isCarrierCode(shop.barcode)) {
+        continue;
+      }
+      const others = await trx
+        .selectFrom("parcels")
+        .selectAll()
+        .where("barcode", "=", shop.barcode)
+        .where("carrier", "!=", shop.carrier)
+        .execute();
+      const [target] = others;
+      if (others.length !== 1 || target === undefined) {
+        continue;
+      }
+      await this.#foldShopDuplicate(
+        trx,
+        snapshot({
+          carrier: shop.carrier,
+          barcode: shop.barcode,
+          status: null,
+          rawStatus: null,
+          handoff: { carrier: target.carrier, barcode: target.barcode },
+        }),
+        target,
+      );
+      folded += 1;
+    }
+    return folded;
+  }
+
+  /**
    * A shop may have reported a parcel under its own key before it knew the real carrier. Once the
    * hand-off is known, that entry is moved under the carrier's key, or folded into the carrier's
    * parcel if one exists, so there is never a duplicate.
@@ -372,6 +520,13 @@ export class Reconciler {
         .updateTable("parcels")
         .set({ carrier: handoff.carrier, barcode: handoff.barcode })
         .where("id", "=", duplicate.id)
+        .execute();
+      // The shop's links now hand the parcel off; the carrier's own source becomes primary.
+      await trx
+        .updateTable("parcel_sources")
+        .set({ role: "handoff" })
+        .where("parcel_id", "=", duplicate.id)
+        .where("role", "=", "primary")
         .execute();
       this.logger.debug({ parcelId: duplicate.id }, "Re-keyed a shop parcel under its carrier.");
       return { ...duplicate, carrier: handoff.carrier, barcode: handoff.barcode };
@@ -428,14 +583,25 @@ export class Reconciler {
       .set({ parcel_id: target.id })
       .where("parcel_id", "=", duplicate.id)
       .execute();
-    if (target.order_id === null && duplicate.order_id !== null) {
-      await trx
-        .updateTable("parcels")
-        .set({ order_id: duplicate.order_id })
-        .where("id", "=", target.id)
-        .execute();
-    }
+    // What the user or the shop knew about the duplicate is kept where the target has nothing.
+    await trx
+      .updateTable("parcels")
+      .set({
+        order_id: target.order_id ?? duplicate.order_id,
+        label: target.label ?? duplicate.label,
+        manual_status: target.manual_status ?? duplicate.manual_status,
+      })
+      .where("id", "=", target.id)
+      .execute();
+    const gone = await new ParcelRepository(trx, this.presentation).get(duplicate.id);
     await trx.deleteFrom("parcels").where("id", "=", duplicate.id).execute();
+    if (gone !== undefined) {
+      await appendEvent(trx, this.clock, {
+        type: "parcel.deleted",
+        parcelId: duplicate.id,
+        payload: { ...parcelEventPayload({ ...gone, history: [] }), merged_into: target.id },
+      });
+    }
     this.logger.debug({ parcelId: target.id }, "Folded a shop duplicate into the carrier parcel.");
     return target;
   }

@@ -1,6 +1,8 @@
 import type { Kysely } from "kysely";
 import type { Database, ParcelRow } from "../db/schema.js";
 import {
+  effectiveDelivered,
+  effectiveStatus,
   PARCEL_STATUSES,
   type HistoryEntry,
   type Item,
@@ -43,6 +45,7 @@ interface Related {
   live: Map<string, Live>;
   sources: Map<string, Parcel["sources"]>;
   orders: Map<string, Parcel["order"]>;
+  listedBy: Map<string, Set<string>>;
 }
 
 /** A courier position held in memory by the live tracker. */
@@ -147,6 +150,7 @@ export class ParcelRepository {
         live: new Map(),
         sources: new Map(),
         orders: new Map(),
+        listedBy: new Map(),
       };
     }
     const [events, items, live, sources, orders] = await Promise.all([
@@ -173,8 +177,12 @@ export class ParcelRepository {
           "parcel_sources.source_id",
           "parcel_sources.role",
           "parcel_sources.last_seen_at",
+          "parcel_sources.missing_since",
           "sources.plugin",
+          "sources.label",
+          "sources.kind",
         ])
+        .orderBy("sources.created_at")
         .where("parcel_sources.parcel_id", "in", ids)
         .execute(),
       orderIds.length === 0
@@ -228,32 +236,61 @@ export class ParcelRepository {
       }),
     );
     const sourceMap = new Map<string, Parcel["sources"]>();
+    const listedBy = new Map<string, Set<string>>();
     for (const [parcelId, list] of groupBy(sources, (source) => source.parcel_id)) {
       sourceMap.set(
         parcelId,
         list.map((source) => ({
           source_id: source.source_id,
           plugin: source.plugin,
+          label: source.label,
+          kind: source.kind,
           role: source.role,
           last_seen_at: source.last_seen_at,
         })),
+      );
+      // Account and shop sources that currently list the parcel, by plug-in: proof that the
+      // carrier knows the code even when its public tracking does not return it.
+      listedBy.set(
+        parcelId,
+        new Set(
+          list
+            .filter(
+              (source) =>
+                (source.kind === "account" || source.kind === "shop") &&
+                source.role !== "mail" &&
+                source.missing_since === null,
+            )
+            .map((source) => source.plugin),
+        ),
       );
     }
     const orderMap = new Map<string, Parcel["order"]>(
       orders.map((order) => [order.id, { shop: order.shop, order_number: order.order_number }]),
     );
-    return { history, items: itemMap, live: liveMap, sources: sourceMap, orders: orderMap };
+    return {
+      history,
+      items: itemMap,
+      live: liveMap,
+      sources: sourceMap,
+      orders: orderMap,
+      listedBy,
+    };
   }
 
   #toParcel(row: ParcelRow, related: Related): Parcel {
+    const carrierStatus = asStatus(row.status) ?? "unknown";
+    const manual = asStatus(row.manual_status);
+    const carrierDelivered = row.delivered === 1;
+    const listed = related.listedBy.get(row.id)?.has(row.carrier) === true;
     return {
       carrier: row.carrier,
       barcode: row.barcode,
       sender: row.sender,
       receiver: row.receiver,
-      status: asStatus(row.status) ?? "unknown",
+      status: effectiveStatus({ status: carrierStatus, manual_status: manual }),
       raw_status: row.raw_status,
-      delivered: row.delivered === 1,
+      delivered: effectiveDelivered(carrierDelivered, manual),
       delivered_at: row.delivered_at,
       planned_from: row.planned_from,
       planned_to: row.planned_to,
@@ -264,17 +301,21 @@ export class ParcelRepository {
       id: row.id,
       direction: row.direction,
       label: row.label,
-      manual_status: asStatus(row.manual_status),
+      manual_status: manual,
+      carrier_status: carrierStatus,
+      carrier_delivered: carrierDelivered,
+      archived_at: row.archived_at,
       items: related.items.get(row.id) ?? [],
       live: related.live.get(row.id) ?? null,
       location: null,
       order: row.order_id === null ? null : (related.orders.get(row.order_id) ?? null),
       sources: related.sources.get(row.id) ?? [],
-      lookup: {
-        state: row.lookup_state,
-        since: row.lookup_since,
-        checked_at: row.lookup_checked_at,
-      },
+      // Another source of the same carrier (an account) listing the parcel means the carrier
+      // found it, whatever its public tracking answered.
+      lookup:
+        row.lookup_state === "not_found" && listed
+          ? { state: "found", since: null, checked_at: row.lookup_checked_at }
+          : { state: row.lookup_state, since: row.lookup_since, checked_at: row.lookup_checked_at },
       first_seen_at: row.first_seen_at,
       updated_at: row.updated_at,
     };

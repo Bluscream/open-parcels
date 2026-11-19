@@ -1,12 +1,7 @@
 import type { Kysely } from "kysely";
 import { isoNow, type Clock } from "../clock.js";
 import type { Database, ParcelUpdate } from "../db/schema.js";
-import {
-  effectiveStatus,
-  type Direction,
-  type Parcel,
-  type ParcelStatus,
-} from "../domain/parcel.js";
+import { type Direction, type Parcel, type ParcelStatus } from "../domain/parcel.js";
 import { deriveEvents, type EventView } from "../engine/rules.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
 import { parcelEventPayload } from "../events/payload.js";
@@ -39,12 +34,12 @@ export interface ParcelPatch {
  */
 export type TrackingLinker = (carrier: string) => Promise<string | undefined>;
 
+/** Parcels as read through the repository already carry the effective status and flag. */
 function view(parcel: Parcel): EventView {
-  const status = effectiveStatus(parcel);
   return {
     direction: parcel.direction,
-    status,
-    delivered: parcel.manual_status === null ? parcel.delivered : status === "delivered",
+    status: parcel.status,
+    delivered: parcel.delivered,
     plannedFrom: parcel.planned_from,
     plannedTo: parcel.planned_to,
   };
@@ -153,9 +148,25 @@ export class ParcelService {
     return this.#mustGet(id);
   }
 
+  /** Deletes the parcel and fires `parcel.deleted`, so clients drop it at once. */
   async delete(id: string): Promise<boolean> {
-    const result = await this.db.deleteFrom("parcels").where("id", "=", id).executeTakeFirst();
-    return result.numDeletedRows > 0n;
+    const deleted = await this.db.transaction().execute(async (trx) => {
+      const parcel = await new ParcelRepository(trx, this.presentation).get(id);
+      if (parcel === undefined) {
+        return false;
+      }
+      await trx.deleteFrom("parcels").where("id", "=", id).execute();
+      await appendEvent(trx, this.clock, {
+        type: "parcel.deleted",
+        parcelId: id,
+        payload: parcelEventPayload({ ...parcel, history: [] }),
+      });
+      return true;
+    });
+    if (deleted) {
+      await this.bus.notify();
+    }
+    return deleted;
   }
 
   async #mustGet(id: string): Promise<Parcel> {

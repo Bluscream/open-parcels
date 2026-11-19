@@ -15,6 +15,8 @@ import { PluginRegistry, type RegisteredPlugin } from "./engine/registry.js";
 import { SourceRunner } from "./engine/runner.js";
 import { SignInService } from "./engine/sign-in.js";
 import { Scheduler } from "./engine/scheduler.js";
+import { repairOrderShops } from "./engine/order-repair.js";
+import { mergeDuplicateTrackingSources } from "./engine/source-dedup.js";
 import { SourceService } from "./engine/sources.js";
 import { EventBus } from "./events/bus.js";
 import { ImageProxy } from "./images/proxy.js";
@@ -134,7 +136,17 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   await bus.start();
   const registry = new PluginRegistry(deps.plugins ?? BUILTIN_CARRIERS);
   const sources = new SourceService(db, registry, deps.secrets, bus, clock);
-  // Repair on every start: parcels imported or added before they could be linked get followed.
+  // Repairs on every start. Duplicate keyless tracking sources are merged first, so parcels
+  // imported or added before they could be linked are then followed by the surviving one.
+  const mergedSources = await mergeDuplicateTrackingSources(db, clock);
+  if (mergedSources > 0) {
+    await bus.notify();
+    logger.info({ merged: mergedSources }, "Merged duplicate tracking sources.");
+  }
+  const repairedOrders = await repairOrderShops(db, clock);
+  if (repairedOrders > 0) {
+    logger.info({ repaired: repairedOrders }, "Moved orders filed under the wrong shop.");
+  }
   if (await followUntracked(sources)) {
     logger.info("Linked parcels without a tracking source to their carrier.");
   }

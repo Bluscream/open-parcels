@@ -840,8 +840,20 @@ tbody tr:hover {
 
 .lookup-pending,
 .source-disabled,
-.status-unknown {
+.status-unknown,
+.badge.archived {
   color: var(--muted);
+}
+
+.not-found {
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.not-found .empty-state {
+  gap: 1rem;
 }
 
 .lookup-pending {

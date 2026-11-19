@@ -5,7 +5,7 @@ import type { Parcel } from "../api/types";
 import { CarrierLogo } from "../components/CarrierLogo";
 import { DataTable } from "../components/DataTable";
 import { formatRelative, formatWindow } from "../lib/format";
-import { LookupBadge, StatusBadge } from "./badges";
+import { ArchivedBadge, LookupBadge, StatusBadge } from "./badges";
 
 export type ParcelFilter = "active" | "delivered" | "all";
 
@@ -42,6 +42,12 @@ const COLUMNS = [
           {info.row.original.label === null ? null : (
             <span className="mono"> {info.row.original.barcode}</span>
           )}
+          {info.row.original.archived_at === null ? null : (
+            <>
+              {" "}
+              <ArchivedBadge />
+            </>
+          )}
         </span>
         <ItemThumbs items={info.row.original.items} />
       </Link>
@@ -49,11 +55,9 @@ const COLUMNS = [
   }),
   column.accessor("status", {
     header: "Status",
+    // `status` is already the effective one: a manual status wins on the server.
     cell: (info) => (
-      <StatusBadge
-        status={info.row.original.manual_status ?? info.getValue()}
-        manual={info.row.original.manual_status !== null}
-      />
+      <StatusBadge status={info.getValue()} manual={info.row.original.manual_status !== null} />
     ),
     filterFn: "equalsString",
   }),
@@ -81,8 +85,16 @@ function matchesFilter(parcel: Parcel, filter: ParcelFilter): boolean {
   return filter === "delivered" ? parcel.delivered : !parcel.delivered;
 }
 
-export function ParcelTable(props: { readonly parcels: Parcel[] }): ReactNode {
-  const [filter, setFilter] = useState<ParcelFilter>("active");
+/**
+ * The parcel list. The Show filter is owned by the page, so it survives the table being
+ * re-rendered with another data set (archived parcels included or not).
+ */
+export function ParcelTable(props: {
+  readonly parcels: Parcel[];
+  readonly filter: ParcelFilter;
+  readonly onFilterChange: (filter: ParcelFilter) => void;
+}): ReactNode {
+  const { filter, onFilterChange: setFilter } = props;
   const [carrier, setCarrier] = useState("");
   const carriers = useMemo(
     () => [...new Set(props.parcels.map((parcel) => parcel.carrier))].sort(),

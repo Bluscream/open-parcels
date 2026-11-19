@@ -3,10 +3,11 @@ import { useState, type ReactNode } from "react";
 import { useParcels } from "../api/queries";
 import { ErrorNotice, Spinner } from "../components/ui";
 import { AddParcelDialog } from "./AddParcelDialog";
-import { ParcelTable } from "./ParcelTable";
+import { ParcelTable, type ParcelFilter } from "./ParcelTable";
 
 export function ParcelsPage(): ReactNode {
   const [archived, setArchived] = useState(false);
+  const [filter, setFilter] = useState<ParcelFilter>("active");
   const [adding, setAdding] = useState(false);
   const parcels = useParcels(archived);
 
@@ -42,7 +43,11 @@ export function ParcelsPage(): ReactNode {
         </button>
       </div>
       <ErrorNotice error={parcels.error} />
-      {parcels.data === undefined ? <Spinner /> : <ParcelTable parcels={parcels.data} />}
+      {parcels.data === undefined ? (
+        <Spinner />
+      ) : (
+        <ParcelTable parcels={parcels.data} filter={filter} onFilterChange={setFilter} />
+      )}
       <AddParcelDialog
         open={adding}
         onClose={() => {

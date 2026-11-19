@@ -137,6 +137,7 @@ export class Scheduler {
     try {
       const outcome = await this.deps.runner.run(source.id);
       await this.#record(source, outcome);
+      await this.#announce(source, outcome);
     } finally {
       this.#running.delete(source.id);
     }
@@ -165,7 +166,7 @@ export class Scheduler {
         })
         .where("id", "=", source.id)
         .execute();
-      if (source.state !== "ok") {
+      if (source.state !== "ok" || source.state_detail !== null) {
         await this.deps.sources.setState(source.id, "ok", null);
       }
       return;
@@ -188,6 +189,14 @@ export class Scheduler {
       outcome.kind === "sign_in_rejected" ? "needs_sign_in" : "error",
       outcome.detail,
     );
+  }
+
+  /**
+   * Fires `source.run_finished` after every run, so clients showing the source (its last run,
+   * next run and counts) refresh even when its state did not change.
+   */
+  async #announce(source: SourceRow, outcome: RunOutcome): Promise<void> {
+    await this.deps.sources.announceRun(source, outcome.ok);
   }
 
   async #activeParcels(sourceId: string): Promise<ActiveParcel[]> {

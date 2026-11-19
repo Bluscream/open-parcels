@@ -302,3 +302,36 @@ describe("Home Assistant suite import", () => {
     ).rejects.toThrow(/core\.config_entries/);
   });
 });
+
+describe("an existing tracking source", () => {
+  it("is adopted instead of a second keyless DHL tracking source, keeping its id and label", async () => {
+    const now = context.clock.now().toISOString();
+    const existing = crypto.randomUUID();
+    await context.services.db
+      .insertInto("sources")
+      .values({
+        id: existing,
+        plugin: "dhl",
+        kind: "tracking",
+        label: "DHL tracking (auto)",
+        config: "{}",
+        secret_blob: null,
+        session_blob: null,
+        state: "ok",
+        state_detail: null,
+        next_run_at: now,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+    await run(fixture());
+    await run(fixture());
+    const tracking = (await sources()).filter(
+      (source) => source.plugin === "dhl" && source.kind === "tracking",
+    );
+    expect(tracking.map((source) => [source.id, source.label])).toEqual([
+      [existing, "DHL tracking (auto)"],
+    ]);
+    expect(await linkedCodes(existing)).toContain("JVGL0000000000000001");
+  });
+});

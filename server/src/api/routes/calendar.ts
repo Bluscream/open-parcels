@@ -24,6 +24,11 @@ const entrySchema = z.object({
   start: z.string(),
   end: z.string(),
   all_day: z.boolean(),
+  start_date: z.iso.date().nullable().describe("All-day entries: the first local day."),
+  end_date: z.iso
+    .date()
+    .nullable()
+    .describe("All-day entries: the day after the last (exclusive)."),
   late: z.boolean(),
   image_url: z.string().nullable(),
   url: z.string().nullable(),
@@ -77,6 +82,8 @@ export function registerCalendarRoutes(app: TypedApp, services: Services): void 
         start: entry.start,
         end: entry.end,
         all_day: entry.allDay,
+        start_date: entry.startDate,
+        end_date: entry.endDate,
         late: entry.late,
         image_url: entry.imageUrl,
         url: entry.url,

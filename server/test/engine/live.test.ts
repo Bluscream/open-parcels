@@ -147,7 +147,12 @@ describe("live courier tracking", () => {
     ];
     await context.services.scheduler.runDue();
     const types = (
-      await context.services.db.selectFrom("outbox").select("type").orderBy("seq").execute()
+      await context.services.db
+        .selectFrom("outbox")
+        .select("type")
+        .where("type", "like", "parcel.%")
+        .orderBy("seq")
+        .execute()
     ).map((row) => row.type);
     expect(types.slice(-1)).toEqual(["parcel.delivered"]);
     expect(await context.services.live.pass()).toBeNull();

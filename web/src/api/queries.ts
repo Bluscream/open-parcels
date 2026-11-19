@@ -2,7 +2,7 @@
  * TanStack Query hooks over the generated API functions. Query keys live here so live events and
  * mutations invalidate the same entries.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteApiV1ParcelsId,
   deleteApiV1SourcesId,
@@ -48,6 +48,8 @@ export function useParcels(includeArchived: boolean) {
         { limit: 1000, ...(includeArchived ? { include_archived: "true" } : {}) },
         { signal },
       ),
+    // Switching "Include archived" keeps showing the current list until the other one arrives.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -70,8 +72,17 @@ export function useSources() {
   return useQuery({ queryKey: keys.sources, queryFn: ({ signal }) => getApiV1Sources({ signal }) });
 }
 
+/** Tokens are used by other clients, so "last used" changes without any event: re-read it. */
+export const TOKENS_REFRESH_MS = 30_000;
+
 export function useTokens() {
-  return useQuery({ queryKey: keys.tokens, queryFn: ({ signal }) => getApiV1Tokens({ signal }) });
+  return useQuery({
+    queryKey: keys.tokens,
+    queryFn: ({ signal }) => getApiV1Tokens({ signal }),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: TOKENS_REFRESH_MS,
+  });
 }
 
 export function useCalendar(from: string, to: string) {

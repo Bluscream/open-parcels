@@ -15,6 +15,30 @@ import { InvalidSourceConfigError, type PluginRegistry } from "./registry.js";
 export type SourceKind = SourceRow["kind"];
 export type SourceState = SourceRow["state"];
 
+/** Details of a source no run has judged yet. */
+export const NOT_SIGNED_IN_YET = "Not signed in yet.";
+export const NOT_RUN_YET = "Not run yet.";
+
+/**
+ * Writes `source.removed` inside the caller's transaction. `mergedInto` names the source that
+ * took over the removed one's parcels, when it was merged rather than deleted.
+ */
+export async function appendSourceRemoved(
+  trx: Kysely<Database>,
+  clock: Clock,
+  source: { id: string; plugin: string; label: string; kind: SourceKind },
+  mergedInto: string | null,
+): Promise<void> {
+  await appendEvent(trx, clock, {
+    type: "source.removed",
+    parcelId: null,
+    payload: {
+      source: { id: source.id, plugin: source.plugin, label: source.label, kind: source.kind },
+      merged_into: mergedInto,
+    },
+  });
+}
+
 /** Associated data for a source's encrypted blobs: a blob copied to another row fails to decrypt. */
 export const secretAad = (sourceId: string): string => `source:${sourceId}:secret`;
 export const sessionAad = (sourceId: string): string => `source:${sourceId}:session`;
@@ -96,8 +120,10 @@ export class SourceService {
         secret_blob:
           input.secret === null ? null : this.secrets.encryptJson(input.secret, secretAad(id)),
         session_blob: null,
+        // Nothing has judged the source yet; its first run (due at once) decides, and a run that
+        // finds no stored sign-in says "not signed in yet", never "rejected".
         state: "ok",
-        state_detail: null,
+        state_detail: input.kind === "mail" ? null : NOT_RUN_YET,
         // Mailboxes are driven by the mail watcher (IMAP IDLE), never by the poll scheduler.
         next_run_at: input.kind === "mail" ? null : now,
         created_at: now,
@@ -197,15 +223,62 @@ export class SourceService {
       })
       .where("id", "=", id)
       .execute();
-    if (changes.enabled !== undefined) {
-      await this.setState(id, changes.enabled ? "ok" : "disabled", null);
+    if (changes.enabled === false) {
+      await this.setState(id, "disabled", null);
+    } else if (changes.enabled === true && row.state === "disabled") {
+      await this.#enable(row);
     }
     return this.get(id);
   }
 
+  /**
+   * Re-enables a disabled source without claiming more than is known: one that never ran
+   * successfully says "not run yet" instead of a bare OK. It is due at once, so a run decides
+   * (and a run without any stored sign-in reports "not signed in yet").
+   */
+  async #enable(row: SourceRow): Promise<void> {
+    const proven = row.last_ok_at !== null || row.kind === "mail";
+    await this.setState(row.id, "ok", proven ? null : NOT_RUN_YET);
+    if (row.kind !== "mail") {
+      await this.requestRun(row.id);
+    }
+  }
+
+  /** Deletes the source and fires `source.removed`, so clients drop its device at once. */
   async delete(id: string): Promise<boolean> {
-    const result = await this.db.deleteFrom("sources").where("id", "=", id).executeTakeFirst();
-    return result.numDeletedRows > 0n;
+    const deleted = await this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .selectFrom("sources")
+        .select(["id", "plugin", "label", "kind"])
+        .where("id", "=", id)
+        .executeTakeFirst();
+      if (row === undefined) {
+        return false;
+      }
+      await trx.deleteFrom("sources").where("id", "=", id).execute();
+      await appendSourceRemoved(trx, this.clock, row, null);
+      return true;
+    });
+    if (deleted) {
+      await this.bus.notify();
+    }
+    return deleted;
+  }
+
+  /** Fires `source.run_finished`: a run ended, whatever its outcome. */
+  async announceRun(
+    source: { id: string; plugin: string; label: string; kind: SourceKind },
+    ok: boolean,
+  ): Promise<void> {
+    await appendEvent(this.db, this.clock, {
+      type: "source.run_finished",
+      parcelId: null,
+      payload: {
+        source: { id: source.id, plugin: source.plugin, label: source.label, kind: source.kind },
+        ok,
+      },
+    });
+    await this.bus.notify();
   }
 
   /** Asks the scheduler to run this source as soon as possible. */

@@ -1,17 +1,10 @@
 import ical, { ICalCalendarMethod } from "ical-generator";
 import { findCarrier, loadRules } from "open-parcels-rules";
-import { localParts } from "../engine/tz.js";
 import type { CalendarEntry } from "./service.js";
 
-/** The local calendar day of `date`, as a UTC-midnight Date: what an all-day DTSTART needs. */
-function localDay(date: Date, timeZone: string, endExclusive: boolean): Date {
-  const parts = localParts(date, timeZone);
-  const day = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  // An inclusive end like 23:59 belongs to that day; ICS all-day ends are exclusive.
-  if (endExclusive && !(parts.hour === 0 && parts.minute === 0)) {
-    day.setUTCDate(day.getUTCDate() + 1);
-  }
-  return day;
+/** A `YYYY-MM-DD` day as a UTC-midnight Date: what an all-day DTSTART/DTEND needs. */
+function utcDay(day: string): Date {
+  return new Date(`${day}T00:00:00.000Z`);
 }
 
 export interface IcsOptions {
@@ -51,11 +44,11 @@ export function renderIcs(entries: readonly CalendarEntry[], options: IcsOptions
       id: entry.uid,
       summary: entry.kind === "delivered" ? `Delivered: ${title}` : title,
       description: lines.join("\n"),
-      ...(entry.allDay
+      ...(entry.allDay && entry.startDate !== null && entry.endDate !== null
         ? {
             allDay: true,
-            start: localDay(start, options.timeZone, false),
-            end: localDay(end, options.timeZone, true),
+            start: utcDay(entry.startDate),
+            end: utcDay(entry.endDate),
             timezone: null,
           }
         : { start, end }),

@@ -385,4 +385,28 @@ describe("legacy import", () => {
     expect((legacy.prepare("select count(*) as n from parcels").get() as { n: number }).n).toBe(3);
     legacy.close();
   });
+
+  it("does not file another shop's order under Amazon because the old app said so", async () => {
+    // The old mail parser named any mail that mentioned Amazon (Amazon Pay) an Amazon order.
+    const legacy = new SQLite(legacyPath);
+    legacy
+      .prepare("insert into orders values (?, ?, ?, ?, ?, ?, ?)")
+      .run("o2", "Amazon", "1234567", "shipped", T, T, T);
+    legacy
+      .prepare(
+        "insert into parcels (id, tracking_number, name, courier, status, order_id, is_manual_status, added_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("p4", "00340434000000000099", "example-shop.de", "DHL", "delivered", "o2", 0, T, T);
+    legacy.close();
+    await run(false);
+    const orders = await context.services.db
+      .selectFrom("orders")
+      .select(["shop", "order_number"])
+      .orderBy("order_number")
+      .execute();
+    expect(orders).toEqual([
+      { shop: "amazon", order_number: "000-0000000-0000001" },
+      { shop: "example-shop.de", order_number: "1234567" },
+    ]);
+  });
 });

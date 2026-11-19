@@ -1,0 +1,158 @@
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import type { CalendarEntry, Source } from "./api/types";
+import { toCalendarEvent } from "./calendar/events";
+import { isSecretField } from "./sources/schema";
+import { mockApi, parcel, renderApp, SIGNED_IN } from "./test/helpers";
+
+/* Regressions found by a live end-to-end run. Every value is made up. */
+
+const ARCHIVED = parcel({
+  id: "00000000-0000-4000-8000-0000000000a1",
+  label: "Old lamp",
+  archived_at: "2026-11-18T09:00:00.000Z",
+});
+
+describe("parcel list", () => {
+  it("keeps the Show selection when archived parcels are included", async () => {
+    mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/parcels": () => ({ body: [ARCHIVED] }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByRole("table", { name: "Parcels" });
+    await user.click(screen.getByLabelText("All"));
+    await user.click(screen.getByLabelText("Include archived"));
+    const table = await screen.findByRole("table", { name: "Parcels" });
+    expect(screen.getByLabelText("All")).toBeChecked();
+    expect(within(table).getByText("Archived")).toBeInTheDocument();
+  });
+});
+
+describe("parcel detail", () => {
+  it("shows an archived parcel as archived, offers Unarchive and names its sources", async () => {
+    const calls = mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/parcels/00000000-0000-4000-8000-0000000000a1": () => ({
+        body: {
+          ...ARCHIVED,
+          sources: [
+            {
+              source_id: "s1",
+              plugin: "dhl",
+              label: "DHL account",
+              kind: "account",
+              role: "primary",
+              last_seen_at: "2026-11-18T09:00:00.000Z",
+            },
+            {
+              source_id: "s2",
+              plugin: "dhl",
+              label: "DHL tracking",
+              kind: "tracking",
+              role: "primary",
+              last_seen_at: "2026-11-18T09:00:00.000Z",
+            },
+          ],
+        },
+      }),
+      "PATCH /api/v1/parcels/00000000-0000-4000-8000-0000000000a1": () => ({
+        body: { ...ARCHIVED, archived_at: null },
+      }),
+      "GET /api/v1/parcels": () => ({ body: [] }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    const user = userEvent.setup();
+    renderApp("/parcels/00000000-0000-4000-8000-0000000000a1");
+    await screen.findByRole("heading", { name: "Old lamp" });
+    expect(screen.getByText("Archived")).toBeInTheDocument();
+    expect(screen.getByText(/DHL account/)).toBeInTheDocument();
+    expect(screen.getByText(/DHL tracking/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Unarchive" }));
+    expect(await screen.findByText("Restored from the archive.")).toBeInTheDocument();
+    expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ archived: false });
+  });
+});
+
+describe("sources", () => {
+  const disabled: Source = {
+    id: "s3",
+    plugin: "dhl",
+    kind: "account",
+    label: "DHL account",
+    config: {},
+    has_secret: false,
+    state: "disabled",
+    state_detail: null,
+    next_run_at: null,
+    last_run_at: null,
+    last_ok_at: null,
+  };
+
+  it("offers neither Sync now nor Sign in on a disabled source", async () => {
+    mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/sources": () => ({ body: [disabled] }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    renderApp("/sources");
+    await screen.findByRole("heading", { name: "DHL account" });
+    expect(screen.getByRole("button", { name: "Enable" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sync now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sign in/ })).not.toBeInTheDocument();
+  });
+
+  it("masks only real secrets", () => {
+    for (const name of ["postalCode", "postal_code", "countryCode", "trackingCode", "keyword"]) {
+      expect(isSecretField(name), name).toBe(false);
+    }
+    for (const name of ["password", "apiKey", "api_key", "refreshToken", "pinCode", "otp"]) {
+      expect(isSecretField(name), name).toBe(true);
+    }
+  });
+});
+
+describe("calendar", () => {
+  it("places all-day entries on the server's local days, not the browser's", () => {
+    const entry: CalendarEntry = {
+      uid: "p1@open-parcels",
+      parcel_id: "00000000-0000-4000-8000-0000000000b1",
+      title: "Lamp",
+      carrier: "dhl",
+      barcode: "TEST0000000009",
+      status: "delivered",
+      kind: "delivered",
+      // Local midnight in Berlin, which a UTC browser would put on the day before.
+      start: "2026-11-16T23:00:00.000Z",
+      end: "2026-11-17T23:00:00.000Z",
+      all_day: true,
+      start_date: "2026-11-17",
+      end_date: "2026-11-18",
+      late: false,
+      image_url: null,
+      url: null,
+      pickup_point: null,
+    };
+    expect(toCalendarEvent(entry, "DHL")).toMatchObject({
+      start: "2026-11-17",
+      end: "2026-11-18",
+      allDay: true,
+    });
+  });
+});
+
+describe("unknown addresses", () => {
+  it("show a styled page with a way back", async () => {
+    mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/parcels": () => ({ body: [] }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+    });
+    renderApp("/no/such/page");
+    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to the parcels" })).toHaveAttribute("href", "/");
+  });
+});

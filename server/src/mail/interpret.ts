@@ -6,6 +6,7 @@ import {
   type MailParseResult,
   type Rules,
 } from "open-parcels-rules";
+import { isPlausibleOrder, shopFromDomain } from "../domain/order.js";
 import type { ParcelStatus } from "../domain/parcel.js";
 import { snapshot, type ParcelSnapshot } from "../plugin/snapshot.js";
 import type { MailInput, MailInterpreter } from "./types.js";
@@ -14,6 +15,24 @@ import type { MailInput, MailInterpreter } from "./types.js";
 function shopOf(ruleId: string): string | null {
   const match = /^(?:parcel|order|return|dunning)-([a-z0-9]+)/.exec(ruleId);
   return match?.[1] ?? null;
+}
+
+/**
+ * The order a mail belongs to. A rule's shop is trusted only when the order number fits that
+ * shop's format; otherwise the mail came from another shop that merely mentioned it, and the
+ * sender's domain names the shop.
+ */
+export function orderOf(
+  ruleId: string,
+  orderNumber: string | undefined,
+  domain: string | undefined,
+): { shop: string; orderNumber: string; placedAt: null } | null {
+  const ruled = shopOf(ruleId);
+  if (ruled === null || orderNumber === undefined) {
+    return null;
+  }
+  const shop = isPlausibleOrder(ruled, orderNumber) ? ruled : shopFromDomain(domain);
+  return shop === null ? null : { shop, orderNumber, placedAt: null };
 }
 
 function senderDomain(from: string): string | undefined {
@@ -84,8 +103,7 @@ export function createMailInterpreter(rules: Rules, timeZone: string): MailInter
       if (result.kind !== "parcel") {
         continue;
       }
-      const shop = shopOf(result.ruleId);
-      const orderNumber = result.orderNumbers[0];
+      const order = orderOf(result.ruleId, result.orderNumbers[0], domain);
       for (const trackingNumber of result.trackingNumbers) {
         const carrier = carrierFor(rules, result, trackingNumber, domain);
         if (carrier === null) {
@@ -111,10 +129,7 @@ export function createMailInterpreter(rules: Rules, timeZone: string): MailInter
               price: null,
               currency: null,
             })),
-            order:
-              shop === null || orderNumber === undefined
-                ? null
-                : { shop, orderNumber, placedAt: null },
+            order,
           }),
         );
       }

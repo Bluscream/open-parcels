@@ -6,8 +6,14 @@ import type { ParcelDetail } from "../api/types";
 import { CarrierLogo, useCarrierName } from "../components/CarrierLogo";
 import { SplitContainer } from "../components/SplitContainer";
 import { ErrorNotice, Spinner } from "../components/ui";
-import { formatDateTime, formatRelative, formatWindow, STATUS_LABELS } from "../lib/format";
-import { LookupBadge, StatusBadge } from "./badges";
+import {
+  formatDateTime,
+  formatRelative,
+  formatWindow,
+  SOURCE_KIND_LABELS,
+  STATUS_LABELS,
+} from "../lib/format";
+import { ArchivedBadge, LookupBadge, StatusBadge } from "./badges";
 import { ParcelEditor } from "./ParcelEditor";
 
 const LocationMap = lazy(() => import("../map/LocationMap"));
@@ -152,8 +158,11 @@ function Items({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
         <ul>
           {parcel.sources.map((source) => (
             <li key={`${source.source_id}-${source.role}`}>
-              {source.plugin} <span className="muted">({source.role})</span>, seen{" "}
-              {formatRelative(source.last_seen_at)}
+              {source.label}{" "}
+              <span className="muted">
+                ({SOURCE_KIND_LABELS[source.kind]}, {source.role})
+              </span>
+              , seen {formatRelative(source.last_seen_at)}
             </li>
           ))}
         </ul>
@@ -185,10 +194,8 @@ function Header({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
         >
           {markedDelivered ? "Mark not delivered" : "Mark delivered"}
         </button>
-        <StatusBadge
-          status={parcel.manual_status ?? parcel.status}
-          manual={parcel.manual_status !== null}
-        />
+        {parcel.archived_at === null ? null : <ArchivedBadge />}
+        <StatusBadge status={parcel.status} manual={parcel.manual_status !== null} />
       </div>
     </div>
   );

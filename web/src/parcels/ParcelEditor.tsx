@@ -23,8 +23,9 @@ export function ParcelEditor({ parcel }: { readonly parcel: ParcelDetail }): Rea
     });
   };
 
+  const isArchived = parcel.archived_at !== null;
   const archive = (): void => {
-    update.mutate({ archived: true });
+    update.mutate({ archived: !isArchived });
   };
 
   const destroy = (): void => {
@@ -80,12 +81,22 @@ export function ParcelEditor({ parcel }: { readonly parcel: ParcelDetail }): Rea
         <ErrorNotice error={update.error ?? remove.error} />
         {update.isSuccess ? (
           <p className="notice" role="status">
-            Saved.
+            {update.variables.archived === undefined
+              ? "Saved."
+              : update.variables.archived
+                ? "Archived. It is hidden from the list unless “Include archived” is on."
+                : "Restored from the archive."}
           </p>
         ) : null}
         <div className="actions">
-          <button type="button" className="button" onClick={archive} disabled={update.isPending}>
-            Archive
+          <button
+            type="button"
+            className="button"
+            onClick={archive}
+            disabled={update.isPending}
+            aria-pressed={isArchived}
+          >
+            {isArchived ? "Unarchive" : "Archive"}
           </button>
           <button type="button" className="button danger" onClick={destroy}>
             Delete

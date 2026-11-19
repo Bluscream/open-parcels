@@ -41,10 +41,12 @@ async function addShop(): Promise<string> {
   return source.id;
 }
 
+/** Events in order, without the `source.run_finished` every run ends with. */
 async function eventTypes(): Promise<string[]> {
   const rows = await context.services.db
     .selectFrom("outbox")
     .select("type")
+    .where("type", "!=", "source.run_finished")
     .orderBy("seq")
     .execute();
   return rows.map((row) => row.type);
@@ -175,8 +177,16 @@ describe("event rules", () => {
     ];
     await runNow(id);
     const parcel = await context.services.parcels.repository.get(parcelId);
-    expect(parcel).toMatchObject({ manual_status: "delivered", status: "out_for_delivery" });
+    // The effective values win; what the carrier said stays available beside them.
+    expect(parcel).toMatchObject({
+      manual_status: "delivered",
+      status: "delivered",
+      delivered: true,
+      carrier_status: "out_for_delivery",
+      carrier_delivered: false,
+    });
     expect(await eventTypes()).toEqual(["parcel.registered", "parcel.delivered"]);
+    expect(await context.services.parcels.repository.list({ active: true }, false)).toEqual([]);
   });
 
   it("falls back to the newest mapped history entry for an unknown status and reports it once", async () => {
