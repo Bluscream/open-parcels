@@ -69,8 +69,14 @@ function MapResizer({
     const container = map.getContainer();
     observer.observe(container);
     fit();
+    // The split panels settle their sizes after the first paint; fit again once they have.
+    const settled = setTimeout(() => {
+      map.invalidateSize();
+      fit();
+    }, 300);
     return () => {
       clearTimeout(timer);
+      clearTimeout(settled);
       observer.disconnect();
     };
   }, [map, bounds, maxZoom]);
