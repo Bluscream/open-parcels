@@ -1,4 +1,4 @@
-import { rulesStatus, type MappedStatus } from "../../plugin/api.js";
+import { rulesStatus, type MappedStatus, rulesTrackingUrl } from "../../plugin/api.js";
 
 export const CARRIER_ID = "ppl_cz";
 export const API_HOST = "api.dhl.com";
@@ -18,6 +18,6 @@ export function mapPpl(code: string | null): MappedStatus | null {
   return exact ?? (base === code ? null : rulesStatus(CARRIER_ID, { code: base }));
 }
 
-export function publicUrl(code: string): string {
-  return `https://www.ppl.cz/vyhledat-zasilku?shipmentId=${encodeURIComponent(code)}`;
+export function publicUrl(code: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, code);
 }

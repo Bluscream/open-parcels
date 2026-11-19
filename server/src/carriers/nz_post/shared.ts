@@ -3,6 +3,7 @@ import {
   ruleStatus,
   text as kitText,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "nz_post";
@@ -25,6 +26,6 @@ export function mapStatus(key: string | null): ParcelStatus | null {
   return ruleStatus(CARRIER_ID, key);
 }
 
-export function publicUrl(barcode: string): string {
-  return `https://www.nzpost.co.nz/tools/tracking?trackid=${encodeURIComponent(barcode)}`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }

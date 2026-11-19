@@ -1,6 +1,6 @@
 /** Endpoints and fixed values of the DHL back ends this plug-in talks to. */
 
-import { carrierKey } from "../../plugin/api.js";
+import { carrierKey, rulesTrackingUrl } from "../../plugin/api.js";
 
 export const GATEWAY_URL = "https://api-gw.dhlparcel.nl/track-trace";
 /** Codes per gateway request; a long list is split rather than sent as one huge query. */
@@ -54,8 +54,6 @@ export const DE_TRACKING_HEADERS: Readonly<Record<string, string>> = {
 };
 /** The ID token travels in this cookie, to www.dhl.de only. */
 export const DE_COOKIE_NAME = "dhli";
-export const DE_PUBLIC_TRACKING_URL =
-  "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html";
 /** Refresh a cached ID token this long before it expires. */
 export const DE_TOKEN_MARGIN_MS = 5 * 60_000;
 /** Lifetime assumed when a token response has no `expires_in`. */
@@ -64,10 +62,17 @@ export const DE_TOKEN_LIFETIME_MS = 30 * 60_000;
 export const DE_ENRICH_LIMIT = 5;
 export const BERLIN = "Europe/Berlin";
 
-export function publicTrackingUrl(code: string): string {
-  return `https://www.dhl.com/global-en/home/tracking.html?tracking-id=${encodeURIComponent(code)}`;
+/** DHL's international tracking page, from the shared rules. */
+export function publicTrackingUrl(code: string): string | null {
+  return rulesTrackingUrl("dhl", code);
 }
 
-export function germanTrackingUrl(code: string): string {
-  return `${DE_PUBLIC_TRACKING_URL}?piececode=${encodeURIComponent(code)}`;
+/** dhl.de's tracking page, from the shared rules. */
+export function germanTrackingUrl(code: string): string | null {
+  return rulesTrackingUrl("dhl", code, "de");
+}
+
+/** DHL eCommerce Netherlands' page, which looks a parcel up with the receiver's postcode. */
+export function dutchTrackingUrl(code: string, postcode: string): string | null {
+  return rulesTrackingUrl("dhl", code, "nl", { postcode: postcode.replace(/\s/g, "") });
 }

@@ -25,6 +25,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type PluginHttp,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { CARRIER_ID } from "./parse.js";
 
@@ -221,7 +222,7 @@ export function accountSnapshot(raw: Json, report: (key: string) => void): Parce
     plannedTo: delivered || pickup || to === from ? null : to,
     pickup,
     pickupPoint: pickup ? text(asObject(address["pickupOffice"])["name"]) : null,
-    url: `https://service.post.ch/ekp-web/ui/entry/search/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(raw["summaryDescription"]),
     raw: { mailpieceStatusType: code, userIsSender: raw["userIsSender"] ?? null },
   });

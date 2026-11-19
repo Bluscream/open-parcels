@@ -22,27 +22,31 @@ import {
   trackEach,
   unknownReporter,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "dragonfly";
 
-/** Every country runs the same platform on its own domain; only host, link and language differ. */
+/**
+ * Every country runs the same platform on its own domain; only host, link and language differ.
+ * `locale` picks the country's tracking page in the shared rules.
+ */
 const COUNTRIES = {
   NL: {
     host: "dragonflyshipping.nl",
-    page: "https://dragonflyshipping.nl/nl/volg-je-pakket/?tracking-id=",
+    locale: "nl",
     languages: ["nl", "en"],
     zone: "Europe/Amsterdam",
   },
   AU: {
     host: "dragonflyshipping.com.au",
-    page: "https://dragonflyshipping.com.au/track-your-package/?tracking-id=",
+    locale: "en-AU",
     languages: ["en"],
     zone: "Australia/Sydney",
   },
   CA: {
     host: "intelcom.ca",
-    page: "https://intelcom.ca/en/track-your-package/?tracking-id=",
+    locale: "en-CA",
     languages: ["en", "fr"],
     zone: "America/Toronto",
   },
@@ -172,7 +176,7 @@ function toSnapshot(
     plannedFrom: delivered ? null : planned.from,
     plannedTo: delivered ? null : planned.to,
     pickup: latest["task_type"] === "last_mile_pickup",
-    url: `${country.page}${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode, country.locale),
     sender: text(raw["client_code"]),
     history: history(raw, country),
     raw,

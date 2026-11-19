@@ -26,7 +26,7 @@
     "imapflow": "2.12.1",
     "kysely": "0.29.9",
     "mailparser": "3.14.5",
-    "open-parcels-rules": "file:vendor/open-parcels-rules-2.0.0-dev.7.tgz",
+    "open-parcels-rules": "file:vendor/open-parcels-rules-2.0.0-dev.8.tgz",
     "pino": "10.4.0",
     "sharp": "^0.35.5",
     "tough-cookie": "6.1.0",

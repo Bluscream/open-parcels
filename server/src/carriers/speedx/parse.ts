@@ -7,6 +7,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "speedx";
@@ -102,7 +103,7 @@ export function eventsSnapshot(
     status,
     rawStatus: text(newest["eventCode"]) ?? key,
     deliveredAt: status === "delivered" ? eventTime(newest) : null,
-    url: `https://tracking.speedx.io/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history,
     raw: { eventCode: newest["eventCode"], category: newest["category"] },
   });

@@ -24,6 +24,7 @@ import {
   trackEach,
   unknownReporter,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "fan_courier";
@@ -122,7 +123,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
           }),
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? text(newestRaw["location"]) : null,
-    url: `https://${HOST}/awb-tracking/?tracking=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     receiver: text(asObject(raw["confirmation"])["name"]),
     weightKg: weight !== null && weight > 0 ? weight : null,
     history: entries,

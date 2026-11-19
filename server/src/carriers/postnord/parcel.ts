@@ -10,6 +10,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "postnord";
@@ -142,7 +143,7 @@ export function shipmentSnapshot(
     plannedFrom: delivered ? null : isoTime(raw["estimatedTimeOfArrival"], INSTANT),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(raw, ordered),
-    url: `https://tracking.postnord.com/en/tracking?id=${encodeURIComponent(shipmentId)}`,
+    url: rulesTrackingUrl(CARRIER_ID, shipmentId),
     sender: text(asObject(raw["consignor"])["name"], STRINGS),
     receiver: text(asObject(raw["consignee"])["name"], STRINGS),
     weightKg: weightKg(raw),

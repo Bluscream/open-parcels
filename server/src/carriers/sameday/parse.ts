@@ -10,6 +10,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "sameday";
@@ -26,12 +27,6 @@ const TIME = { naive: { zone: "Europe/Bucharest" }, epoch: "ms" } as const;
 export function mapCode(code: string | null): ParcelStatus | null {
   return ruleStatus(CARRIER_ID, code);
 }
-
-const PUBLIC_PAGES: Readonly<Record<Country, string>> = {
-  ro: "https://sameday.ro/status-colet/?awb=",
-  hu: "https://sameday.hu/#awb=",
-  bg: "https://sameday.bg/status-na-pratkata/?awb=",
-};
 
 interface Entry {
   readonly at: string;
@@ -84,7 +79,7 @@ export function awbSnapshot(
     deliveredAt: status === "delivered" ? (latest?.at ?? null) : null,
     pickup: atPoint,
     pickupPoint: atPoint && latest !== undefined ? location(latest.raw) : null,
-    url: `${PUBLIC_PAGES[country]}${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode, country),
     history,
     raw,
   });

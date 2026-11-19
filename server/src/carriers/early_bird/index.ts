@@ -21,6 +21,7 @@ import {
   trackEach,
   unknownReporter,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "early_bird";
@@ -132,7 +133,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
           })
         : null,
     pickup: status === "at_pickup_point" || lowered.some(mentionsLocker),
-    url: `https://${HOST}/spara-och-hjalp?id=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history: history(events),
     raw,
   });

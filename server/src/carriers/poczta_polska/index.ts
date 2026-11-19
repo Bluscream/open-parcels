@@ -131,9 +131,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     deliveredAt: delivered ? (latest?.at ?? null) : null,
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? text(office["name"]) : null,
-    url:
-      rulesTrackingUrl(CARRIER_ID, barcode, "pl") ??
-      `https://emonitoring.poczta-polska.pl/?numer=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode, "pl"),
     weightKg: positive(mail["weight"]),
     history,
     raw,

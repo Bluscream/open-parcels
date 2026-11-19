@@ -4,6 +4,7 @@ import {
   text as kitText,
   type Json,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "pdn_express";
@@ -46,6 +47,6 @@ export function eventTime(event: Json): string | null {
   });
 }
 
-export function publicUrl(barcode: string): string {
-  return `https://pdn.express/en/track/${encodeURIComponent(barcode)}`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }

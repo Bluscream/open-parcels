@@ -15,6 +15,7 @@ import {
   type ParcelStatus,
   type PluginHttp,
   echoRef,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "matkahuolto";
@@ -25,8 +26,8 @@ export const BARCODE_PATTERN = carrierPattern("matkahuolto");
 
 export type Report = (kind: string, key: string) => void;
 
-export function publicUrl(barcode: string): string {
-  return `https://www.matkahuolto.fi/seuranta?parcelNumber=${encodeURIComponent(barcode)}`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }
 
 /** Returns the parcel, or null when the carrier answers `{"notFound": true}` (HTTP 200). */

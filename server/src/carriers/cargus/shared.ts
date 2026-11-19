@@ -16,6 +16,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "cargus";
@@ -141,8 +142,8 @@ function events(trace: Json): SnapshotEvent[] {
   return newestFirst(result);
 }
 
-export function publicUrl(code: string): string {
-  return `https://www.cargus.ro/personal/urmareste-coletul/?tracking_number=${encodeURIComponent(code)}`;
+export function publicUrl(code: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, code);
 }
 
 /**

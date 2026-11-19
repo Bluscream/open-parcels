@@ -14,6 +14,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { estimateDay, isPickupSentence, sentenceStatus } from "./status.js";
 
@@ -114,7 +115,7 @@ function toSnapshot(raw: Json, barcode: string, report: (text: string) => void):
     plannedTo: day === null ? null : isoTime(`${day}T23:59:59`, { naive: { zone: ZONE } }),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(events.map((entry) => entry.event)),
-    url: `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     history,
     raw,
   });

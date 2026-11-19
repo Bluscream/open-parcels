@@ -102,7 +102,7 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     } else if (TRANSPORT_B_LANG[country] !== undefined) {
       raw = await transportB(context.http, barcode, country);
     }
-    return raw === null ? null : toSnapshot(raw, barcode, country, { wallClock, report });
+    return raw === null ? null : toSnapshot(raw, barcode, { wallClock, report });
   });
 }
 

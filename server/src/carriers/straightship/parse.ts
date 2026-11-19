@@ -6,6 +6,7 @@ import {
   UnexpectedResponseError,
   type ParcelSnapshot,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { readPage, type Cell } from "./html.js";
 
@@ -131,7 +132,7 @@ export function pageSnapshot(
     deliveredAt: delivered
       ? (events.find((event) => event.status === "delivered")?.at ?? null)
       : null,
-    url: `https://straightship.com/track-your-shipment/tracking-id/${encodeURIComponent(barcode.toUpperCase())}/`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode.toUpperCase()),
     history: events,
     raw: { packageStatus, history: rows },
   });

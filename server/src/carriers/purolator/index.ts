@@ -150,7 +150,7 @@ export function toSnapshot(raw: Json, code: string, report: (key: string) => voi
     deliveredAt: delivered ? localTime(deliveryAt ?? last["dateTime"], zone) : null,
     plannedFrom: delivered ? null : localTime(pkg["estimatedDeliveryDate"], zone),
     pickup: status === "at_pickup_point",
-    url: rulesTrackingUrl(CARRIER_ID, barcode) ?? null,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     weightKg: weightKg(shipment),
     history,
     raw,

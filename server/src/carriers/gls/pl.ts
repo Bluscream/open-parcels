@@ -9,6 +9,7 @@ import {
   type Json,
   type ParcelSnapshot,
   type PluginHttp,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { CARRIER_ID, isoTime, latestHistory, mapGls, text } from "./shared.js";
 
@@ -74,7 +75,7 @@ export function plSnapshot(
     delivered,
     deliveredAt: delivered ? (isoTime(raw["stateDate"], PL_ZONE) ?? events[0]?.at ?? null) : null,
     pickup: status === "at_pickup_point",
-    url: `https://gls-group.com/PL/en/parcel-tracking/?match=${encodeURIComponent(number)}`,
+    url: rulesTrackingUrl(CARRIER_ID, number, "en-PL"),
     history: events,
     raw,
   });

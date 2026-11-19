@@ -18,6 +18,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 /** Offset-less times are UTC; numbers are epoch milliseconds. */
 const isoTime = (value: unknown): string | null =>
@@ -84,7 +85,7 @@ function toSnapshot(raw: Json, code: string, report: (c: string) => void): Parce
     deliveredAt: delivered ? isoTime(raw["deliveredDate"]) : null,
     plannedFrom: from,
     plannedTo: to === from ? null : to,
-    url: `https://${HOST}/suivi-livraison?tracking=${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     sender: text(raw["clientName"]),
     history: newestFirst(history),
     raw: withoutRecipient,

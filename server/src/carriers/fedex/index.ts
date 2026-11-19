@@ -95,9 +95,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     plannedTo: delivered || epoch(to) === epoch(from) ? null : to,
     pickup: status === "at_pickup_point",
     pickupPoint: status === "at_pickup_point" ? place(latest["scanLocation"]) : null,
-    url:
-      rulesTrackingUrl(CARRIER_ID, barcode) ??
-      `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     weightKg: weightKg(raw),
     history: history(raw),
     raw,

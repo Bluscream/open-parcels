@@ -11,6 +11,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import {
   CARRIER_ID,
@@ -112,7 +113,7 @@ export function nlSnapshot(
     plannedTo: delivered ? null : isoTime(eta["etaTimestampMax"], NL_ZONE),
     pickup,
     pickupPoint: pickup ? pickupPoint(raw) : null,
-    url: `https://www.gls-info.nl/tracking?trackid=${encodeURIComponent(parcelNo)}&zipcode=${encodeURIComponent(compactPostcode(postcode))}`,
+    url: rulesTrackingUrl(CARRIER_ID, parcelNo, "nl", { postcode: compactPostcode(postcode) }),
     sender: text(asObject(address["from"])["name"]),
     receiver: text(asObject(address["to"])["name"]),
     weightKg: weight(raw),

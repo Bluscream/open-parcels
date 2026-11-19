@@ -25,6 +25,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "posten_bring";
@@ -283,7 +284,7 @@ export function toSnapshot(raw: Json, report: (key: string) => void): ParcelSnap
     ...(delivered ? {} : window(raw)),
     pickup,
     pickupPoint: pickup ? text(asObject(raw["pickupPoint"])["name"]) : null,
-    url: `https://sporing.posten.no/sporing/${encodeURIComponent(number)}`,
+    url: rulesTrackingUrl(CARRIER_ID, number),
     sender: text(asObject(raw["sender"])["name"]),
     receiver: text(asObject(raw["recipient"])["name"]),
     weightKg: num(raw["weightInKg"]),

@@ -15,6 +15,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { localIso, mapCode, type Checkpoint, CONTROL_CODES, decidingCode } from "./status.js";
 
@@ -116,7 +117,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
     delivered,
     deliveredAt,
     receiver: delivered ? text(raw["Consignee"]) : null,
-    url: `https://taxydromiki.com/track/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history,
     raw,
   });

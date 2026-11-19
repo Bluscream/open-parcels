@@ -17,6 +17,7 @@ import {
   type Json,
   type ParcelSnapshot,
   type PluginContext,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import { stepStatus } from "./status.js";
 
@@ -231,7 +232,7 @@ export function accountSnapshot(raw: Json, report: (key: string) => void): Parce
       delivered || day === null ? null : localTime({ day, time: text(eta["time2"]) ?? "23:59:59" }),
     pickup: isObject(point) || status === "at_pickup_point",
     pickupPoint: isObject(point) ? text(point["name"]) : null,
-    url: `https://track.bpost.cloud/btr/web/#/search?lang=en&itemCode=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl("bpost", barcode),
     sender: text(asObject(raw["sender"])["name"]),
     receiver: text(asObject(raw["receiver"])["name"]),
     weightKg: typeof grams === "number" && grams > 0 ? grams / 1000 : null,

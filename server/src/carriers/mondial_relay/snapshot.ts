@@ -1,6 +1,7 @@
 import {
   asObject,
   localDay,
+  rulesTrackingUrl,
   snapshot,
   text,
   type Json,
@@ -128,8 +129,7 @@ function publicUrl(expedition: Json): string | null {
   if (number === null || brand === null || brand.length < 2) {
     return null;
   }
-  const query = new URLSearchParams({ numeroExpedition: number, codeMarque: brand.slice(0, 2) });
-  return `https://www.mondialrelay.be/nl-be/shipment-tracking?${query.toString()}`;
+  return rulesTrackingUrl(CARRIER_ID, number, undefined, { brand: brand.slice(0, 2) });
 }
 
 /** Turns one `Expedition` into a snapshot. The highest reached step that maps decides the status. */

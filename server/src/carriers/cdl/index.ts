@@ -19,6 +19,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "cdl";
@@ -123,7 +124,7 @@ function toSnapshot(raw: Json, code: string, report: (c: string) => void): Parce
     rawStatus: completion?.wording ?? newest?.wording ?? null,
     delivered: completion !== undefined,
     deliveredAt: completion?.at ?? null,
-    url: `https://${HOST}/Tracking-Page/track?id=${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     history,
     // Only the scans: the full answer carries delivery photos and addresses.
     raw: { trackingEvents: ordered },

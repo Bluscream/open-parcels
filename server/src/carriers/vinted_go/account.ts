@@ -16,6 +16,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type PluginHttp,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const MEMBERS = "https://carrier.vintedgo.com/members";
@@ -225,7 +226,7 @@ export async function fetchVintedAccount(
             // The finished shipment's resolution, in the shared table as `resolution:<value>`.
             status: ruleStatus("vinted_go", `resolution:${text(shipment["resolution"]) ?? ""}`),
             rawStatus: text(shipment["shipment_state"]),
-            url: `https://vintedgo.com/en/tracking/${encodeURIComponent(code)}`,
+            url: rulesTrackingUrl("vinted_go", code),
           })
         : timeline.toSnapshot(events, code, report);
     snapshots.push({

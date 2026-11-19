@@ -20,6 +20,7 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 import { fetchAirmeeAccount, smsSignIn } from "./account.js";
@@ -130,7 +131,7 @@ export function airmeeSnapshot(
       : null,
     // The drop-off window's unit and zone have never been confirmed on the wire; not read yet.
     pickup: status === "at_pickup_point",
-    url: `${ORIGIN}/track/${encodeURIComponent(token)}`,
+    url: rulesTrackingUrl(CARRIER_ID, token),
     sender: text(raw["sender_name"]),
     history: history(events),
     raw,

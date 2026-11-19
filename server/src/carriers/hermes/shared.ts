@@ -30,9 +30,6 @@ export function mapCode(
   });
 }
 
-export function publicUrl(barcode: string): string {
-  return (
-    rulesTrackingUrl(CARRIER_ID, barcode, "de") ??
-    `https://www.myhermes.de/empfangen/sendungsverfolgung/#${encodeURIComponent(barcode)}`
-  );
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode, "de");
 }

@@ -9,6 +9,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "slovak_parcel_service";
@@ -78,7 +79,7 @@ export function shipmentSnapshot(raw: Json, report: (code: string) => void): Par
       text(raw["shipmentStatus"]),
     delivered: status === "delivered",
     deliveredAt,
-    url: `https://mysps.sk/sk/tracking/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history,
     raw: {
       shipmentStatus: raw["shipmentStatus"],

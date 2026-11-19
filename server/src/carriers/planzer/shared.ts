@@ -4,6 +4,7 @@ import {
   ruleStatus,
   text as kitText,
   type ParcelStatus,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "planzer";
@@ -59,6 +60,6 @@ export function carrierTime(value: unknown): string | null {
   return zurichTime(trimmed);
 }
 
-export function publicUrl(barcode: string): string {
-  return `https://tracking.app.planzer.ch/?deliveryNumber=${encodeURIComponent(barcode)}&system=Pak`;
+export function publicUrl(barcode: string): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode);
 }

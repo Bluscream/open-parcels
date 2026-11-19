@@ -91,9 +91,7 @@ export function uspsSnapshot(
       ? (events.find((event) => event.status === "delivered")?.at ?? null)
       : null,
     pickup: status === "at_pickup_point",
-    url:
-      rulesTrackingUrl(CARRIER_ID, code) ??
-      `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     history: events,
     raw,
   });

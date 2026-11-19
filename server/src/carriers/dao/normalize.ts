@@ -11,6 +11,7 @@ import {
   type ParcelSnapshot,
   type ParcelStatus as Status,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "dao";
@@ -109,7 +110,7 @@ export function toSnapshot(raw: Json, extras: Extras, reports: Reports): ParcelS
     deliveredAt: status === "delivered" ? isoTime(last["timestamp"], ZONE) : null,
     pickup: status === "at_pickup_point",
     pickupPoint: extras.pickupPointName,
-    url: `https://dao.as/find-din-pakke/#q=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(asObject(raw["sender"])["name"]),
     receiver: text(asObject(raw["receiver"])["name"]),
     history: history(extras.events, hasPickupPoint, reports),

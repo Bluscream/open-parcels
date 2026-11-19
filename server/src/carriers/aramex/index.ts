@@ -19,14 +19,16 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "aramex";
 const PLAUSIBLE = carrierPattern("aramex");
 
 const COUNTRIES = {
-  AU: { host: "www.aramex.com.au", zone: "Australia/Sydney" },
-  NZ: { host: "www.aramex.co.nz", zone: "Pacific/Auckland" },
+  // `locale` picks the country's tracking page in the shared rules.
+  AU: { host: "www.aramex.com.au", locale: "en-AU", zone: "Australia/Sydney" },
+  NZ: { host: "www.aramex.co.nz", locale: "en-NZ", zone: "Pacific/Auckland" },
 } as const;
 type Country = keyof typeof COUNTRIES;
 
@@ -88,7 +90,7 @@ export function aramexSnapshot(
   country: Country,
   report: (code: string) => void,
 ): ParcelSnapshot {
-  const { zone, host } = COUNTRIES[country];
+  const { zone, locale } = COUNTRIES[country];
   const ordered = newestFirst(
     scans(result, zone).map((scan) => ({
       at: scan.at,
@@ -116,7 +118,7 @@ export function aramexSnapshot(
     deliveredAt: delivered ? (newest?.at ?? null) : null,
     plannedFrom: window.from,
     plannedTo: window.to,
-    url: `https://${host}/tools/track?l=${encodeURIComponent(label)}`,
+    url: rulesTrackingUrl(CARRIER_ID, label, locale),
     history,
     // Only what the mapping needs: the full answer carries names and addresses.
     raw: {

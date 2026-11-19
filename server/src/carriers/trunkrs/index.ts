@@ -8,6 +8,7 @@ import {
   type ParcelSnapshot,
   type PluginContext,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 import {
   asObject,
@@ -101,7 +102,7 @@ export function trunkrsSnapshot(
     deliveredAt: delivered ? isoTime(current["setAt"], LOCAL_TIME) : null,
     plannedFrom: delivered ? null : isoTime(slot["from"] ?? slot["low"], LOCAL_TIME),
     plannedTo: delivered ? null : isoTime(slot["to"] ?? slot["high"], LOCAL_TIME),
-    url: `https://parcel.trunkrs.nl/${encodeURIComponent(barcode)}/${encodeURIComponent(postcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode, undefined, { postcode }),
     sender: text(raw["senderName"]) ?? text(raw["merchantName"]),
     receiver: text(raw["recipientName"]),
     history: history(raw),

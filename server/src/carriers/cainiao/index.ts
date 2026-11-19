@@ -18,6 +18,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "cainiao";
@@ -97,7 +98,7 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
     plannedFrom: delivered ? null : plannedFrom,
     plannedTo: delivered ? null : plannedTo,
     pickup: status === "at_pickup_point",
-    url: `https://${HOST}/detail.htm?mailNoList=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     history: events,
     raw,
   });

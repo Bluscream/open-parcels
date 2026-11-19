@@ -17,6 +17,7 @@ import {
   type ParcelStatus,
   type PluginHttp,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "posti";
@@ -238,7 +239,7 @@ export function trackingSnapshot(
     plannedTo: plannedFrom === null ? null : isoTime(time["timestampLatest"], INSTANT),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(events, asObject(raw["pickupPoint"])),
-    url: `https://www.posti.fi/seuranta/${encodeURIComponent(code)}`,
+    url: rulesTrackingUrl(CARRIER_ID, code),
     receiver: receiver(asObject(raw["delivery"])),
     weightKg: weightKg(asObject(raw["measurements"])),
     history,

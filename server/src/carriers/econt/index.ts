@@ -20,6 +20,7 @@ import {
   newestFirst,
   expectStatus,
   unknownReporter,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 const CARRIER_ID = "econt";
@@ -122,7 +123,7 @@ function toSnapshot(raw: Json, barcode: string, report: (key: string) => void): 
     deliveredAt,
     plannedFrom: day?.from ?? null,
     plannedTo: day?.to ?? null,
-    url: `https://${HOST}/load_direct.php?target=EeActivityTraceParcell&shipment_num=${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     weightKg: weight !== null && weight > 0 ? weight : null,
     history: history(raw, report),
     raw,

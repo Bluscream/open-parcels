@@ -1,6 +1,7 @@
 import {
   isoTime as kitIsoTime,
   rulesStatus,
+  rulesTrackingUrl,
   text as anyText,
   type ParcelStatus,
 } from "../../plugin/api.js";
@@ -18,16 +19,17 @@ export type Market = (typeof MARKETS)[number];
 export const TRACKING_COUNTRIES = ["PL", "IT", "PT", "GB", "ES"] as const;
 export type TrackingCountry = (typeof TRACKING_COUNTRIES)[number];
 
-const TRACKING_PAGES: Readonly<Record<TrackingCountry, (code: string) => string>> = {
-  PL: (code) => `https://inpost.pl/en/find-parcel?number=${code}`,
-  IT: (code) => `https://inpost.it/trova-il-tuo-pacco?number=${code}`,
-  PT: (code) => `https://www.inpost.pt/seguimento-do-envio/?exp=${code}&language=pt&pais=PT`,
-  GB: (code) => `https://inpost.co.uk/tracking/result?parcel_code=${code}`,
-  ES: (code) => `https://www.inpost.es/seguimiento-del-envio/?exp=${code}&language=ES`,
+/** The locale that picks each country's tracking page in the shared rules. */
+const TRACKING_LOCALES: Readonly<Record<TrackingCountry, string>> = {
+  PL: "pl",
+  IT: "it",
+  PT: "pt",
+  GB: "en-GB",
+  ES: "es",
 };
 
-export function publicUrl(barcode: string, country: TrackingCountry): string {
-  return TRACKING_PAGES[country](encodeURIComponent(barcode));
+export function publicUrl(barcode: string, country: TrackingCountry): string | null {
+  return rulesTrackingUrl(CARRIER_ID, barcode, TRACKING_LOCALES[country]);
 }
 
 /** InPost text fields are strings; numbers are never read as text. */

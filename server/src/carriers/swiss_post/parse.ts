@@ -7,6 +7,7 @@ import {
   type Json,
   type ParcelSnapshot,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 /** Offset-less timestamps are the carrier's local time; numbers are epoch ms. */
@@ -107,7 +108,7 @@ export function shipmentSnapshot(
     plannedTo: delivered ? null : to,
     pickup,
     pickupPoint: pickup ? officeZip : null,
-    url: `https://service.post.ch/ekp-web/ui/entry/search/${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode),
     sender: text(raw["sender"]),
     receiver: receiver(raw),
     weightKg: weightKg(raw),

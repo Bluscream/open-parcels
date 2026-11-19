@@ -10,18 +10,22 @@ import {
   type ParcelSnapshot,
   type ParcelStatus,
   type SnapshotEvent,
+  rulesTrackingUrl,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "shopee_xpress";
 
-/** Market → host and language code. Each host has been seen answering; none is guessed. */
+/**
+ * Market → host, API language code and the locale that picks the market's tracking page in the
+ * shared rules. Each host has been seen answering; none is guessed.
+ */
 export const MARKETS = {
-  BR: { host: "spx.com.br", language: "br" },
-  ID: { host: "spx.co.id", language: "en" },
-  MY: { host: "spx.com.my", language: "ms" },
-  PH: { host: "spx.ph", language: "en-ph" },
-  TH: { host: "spx.co.th", language: "th" },
-  VN: { host: "spx.vn", language: "en" },
+  BR: { host: "spx.com.br", language: "br", locale: "pt-BR" },
+  ID: { host: "spx.co.id", language: "en", locale: "id" },
+  MY: { host: "spx.com.my", language: "ms", locale: "ms" },
+  PH: { host: "spx.ph", language: "en-ph", locale: "en-PH" },
+  TH: { host: "spx.co.th", language: "th", locale: "th" },
+  VN: { host: "spx.vn", language: "en", locale: "vi" },
 } as const;
 export type Market = keyof typeof MARKETS;
 export const MARKET_IDS = Object.keys(MARKETS) as [Market, ...Market[]];
@@ -93,7 +97,7 @@ export function orderSnapshot(
     plannedFrom: delivered ? null : epochSeconds(estimate["edd_min"]),
     plannedTo: delivered ? null : epochSeconds(estimate["edd_max"]),
     receiver: text(asObject(raw["sls_tracking_info"])["receiver_name"], STRINGS),
-    url: `https://${MARKETS[market].host}/track?${encodeURIComponent(barcode)}`,
+    url: rulesTrackingUrl(CARRIER_ID, barcode, MARKETS[market].locale),
     history,
     raw,
   });
