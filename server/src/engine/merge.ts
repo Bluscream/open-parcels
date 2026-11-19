@@ -207,6 +207,9 @@ export function mergeParcel(
     ? (snapshotAt ?? current?.statusAt ?? null)
     : (fallback?.at ?? current?.statusAt ?? null);
   const windowFromSnapshot = snapshot.plannedFrom !== null && setStatus;
+  // A carrier that reports its complete history (a story that starts over) also states the
+  // pickup as it is now, instead of keeping one an earlier state set.
+  const wholeTruth = setStatus && authority === "carrier" && snapshot.historyComplete === true;
   return {
     direction: current?.direction ?? snapshot.direction,
     status,
@@ -229,10 +232,14 @@ export function mergeParcel(
       : windowFromSnapshot
         ? snapshot.plannedTo
         : (current?.plannedTo ?? snapshot.plannedTo),
-    pickup: setStatus
-      ? snapshot.pickup || (current?.pickup ?? false)
-      : (current?.pickup ?? snapshot.pickup),
-    pickupPoint: prefer(snapshot.pickupPoint, current?.pickupPoint),
+    pickup: wholeTruth
+      ? snapshot.pickup
+      : setStatus
+        ? snapshot.pickup || (current?.pickup ?? false)
+        : (current?.pickup ?? snapshot.pickup),
+    pickupPoint: wholeTruth
+      ? snapshot.pickupPoint
+      : prefer(snapshot.pickupPoint, current?.pickupPoint),
     url: prefer(snapshot.url, current?.url),
     sender: prefer(snapshot.sender, current?.sender),
     receiver: prefer(snapshot.receiver, current?.receiver),

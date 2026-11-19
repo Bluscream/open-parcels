@@ -90,6 +90,11 @@ describe("demo courier and demo shop", () => {
     await context.services.runner.run(courier);
     const again = (await parcels()).get("DEMO0000000001");
     expect(again).toMatchObject({ status: "registered", delivered: false });
+    // Last run's pickup point does not carry over into the new one.
+    expect((await parcels()).get("DEMO0000000002")).toMatchObject({
+      pickup: false,
+      pickup_point: null,
+    });
     expect(again?.history).toHaveLength(1);
   });
 });
