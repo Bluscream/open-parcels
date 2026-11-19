@@ -58,6 +58,11 @@ describe("orders API", () => {
     expect(order.display_name).toBe(`${order.shop} DEMO-1001`);
     const one = await app.inject({ url: `/api/v1/orders/${order.id}`, headers });
     expect(one.json<Order>()).toEqual(order);
+    const parcel = await app.inject({
+      url: `/api/v1/parcels/${order.parcels[0]?.id ?? ""}`,
+      headers,
+    });
+    expect(parcel.json<{ order: { id: string } }>().order.id).toBe(order.id);
   });
 
   it("archives automatically once every parcel is archived", async () => {
