@@ -453,8 +453,14 @@ and `url`. On top of those:
 
 **Web UI sign-in**
 
-- An owner password, set on a one-time setup page at first start. There is no default password.
-- A session cookie (HttpOnly, SameSite=Lax, Secure over HTTPS) plus a CSRF token.
+- Two passwords (since 2026-11, replacing the single owner password): `OPENPARCELS_ADMIN_PASSWORD`
+  for every change, `OPENPARCELS_PASSWORD` for reading. Without a reader password reading is open;
+  without an admin password a one-time setup page with a code from the log sets one. There is no
+  default password, and writes are never open.
+- One rule on every route, by method: GET/HEAD/OPTIONS need a reader (only when a reader password
+  is set), everything else needs the admin. Routes that declare `security: []` (sign-in, setup,
+  health, the secret calendar feed) and the UI's static files are public.
+- A session cookie (HttpOnly, SameSite=Lax, Secure over HTTPS) with its role, plus a CSRF token.
 
 **API clients** use Bearer API tokens with the scopes `read`, `write` and `admin`.
 

@@ -39,6 +39,26 @@ Then open <http://localhost:3000> and finish the setup with the code from `docke
 you add real accounts, add the **Demo shop** and **Demo courier** sources: three made-up parcels
 in two orders, with a live courier on the map.
 
+## Access
+
+Two passwords, both optional settings (environment, or **Settings → Security**):
+
+| Setting | Allows | Unset |
+| :--- | :--- | :--- |
+| `OPENPARCELS_PASSWORD` | Reading: the web UI, the API, live updates, maps, images. | Anyone who can reach the server reads everything. |
+| `OPENPARCELS_ADMIN_PASSWORD` | Everything that changes something (every non-GET request): sources, sign-ins, sync, parcel and order edits, settings, tokens. | First start prints a setup code to the log; entering it in the web UI chooses the admin password. |
+
+The admin password may also be changed in the UI (it needs the current one). It is then stored
+scrypt-hashed and wins over the environment until **Reset to environment**; changing or resetting
+it signs every session out. Changing the reader password signs readers out. Home Assistant ingress
+counts as the admin. API tokens keep their scopes: `read` reads, `write` or `admin` may change
+things, and only `admin` manages tokens and server settings.
+
+**Upgrading** from a version with a single owner password: nothing to do. The owner password
+becomes the admin password (still hashed, shown as "saved in UI"), open sessions stay signed in as
+admin, and reading is open until `OPENPARCELS_PASSWORD` is set. To keep reading private as before,
+set `OPENPARCELS_PASSWORD` (or set it on the Security card right after upgrading).
+
 ## Development
 
 ```sh

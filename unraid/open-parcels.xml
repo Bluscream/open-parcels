@@ -11,7 +11,7 @@
   <TemplateURL>https://raw.githubusercontent.com/open-parcels/open-parcels/master/unraid/open-parcels.xml</TemplateURL>
   <Overview>Self-hosted parcel and order tracking. Signs in to carriers and shops, reads shipping mails, follows couriers live on a map, keeps a delivery calendar (also as an ICS feed) and publishes events for Home Assistant and other clients.&#xD;
 &#xD;
-On first start the container log prints a one-time setup code; open the web UI and enter it to set the owner password.&#xD;
+Set an admin password below, or on first start read the one-time setup code from the container log and enter it in the web UI to choose one. Without a reader password anyone on your network can read (not change) your parcels.&#xD;
 &#xD;
 The image runs as uid 1000. The data folder must be writable for that user (chown 1000:1000), or set Extra Parameters to --user 99:100 and make the folder writable for nobody:users.</Overview>
   <Category>Tools:Utilities HomeAutomation:</Category>
@@ -23,6 +23,8 @@ The image runs as uid 1000. The data folder must be writable for that user (chow
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/open-parcels" Mode="rw" Description="Database, encryption key and image cache. Back this folder up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/open-parcels</Config>
   <Config Name="Encryption key" Target="OPENPARCELS_SECRET_KEY" Default="" Mode="" Description="Optional: 32 random bytes as base64 (openssl rand -base64 32). When empty, a key file is created in the data folder on first start. Never change it afterwards: stored carrier sign-ins would become unreadable." Type="Variable" Display="advanced" Required="false" Mask="true"/>
   <Config Name="Public URL" Target="OPENPARCELS_PUBLIC_URL" Default="" Mode="" Description="Optional: the address you open the web UI at (for example https://parcels.example.com). Used for links in the calendar feed." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Admin password" Target="OPENPARCELS_ADMIN_PASSWORD" Default="" Mode="" Description="Password to change anything (at least 10 characters). Empty: the first start asks for the setup code from the log. Can also be changed in Settings." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Reader password" Target="OPENPARCELS_PASSWORD" Default="" Mode="" Description="Password to read. Empty: anyone who can reach the server can read (not change) everything." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Secure cookies" Target="OPENPARCELS_SECURE_COOKIES" Default="false" Mode="" Description="Set to true when the web UI is served over HTTPS (for example behind a reverse proxy)." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="Log level" Target="OPENPARCELS_LOG_LEVEL" Default="info" Mode="" Description="fatal, error, warn, info, debug or trace." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
 </Container>
