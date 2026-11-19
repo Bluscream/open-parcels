@@ -7,7 +7,7 @@ import {
   defineCarrier,
   isObject,
   newestFirst,
-  PluginError,
+  InvalidConfigError,
   readObject,
   SignInRejectedError,
   snapshot,
@@ -182,7 +182,9 @@ export const bpost = defineCarrier<Config, Secret>({
     trackEach(barcodes, PLAUSIBLE, async (barcode) => {
       const postalCode = context.config.postalCode;
       if (postalCode === undefined) {
-        throw new PluginError("bpost's tracking needs the recipient's postcode in the source.");
+        throw new InvalidConfigError(
+          "bpost's tracking needs the recipient's postcode in the source.",
+        );
       }
       const item = await lookUp(context.http, barcode, postalCode);
       return item === null

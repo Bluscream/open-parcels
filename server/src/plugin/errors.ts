@@ -31,6 +31,14 @@ export class CaptchaError extends PluginError {
   override readonly name = "CaptchaError";
 }
 
+/**
+ * The source's settings cannot work (a required postcode is missing, say). Nothing is retried
+ * until the user changes them; the source shows the message.
+ */
+export class InvalidConfigError extends PluginError {
+  override readonly name = "InvalidConfigError";
+}
+
 /** A temporary failure: network error, timeout, 5xx, unexpected page. Retried with backoff. */
 export class TransientError extends PluginError {
   override readonly name: string = "TransientError";
