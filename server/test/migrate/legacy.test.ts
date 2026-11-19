@@ -365,6 +365,13 @@ describe("legacy import", () => {
     expect(second).toMatchObject({ parcels: 0, skippedDuplicateParcels: 3 });
   });
 
+  it("adds a mailbox once, however often it runs", async () => {
+    expect(await run(false)).toMatchObject({ mailboxes: 1, skippedDuplicateMailboxes: 0 });
+    expect(await run(false)).toMatchObject({ mailboxes: 0, skippedDuplicateMailboxes: 1 });
+    const mail = (await context.services.sources.list()).filter((s) => s.kind === "mail");
+    expect(mail).toHaveLength(1);
+  });
+
   it("imports no credentials without the old key, and counts a wrong key as undecryptable", async () => {
     expect(await run(true, null)).toMatchObject({
       mailboxes: 0,
