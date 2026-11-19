@@ -5,6 +5,7 @@ import {
   asObject,
   carrierKey,
   isObject,
+  isoTime,
   num,
   parseJsonBody,
   pastedRedirect,
@@ -31,6 +32,7 @@ const REDIRECT_URI = `https://${ACCOUNT_HOST}/callback`;
 const PAGE_SIZE = 20;
 const MAX_PAGES = 25;
 const MARGIN_MS = 60_000;
+const TRACING_TIME = { naive: { zone: "Europe/Paris" }, epoch: "auto" } as const;
 const MARKET_LANGUAGES: Readonly<Record<string, string>> = {
   FR: "fr-FR",
   BE: "fr-BE",
@@ -233,19 +235,28 @@ class Backend {
   }
 
   async list(path: string): Promise<Json[]> {
+    // The result counts as complete, so every page must be read: a list whose page count is
+    // missing or beyond the cap stops the run instead of dropping the later pages' parcels.
     const items: Json[] = [];
-    for (let page = 0; page < MAX_PAGES; page += 1) {
+    for (let page = 0; ; page += 1) {
       const envelope = await this.get(path, {
         pageIndex: String(page),
         pageSize: String(PAGE_SIZE),
       });
       items.push(...asList(envelope["list"]).filter(isObject));
       const total = num(envelope["totalPages"]);
-      if (total === null || page >= total - 1) {
-        break;
+      if (total === null || !Number.isInteger(total) || total < 0) {
+        throw new UnexpectedResponseError(`Mondial Relay ${path} answered without a page count.`);
+      }
+      if (total > MAX_PAGES) {
+        throw new UnexpectedResponseError(
+          `Mondial Relay ${path} has ${total} pages, more than the ${MAX_PAGES} read.`,
+        );
+      }
+      if (page >= total - 1) {
+        return items;
       }
     }
-    return items;
   }
 }
 
@@ -278,7 +289,8 @@ export function accountSnapshot(
     status,
     rawStatus: step,
     delivered,
-    deliveredAt: delivered ? text(expedition["tracingDate"]) : null,
+    // The app's dates may come without an offset; they are the markets' local (Paris) time.
+    deliveredAt: delivered ? isoTime(expedition["tracingDate"], TRACING_TIME) : null,
     sender: text(expedition["brandLabel"]),
     raw: { expedition: { stepSection: step, hasProblem: expedition["hasProblem"] ?? null } },
   });
