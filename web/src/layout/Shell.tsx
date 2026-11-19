@@ -67,7 +67,8 @@ export function Shell(): ReactNode {
       </a>
       <header className="topbar">
         <Link to="/" className="brand">
-          OpenParcels
+          <img className="brand-logo" src="favicon.svg" alt="" />
+          Open Parcels
         </Link>
         <nav aria-label="Main">
           <ul className="nav">

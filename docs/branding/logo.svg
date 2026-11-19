@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><title>Open Parcels</title>
+  <style>.ink{stroke:#1e3a8a}@media (prefers-color-scheme:dark){.ink{stroke:#dbeafe}}</style>
+  <g class="ink" stroke-linejoin="round" stroke-width="2.5">
+    <path fill="#2563eb" d="M10 26 32 36v22L10 48z"/>
+    <path fill="#3b82f6" d="M54 26 32 36v22l22-10z"/>
+    <path fill="#93c5fd" d="M10 26 2 16l22-8 8 10zM54 26l8-10-22-8-8 10z"/>
+    <path fill="none" d="M10 26 32 18l22 8"/>
+  </g></svg>

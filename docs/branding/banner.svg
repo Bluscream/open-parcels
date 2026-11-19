@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320"><title>Open Parcels</title><style>.w{fill:#0f172a}.t{fill:#475569}.a{fill:#2563eb}.ink{stroke:#1e3a8a}
+@media (prefers-color-scheme:dark){.w{fill:#f8fafc}.t{fill:#94a3b8}.a{fill:#60a5fa}.ink{stroke:#dbeafe}}</style>
+  <g transform="translate(90 64) scale(3)">
+  
+  <g class="ink" stroke-linejoin="round" stroke-width="2.5">
+    <path fill="#2563eb" d="M10 26 32 36v22L10 48z"/>
+    <path fill="#3b82f6" d="M54 26 32 36v22l22-10z"/>
+    <path fill="#93c5fd" d="M10 26 2 16l22-8 8 10zM54 26l8-10-22-8-8 10z"/>
+    <path fill="none" d="M10 26 32 18l22 8"/>
+  </g></g>
+  <text class="w" x="330" y="175" font-size="96" font-weight="700" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">Open <tspan class="a">Parcels</tspan></text>
+  <text class="t" x="334" y="232" font-size="34" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">Every parcel, every carrier, one self-hosted place.</text></svg>

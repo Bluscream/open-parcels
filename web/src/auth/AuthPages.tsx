@@ -8,7 +8,10 @@ function AuthCard(props: { readonly title: string; readonly children: ReactNode 
   return (
     <main className="auth-page">
       <section className="card auth-card" aria-labelledby="auth-title">
-        <p className="brand">📦 open-parcels</p>
+        <p className="brand">
+          <img className="brand-logo" src="favicon.svg" alt="" />
+          Open Parcels
+        </p>
         <h1 id="auth-title">{props.title}</h1>
         {props.children}
       </section>
