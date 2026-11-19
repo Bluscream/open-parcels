@@ -133,6 +133,8 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
       options.trustedIngressAddress === undefined ? services.config.trustProxy : false,
     ),
     bodyLimit: 1024 * 1024,
+    // Image-proxy paths carry the (encoded) picture address; shops such as Amazon use long ones.
+    routerOptions: { maxParamLength: 2048 },
   });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);

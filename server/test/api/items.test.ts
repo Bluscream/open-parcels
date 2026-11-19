@@ -107,6 +107,16 @@ describe("items on orders and parcels", () => {
   });
 });
 
+describe("image proxy paths", () => {
+  it("accepts the long paths of long picture addresses (no 414)", async () => {
+    const response = await app.inject({
+      url: `/img/${"a".repeat(600)}.${"b".repeat(32)}`,
+      headers,
+    });
+    expect(response.statusCode).not.toBe(414);
+  });
+});
+
 describe("gridFor", () => {
   it.each([
     [1, 1],
