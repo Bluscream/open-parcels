@@ -49,8 +49,8 @@ export const ORDER_VIEW_TABS: readonly {
     view: "archived",
     label: "Archived",
     help:
-      "Orders whose parcels are all archived, or that you archived yourself. Open one to bring " +
-      "it back.",
+      "Orders whose parcels are all archived, orders that never got a parcel 30 days after " +
+      "they were placed, and orders you archived yourself. Open one to bring it back.",
   },
 ];
 

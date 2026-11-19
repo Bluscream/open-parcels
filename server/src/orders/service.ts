@@ -30,9 +30,15 @@ type OrderRow = Selectable<OrderTable>;
 /** Orders per page when no limit is given. */
 export const ORDER_PAGE_DEFAULT = 100;
 
-function toOrder(row: OrderRow, items: OrderItem[], parcels: readonly Parcel[]): Order {
+function toOrder(row: OrderRow, items: OrderItem[], parcels: readonly Parcel[], now: Date): Order {
   const status = orderStatus(parcels);
-  const archivedAt = orderArchivedAt(row.archive_mode, row.archived_at, parcels);
+  const archivedAt = orderArchivedAt(
+    row.archive_mode,
+    row.archived_at,
+    parcels,
+    row.placed_at ?? row.created_at,
+    now,
+  );
   return {
     id: row.id,
     shop: row.shop,
@@ -186,6 +192,7 @@ export class OrderService {
         .execute(),
       this.#parcels.byOrders(ids),
     ]);
+    const now = this.clock.now();
     return rows.map((row) =>
       toOrder(
         row,
@@ -201,6 +208,7 @@ export class OrderService {
             parcel_id: line.parcel_id,
           })),
         parcels.filter((entry) => entry.orderId === row.id).map((entry) => entry.parcel),
+        now,
       ),
     );
   }

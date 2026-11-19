@@ -106,7 +106,7 @@ describe("orders page", () => {
 
     await user.click(screen.getByLabelText("Archived"));
     expect(await screen.findByRole("region", { name: "Old things" })).toBeInTheDocument();
-    expect(screen.getByText(/that you archived yourself/)).toBeInTheDocument();
+    expect(screen.getByText(/you archived yourself/)).toBeInTheDocument();
     expect(
       calls.filter((call) => call.path === "/api/v1/orders").map((c) => c.query.get("view")),
     ).toEqual(["open", "archived"]);

@@ -13,7 +13,8 @@ const LIFECYCLE =
   "`partly_shipped`, `shipped`, `partly_delivered`, `delivered`, or `problem` (a parcel not yet " +
   "delivered reports a problem or is returning). Archiving is automatic (`archive_mode: " +
   "automatic`): an order is archived once all its parcels are archived, and parcels archive " +
-  "themselves after the retention window (`archiveAfterDays`) once delivered. The owner can " +
+  "themselves after the retention window (`archiveAfterDays`) once delivered; an order that " +
+  "never got a parcel is archived 30 days after it was placed. The owner can " +
   "archive by hand (`archived`) or keep an order out of the archive (`kept`).";
 
 export function registerOrderRoutes(app: TypedApp, services: Services): void {

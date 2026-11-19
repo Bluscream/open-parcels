@@ -36,6 +36,9 @@ export type ArchiveMode = (typeof ARCHIVE_MODES)[number];
 const NOT_SHIPPED: ReadonlySet<ParcelStatus> = new Set(["registered", "unknown"]);
 const TROUBLE: ReadonlySet<ParcelStatus> = new Set(["problem", "returning"]);
 
+/** Days after it was placed before an order that never got a parcel is archived. */
+export const PARCELLESS_ARCHIVE_DAYS = 30;
+
 export interface ParcelState {
   readonly status: ParcelStatus;
   readonly delivered: boolean;
@@ -55,16 +58,24 @@ export function orderStatus(parcels: readonly ParcelState[]): OrderStatus {
 /**
  * When the order is archived, or null when it is not. By hand wins either way; otherwise an order
  * follows its parcels: archived once every parcel is (parcels archive themselves after the
- * retention window once delivered), at the moment the last one was. An order without parcels
- * is never archived on its own.
+ * retention window once delivered), at the moment the last one was. An order that never got a
+ * parcel (shops that deliver themselves, digital goods) is archived {@link PARCELLESS_ARCHIVE_DAYS}
+ * days after it was placed.
  */
 export function orderArchivedAt(
   mode: "archived" | "kept" | null,
   archivedByHand: string | null,
   parcels: readonly ParcelState[],
+  placedAt: string | null = null,
+  now: Date = new Date(),
 ): string | null {
   if (mode === "archived") return archivedByHand;
-  if (mode === "kept" || parcels.length === 0) return null;
+  if (mode === "kept") return null;
+  if (parcels.length === 0) {
+    if (placedAt === null) return null;
+    const due = new Date(Date.parse(placedAt) + PARCELLESS_ARCHIVE_DAYS * 86_400_000);
+    return Number.isNaN(due.getTime()) || due > now ? null : due.toISOString();
+  }
   let latest = "";
   for (const parcel of parcels) {
     if (parcel.archived_at === null) return null;

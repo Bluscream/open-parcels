@@ -46,6 +46,15 @@ describe("order archiving", () => {
     expect(orderArchivedAt(null, null, [])).toBeNull();
   });
 
+  it("archives an order that never got a parcel 30 days after it was placed", () => {
+    const now = new Date("2026-03-01T00:00:00Z");
+    expect(orderArchivedAt(null, null, [], "2026-01-01T00:00:00Z", now)).toBe(
+      "2026-01-31T00:00:00.000Z",
+    );
+    expect(orderArchivedAt(null, null, [], "2026-02-15T00:00:00Z", now)).toBeNull();
+    expect(orderArchivedAt("kept", null, [], "2026-01-01T00:00:00Z", now)).toBeNull();
+  });
+
   it("lets the owner's choice win", () => {
     expect(orderArchivedAt("archived", "2026-02-01", [parcel("in_transit")])).toBe("2026-02-01");
     expect(orderArchivedAt("kept", null, [archived("2026-01-02")])).toBeNull();
