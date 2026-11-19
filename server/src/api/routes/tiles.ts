@@ -31,13 +31,10 @@ const layersSchema = z.object({
 async function sendTile(
   services: Services,
   reply: FastifyReply,
-  layer: string,
-  zoom: number,
-  x: number,
-  y: number,
+  at: { readonly layer: string; readonly z: number; readonly x: number; readonly y: number },
 ): Promise<FastifyReply> {
   try {
-    const tile = await services.tiles.get(layer, zoom, x, y);
+    const tile = await services.tiles.get(at.layer, at.z, at.x, at.y);
     return await reply
       .header("content-type", tile.contentType)
       .header("cache-control", "private, max-age=86400")
@@ -98,8 +95,7 @@ export function registerTileRoutes(app: TypedApp, services: Services): void {
       },
     },
     async (request, reply) => {
-      const { layer, z: zoom, x, y } = request.params;
-      return sendTile(services, reply, layer, zoom, x, y);
+      return sendTile(services, reply, request.params);
     },
   );
 
@@ -118,8 +114,7 @@ export function registerTileRoutes(app: TypedApp, services: Services): void {
       },
     },
     async (request, reply) => {
-      const { z: zoom, x, y } = request.params;
-      return sendTile(services, reply, "osm", zoom, x, y);
+      return sendTile(services, reply, { layer: "osm", ...request.params });
     },
   );
 }

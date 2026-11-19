@@ -29,7 +29,8 @@ export interface TileLayerDef {
   readonly apiKey?: string;
 }
 
-const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const OSM =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const EOX =
   '<a href="https://cloudless.eox.at">EOxCloudless</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2025)';
 const EOX_OVERLAY = `${OSM}, rendering &copy; <a href="https://eox.at">EOX</a>`;

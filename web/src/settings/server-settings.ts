@@ -6,6 +6,7 @@ import {
   type GetApiV1SettingsConfig200Item,
 } from "../api/generated";
 import { useSession } from "../auth/session";
+import { mapLayersKey } from "../map/layers";
 
 export type ServerSetting = GetApiV1SettingsConfig200Item;
 export type ServerSettingValue = string | number | boolean;
@@ -31,6 +32,8 @@ export function useSaveServerSetting() {
       patchApiV1SettingsConfig({ [change.key]: change.value }),
     onSuccess: (list) => {
       client.setQueryData(serverSettingsKey, list);
+      // Map defaults and the custom provider change the layer list.
+      void client.invalidateQueries({ queryKey: mapLayersKey });
     },
   });
 }
@@ -41,6 +44,8 @@ export function useResetServerSetting() {
     mutationFn: (key: string) => deleteApiV1SettingsConfigKey(key),
     onSuccess: (list) => {
       client.setQueryData(serverSettingsKey, list);
+      // Map defaults and the custom provider change the layer list.
+      void client.invalidateQueries({ queryKey: mapLayersKey });
     },
   });
 }

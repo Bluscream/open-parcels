@@ -1,6 +1,8 @@
 import { RotateCcw, Save } from "lucide-react";
 import { useState, type ReactNode, type SyntheticEvent } from "react";
 import { ErrorNotice, Spinner } from "../components/ui";
+import { FALLBACK_LAYER, useMapLayers } from "../map/layers";
+import { SharedMap } from "../map/SharedMap";
 import {
   APPLY_LABELS,
   formatValue,
@@ -55,9 +57,17 @@ function Editor(props: {
   return (
     <input
       aria-label={label}
-      type={setting.kind === "number" ? "number" : "text"}
+      type={setting.secret ? "password" : setting.kind === "number" ? "number" : "text"}
       value={text}
-      placeholder={setting.default === null ? "unset" : formatValue(setting.default)}
+      placeholder={
+        setting.secret
+          ? setting.set
+            ? "set; type to replace"
+            : "unset"
+          : setting.default === null
+            ? "unset"
+            : formatValue(setting.default)
+      }
       spellCheck={false}
       autoComplete="off"
       onChange={(e) => {
@@ -74,7 +84,8 @@ function SettingRow({ setting }: { readonly setting: ServerSetting }): ReactNode
   const [text, setText] = useState<string | null>(null);
   const shown = text ?? current;
   const value = fromText(setting, shown);
-  const editable = setting.apply !== "env" && !setting.secret;
+  // A secret saved in the UI is write-only: the box starts empty and a new value replaces it.
+  const editable = setting.apply !== "env";
   const busy = save.isPending || reset.isPending;
 
   const submit = (event: SyntheticEvent): void => {
@@ -151,6 +162,24 @@ function SettingRow({ setting }: { readonly setting: ServerSetting }): ReactNode
   );
 }
 
+/** The default style as saved, on a small map. */
+function MapPreview({ settings }: { readonly settings: readonly ServerSetting[] }): ReactNode {
+  const query = useMapLayers();
+  const layers = query.data?.layers ?? [FALLBACK_LAYER];
+  const value = (key: string): unknown => settings.find((s) => s.key === key)?.value;
+  const base =
+    layers.find((l) => l.kind === "base" && l.id === value("OPENPARCELS_MAP_BASE_LAYER")) ??
+    layers.find((l) => l.id === query.data?.default_base) ??
+    FALLBACK_LAYER;
+  const overlay =
+    layers.find((l) => l.kind === "overlay" && l.id === value("OPENPARCELS_MAP_OVERLAY")) ?? null;
+  return (
+    <div className="settings-map settings-map-preview">
+      <SharedMap label="Default map style preview" zoom={4} style={{ base, overlay }} />
+    </div>
+  );
+}
+
 /** One card per group of OPENPARCELS_* settings; admin only. */
 export function ServerSettingsCards(): ReactNode {
   const query = useServerSettings();
@@ -166,6 +195,7 @@ export function ServerSettingsCards(): ReactNode {
             <SettingRow key={setting.key} setting={setting} />
           ))}
         </ul>
+        {group === "Map" ? <MapPreview settings={settings} /> : null}
       </section>
     );
   });
