@@ -8145,6 +8145,10 @@
                           "satellite": {
                             "type": "boolean",
                             "description": "Photographic imagery: no dark-mode filter."
+                          },
+                          "dark": {
+                            "type": "boolean",
+                            "description": "A dark style already: no dark-mode filter."
                           }
                         },
                         "required": [
@@ -8153,7 +8157,8 @@
                           "kind",
                           "max_zoom",
                           "attribution",
-                          "satellite"
+                          "satellite",
+                          "dark"
                         ],
                         "additionalProperties": false
                       }
@@ -8190,7 +8195,7 @@
           {
             "schema": {
               "type": "string",
-              "pattern": "^[a-z0-9-]{1,32}$"
+              "pattern": "^[a-z0-9_-]{1,32}$"
             },
             "in": "path",
             "name": "layer",

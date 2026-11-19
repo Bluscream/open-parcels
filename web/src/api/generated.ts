@@ -3660,6 +3660,8 @@ export type GetApiV1MapLayers200LayersItem = {
   attribution: string;
   /** Photographic imagery: no dark-mode filter. */
   satellite: boolean;
+  /** A dark style already: no dark-mode filter. */
+  dark: boolean;
 };
 
 export type GetApiV1MapLayers200 = {
