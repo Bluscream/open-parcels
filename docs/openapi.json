@@ -3850,11 +3850,23 @@
                                 },
                                 "message": {
                                   "type": "string"
+                                },
+                                "redirect_prefix": {
+                                  "nullable": true,
+                                  "description": "The address to paste back starts with this; the companion extension waits for it.",
+                                  "type": "string"
+                                },
+                                "resume_url": {
+                                  "nullable": true,
+                                  "description": "Reopens the sign-in without a new password prompt, for pages that stay blank.",
+                                  "type": "string"
                                 }
                               },
                               "required": [
                                 "kind",
-                                "url"
+                                "url",
+                                "redirect_prefix",
+                                "resume_url"
                               ],
                               "additionalProperties": false
                             },
@@ -4281,11 +4293,23 @@
                                 },
                                 "message": {
                                   "type": "string"
+                                },
+                                "redirect_prefix": {
+                                  "nullable": true,
+                                  "description": "The address to paste back starts with this; the companion extension waits for it.",
+                                  "type": "string"
+                                },
+                                "resume_url": {
+                                  "nullable": true,
+                                  "description": "Reopens the sign-in without a new password prompt, for pages that stay blank.",
+                                  "type": "string"
                                 }
                               },
                               "required": [
                                 "kind",
-                                "url"
+                                "url",
+                                "redirect_prefix",
+                                "resume_url"
                               ],
                               "additionalProperties": false
                             },
@@ -4690,11 +4714,23 @@
                                 },
                                 "message": {
                                   "type": "string"
+                                },
+                                "redirect_prefix": {
+                                  "nullable": true,
+                                  "description": "The address to paste back starts with this; the companion extension waits for it.",
+                                  "type": "string"
+                                },
+                                "resume_url": {
+                                  "nullable": true,
+                                  "description": "Reopens the sign-in without a new password prompt, for pages that stay blank.",
+                                  "type": "string"
                                 }
                               },
                               "required": [
                                 "kind",
-                                "url"
+                                "url",
+                                "redirect_prefix",
+                                "resume_url"
                               ],
                               "additionalProperties": false
                             },

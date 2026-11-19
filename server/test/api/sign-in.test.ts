@@ -94,7 +94,12 @@ describe("interactive sign-in", () => {
       ["none", false],
     ]);
     const other = await start(b, "variant_b");
-    expect(other.step).toEqual({ kind: "open_url", url: "https://b.example.invalid/" });
+    expect(other.step).toEqual({
+      kind: "open_url",
+      url: "https://b.example.invalid/",
+      redirect_prefix: null,
+      resume_url: null,
+    });
     const wrong = await post(`/api/v1/sources/${a}/sign-in/attempts`, { flow: "variant_b" });
     expect(wrong.json()).toMatchObject({ error: "no_sign_in" });
   });

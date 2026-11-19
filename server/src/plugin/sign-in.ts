@@ -28,7 +28,18 @@ export interface SignInOption {
  */
 export type SignInStep =
   | { readonly kind: "form"; readonly fields: readonly SignInField[]; readonly message?: string }
-  | { readonly kind: "open_url"; readonly url: string; readonly message?: string }
+  | {
+      readonly kind: "open_url";
+      readonly url: string;
+      readonly message?: string;
+      /** Where the browser ends up after signing in; the address to paste starts with it. */
+      readonly redirectPrefix?: string;
+      /**
+       * The sign-in address without forcing a new password prompt. Opening it once signed in
+       * leads straight to the final address, for login pages that stay blank after success.
+       */
+      readonly resumeUrl?: string;
+    }
   | {
       readonly kind: "email_link";
       /** Masked address the link went to, when the carrier says. */
@@ -130,6 +141,8 @@ export function pastedRedirect<Config, Secret>(options: {
   readonly kinds?: readonly SignInSourceKind[];
   readonly when?: (config: Config) => boolean;
   readonly message?: string;
+  /** Start of the final address; defaults to the sign-in address's `redirect_uri`. */
+  readonly redirectPrefix?: string;
   start(context: SignInContext<Config>): Promise<{ url: string; state: unknown }>;
   finish(context: SignInContext<Config>, state: unknown, pasted: string): Promise<Secret>;
 }): InteractiveSignIn<Config, Secret> {
@@ -141,17 +154,57 @@ export function pastedRedirect<Config, Secret>(options: {
     ...(options.when === undefined ? {} : { when: options.when }),
     async start(context) {
       const { url, state } = await options.start(context);
+      const redirectPrefix = options.redirectPrefix ?? redirectOf(url);
+      const resumeUrl = withoutForcedLogin(url);
       const step: SignInStep = {
         kind: "open_url",
         url,
         message:
           options.message ??
           "Open the address, sign in, and paste the full address your browser ends on.",
+        ...(redirectPrefix === null ? {} : { redirectPrefix }),
+        ...(resumeUrl === null ? {} : { resumeUrl }),
       };
       return { step, state };
     },
     async continue(context, state, input) {
-      return { secret: await options.finish(context, state, input["pasted"] ?? "") };
+      const pasted = extractAddress(input["pasted"] ?? "");
+      return { secret: await options.finish(context, state, pasted) };
     },
   };
+}
+
+/** The OAuth `redirect_uri` (or OpenID 2 `openid.return_to`) a sign-in address ends on. */
+function redirectOf(url: string): string | null {
+  try {
+    const params = new URL(url).searchParams;
+    return params.get("redirect_uri") ?? params.get("openid.return_to");
+  } catch {
+    return null;
+  }
+}
+
+/** The same sign-in address without `prompt=login`; null when it does not force one. */
+function withoutForcedLogin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.searchParams.get("prompt") !== "login") {
+      return null;
+    }
+    parsed.searchParams.delete("prompt");
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The address out of whatever the user pasted: a whole DevTools header line ("Location: …"), a
+ * quoted value, text around it. The address that carries a `code` or `state` wins, then any
+ * address; with none, the trimmed paste as it is (carriers check it themselves).
+ */
+export function extractAddress(pasted: string): string {
+  const text = pasted.trim();
+  const addresses = text.match(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>`]+/giu) ?? [];
+  return addresses.find((address) => /[?&#](?:code|state)=/u.test(address)) ?? addresses[0] ?? text;
 }

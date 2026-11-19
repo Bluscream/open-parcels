@@ -24,7 +24,21 @@ const stepSchema = z
       ),
       message,
     }),
-    z.object({ kind: z.literal("open_url"), url: z.string(), message }),
+    z.object({
+      kind: z.literal("open_url"),
+      url: z.string(),
+      message,
+      redirect_prefix: z
+        .string()
+        .nullable()
+        .describe(
+          "The address to paste back starts with this; the companion extension waits for it.",
+        ),
+      resume_url: z
+        .string()
+        .nullable()
+        .describe("Reopens the sign-in without a new password prompt, for pages that stay blank."),
+    }),
     z.object({ kind: z.literal("email_link"), destination: z.string().nullable(), message }),
     z.object({
       kind: z.literal("otp_code"),
@@ -121,6 +135,13 @@ function stepBody(step: SignInStep): z.infer<typeof stepSchema> {
         timeout_seconds: step.timeoutSeconds,
       };
     case "open_url":
+      return {
+        kind: "open_url",
+        url: step.url,
+        ...(step.message === undefined ? {} : { message: step.message }),
+        redirect_prefix: step.redirectPrefix ?? null,
+        resume_url: step.resumeUrl ?? null,
+      };
     case "email_link":
     case "otp_code":
       return { ...step };

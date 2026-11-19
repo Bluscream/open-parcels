@@ -1,6 +1,7 @@
 import { useState, type SyntheticEvent, type ReactNode } from "react";
 import type { SignInStep } from "../api/types";
 import { Field } from "../components/ui";
+import { OpenUrlStep } from "./OpenUrlStep";
 
 export type StepInput = Record<string, string>;
 
@@ -63,47 +64,6 @@ function FormStep({ step, busy, onSubmit }: StepProps<"form">): ReactNode {
           )}
         </Field>
       ))}
-      <Submit busy={busy} />
-    </form>
-  );
-}
-
-function OpenUrlStep({ step, busy, onSubmit }: StepProps<"open_url">): ReactNode {
-  const [pasted, setPasted] = useState("");
-  const submit = (event: SyntheticEvent): void => {
-    event.preventDefault();
-    onSubmit({ pasted: pasted.trim() });
-    setPasted("");
-  };
-  return (
-    <form onSubmit={submit} className="stack">
-      <Message text={step.message} />
-      <ol className="steps">
-        <li>
-          <a href={step.url} target="_blank" rel="noreferrer noopener" className="button">
-            Open the sign-in page
-          </a>{" "}
-          in a new tab and sign in there.
-        </li>
-        <li>
-          When the browser lands on the final page, copy its full address from the address bar.
-        </li>
-        <li>Paste it below.</li>
-      </ol>
-      <Field label="Address the browser ended on">
-        {(id) => (
-          <input
-            id={id}
-            type="url"
-            required
-            autoComplete="off"
-            value={pasted}
-            onChange={(e) => {
-              setPasted(e.target.value);
-            }}
-          />
-        )}
-      </Field>
       <Submit busy={busy} />
     </form>
   );

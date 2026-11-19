@@ -1923,6 +1923,16 @@ export type PostApiV1SourcesIdSignInAttempts200 =
             kind: "open_url";
             url: string;
             message?: string;
+            /**
+             * The address to paste back starts with this; the companion extension waits for it.
+             * @nullable
+             */
+            redirect_prefix: string | null;
+            /**
+             * Reopens the sign-in without a new password prompt, for pages that stay blank.
+             * @nullable
+             */
+            resume_url: string | null;
           }
         | {
             kind: "email_link";
@@ -2019,6 +2029,16 @@ export type PostApiV1SourcesIdSignInAttemptsAttemptContinue200 =
             kind: "open_url";
             url: string;
             message?: string;
+            /**
+             * The address to paste back starts with this; the companion extension waits for it.
+             * @nullable
+             */
+            redirect_prefix: string | null;
+            /**
+             * Reopens the sign-in without a new password prompt, for pages that stay blank.
+             * @nullable
+             */
+            resume_url: string | null;
           }
         | {
             kind: "email_link";
@@ -2109,6 +2129,16 @@ export type PostApiV1SourcesIdSignInAttemptsAttemptPoll200 =
             kind: "open_url";
             url: string;
             message?: string;
+            /**
+             * The address to paste back starts with this; the companion extension waits for it.
+             * @nullable
+             */
+            redirect_prefix: string | null;
+            /**
+             * Reopens the sign-in without a new password prompt, for pages that stay blank.
+             * @nullable
+             */
+            resume_url: string | null;
           }
         | {
             kind: "email_link";

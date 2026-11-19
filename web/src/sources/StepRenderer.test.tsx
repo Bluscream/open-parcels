@@ -31,21 +31,107 @@ describe("sign-in step renderer", () => {
     expect(screen.getByLabelText("Password")).toHaveValue("");
   });
 
-  it("open_url: a link to open, and the pasted address sent as `pasted`", async () => {
+  it("open_url without a known end: opens the page in a window and sends the paste", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
     const { onSubmit, user } = setup({
       kind: "open_url",
       url: "https://login.example.invalid/start",
+      redirect_prefix: null,
+      resume_url: null,
     });
-    expect(screen.getByRole("link", { name: /open the sign-in page/i })).toHaveAttribute(
-      "href",
+    await user.click(screen.getByRole("button", { name: /open the sign-in page/i }));
+    expect(open).toHaveBeenCalledWith(
       "https://login.example.invalid/start",
+      "open-parcels-sign-in",
+      expect.any(String),
     );
     await user.type(
-      screen.getByLabelText(/address the browser ended on/i),
+      screen.getByLabelText(/final address/i),
       "https://app.example.invalid/done?code=abc",
     );
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(onSubmit).toHaveBeenCalledWith({ pasted: "https://app.example.invalid/done?code=abc" });
+    open.mockRestore();
+  });
+
+  describe("open_url to an app address", () => {
+    const APP_STEP: SignInStep = {
+      kind: "open_url",
+      url: "https://login.example.invalid/authorize?prompt=login",
+      redirect_prefix: "app.example://done",
+      resume_url: "https://login.example.invalid/authorize",
+    };
+
+    /** Stands in for the companion extension: answers hello, and captures with `answer`. */
+    function fakeExtension(answer: (request: { requestId: string }) => object | null) {
+      const listener = (event: MessageEvent): void => {
+        const data = event.data as { source?: string; type?: string; requestId?: string };
+        if (data.source !== "open-parcels-page") return;
+        const reply =
+          data.type === "hello"
+            ? { type: "hello", version: "1.0.0", protocol: 1 }
+            : data.type === "capture"
+              ? answer({ requestId: data.requestId ?? "" })
+              : null;
+        if (reply !== null) {
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: { source: "open-parcels-extension", ...reply },
+              origin: window.location.origin,
+              source: window,
+            }),
+          );
+        }
+      };
+      window.addEventListener("message", listener);
+      return () => {
+        window.removeEventListener("message", listener);
+      };
+    }
+
+    it("without the extension, offers it and guides through DevTools, with a resume button", async () => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      const { user } = setup(APP_STEP);
+      expect(await screen.findByText(/not installed/i)).toBeInTheDocument();
+      await user.click(screen.getByLabelText(/step by step/i));
+      expect(screen.getByText(/Response Headers/)).toBeInTheDocument();
+      expect(screen.getByText("app.example://done")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /continue the sign-in/i }));
+      expect(open).toHaveBeenCalledWith(
+        "https://login.example.invalid/authorize",
+        "open-parcels-sign-in",
+        expect.any(String),
+      );
+      open.mockRestore();
+    });
+
+    it("with the extension, submits the address it captured", async () => {
+      const remove = fakeExtension(({ requestId }) => ({
+        type: "captured",
+        requestId,
+        url: "app.example://done?code=c1&state=s1",
+      }));
+      const { onSubmit, user } = setup(APP_STEP);
+      await user.click(await screen.findByRole("button", { name: /sign in with the extension/i }));
+      await vi.waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith({ pasted: "app.example://done?code=c1&state=s1" });
+      });
+      remove();
+    });
+
+    it("says why when the extension gives up, and keeps the manual way open", async () => {
+      const remove = fakeExtension(({ requestId }) => ({
+        type: "cancelled",
+        requestId,
+        reason: "closed",
+      }));
+      const { onSubmit, user } = setup(APP_STEP);
+      await user.click(await screen.findByRole("button", { name: /sign in with the extension/i }));
+      expect(await screen.findByText(/window was closed/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/step by step/i)).toBeEnabled();
+      expect(onSubmit).not.toHaveBeenCalled();
+      remove();
+    });
   });
 
   it("email_link: names the destination and sends `code`", async () => {
