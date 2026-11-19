@@ -119,7 +119,7 @@ function SourceRow(props: {
         {enabled && props.signIn ? (
           <button
             type="button"
-            className={source.state === "needs_sign_in" ? "button primary" : "button"}
+            className={source.state === "needs_sign_in" ? "button small primary" : "button small"}
             onClick={props.onSignIn}
           >
             {source.has_secret ? "Sign in again" : "Sign in"}
@@ -128,7 +128,7 @@ function SourceRow(props: {
         {enabled ? (
           <button
             type="button"
-            className="button"
+            className="button small"
             disabled={sync.isPending}
             onClick={() => {
               sync.mutate(source.id);
@@ -199,6 +199,19 @@ export function SourcesPage(): ReactNode {
     <section aria-labelledby="sources-title">
       <div className="page-header">
         <h1 id="sources-title">Sources</h1>
+        {list.length === 0 ? null : (
+          <div className="source-summary">
+            <Stat label="sources" value={list.length} />
+            <Stat label="working" value={working} />
+            <Stat label="need attention" value={attention} />
+            <Stat
+              label="parcels on the way"
+              value={
+                parcels.data?.filter((p) => !p.delivered && p.archived_at === null).length ?? "…"
+              }
+            />
+          </div>
+        )}
         <button
           type="button"
           className="button primary"
@@ -210,19 +223,6 @@ export function SourcesPage(): ReactNode {
         </button>
       </div>
       <ErrorNotice error={sources.error} />
-      {list.length === 0 ? null : (
-        <div className="source-summary glass-panel">
-          <Stat label="sources" value={list.length} />
-          <Stat label="working" value={working} />
-          <Stat label="need attention" value={attention} />
-          <Stat
-            label="parcels on the way"
-            value={
-              parcels.data?.filter((p) => !p.delivered && p.archived_at === null).length ?? "…"
-            }
-          />
-        </div>
-      )}
       {sources.data === undefined ? (
         sources.isPending ? (
           <Spinner />
