@@ -4,15 +4,14 @@ import { Archive, ArchiveRestore, Check, Pencil, Trash2, X } from "lucide-react"
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { keys, useDeleteParcel, useUpdateParcel } from "../api/queries";
 import { PARCEL_STATUSES, type ParcelDetail, type ParcelStatus } from "../api/types";
-import { useSession } from "../auth/session";
+import { useIsAdmin } from "../auth/session";
 import { ErrorNotice } from "../components/ui";
 import { STATUS_LABELS } from "../lib/format";
 import { StatusBadge } from "./badges";
 
-/** Editing needs the write scope; read-only sessions just see the values. */
+/** Editing needs the admin; readers just see the values. */
 export function useCanEdit(): boolean {
-  const session = useSession();
-  return session.data?.scopes.includes("write") === true;
+  return useIsAdmin();
 }
 
 function PencilButton(props: { readonly label: string; readonly onClick: () => void }): ReactNode {

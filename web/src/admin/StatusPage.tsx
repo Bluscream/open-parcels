@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useDiagnostics, useHealth, useSources } from "../api/queries";
-import { ErrorNotice, Spinner } from "../components/ui";
+import { useIsAdmin } from "../auth/session";
+import { ErrorNotice, ReadOnlyHint, Spinner } from "../components/ui";
 import { formatRelative } from "../lib/format";
 import { SourceStateBadge } from "../parcels/badges";
 
@@ -17,7 +18,7 @@ function download(data: unknown): void {
 export function StatusPage(): ReactNode {
   const health = useHealth();
   const sources = useSources();
-  const diagnostics = useDiagnostics();
+  const admin = useIsAdmin();
   const ready = health.data?.status === "ok";
 
   return (
@@ -59,27 +60,37 @@ export function StatusPage(): ReactNode {
       </section>
       <section className="card" aria-labelledby="diag-title">
         <h2 id="diag-title">Diagnostics</h2>
-        <p className="muted">Redacted on the server: no codes, addresses or sign-in data.</p>
-        <ErrorNotice error={diagnostics.error} />
-        <div className="actions">
-          <button
-            type="button"
-            className="button"
-            disabled={diagnostics.data === undefined}
-            onClick={() => {
-              download(diagnostics.data);
-            }}
-          >
-            Download diagnostics
-          </button>
-        </div>
-        {diagnostics.data === undefined ? null : (
-          <details>
-            <summary>Show</summary>
-            <pre className="diagnostics">{JSON.stringify(diagnostics.data, null, 2)}</pre>
-          </details>
-        )}
+        {admin ? <Diagnostics /> : <ReadOnlyHint>Diagnostics are for the admin only.</ReadOnlyHint>}
       </section>
     </section>
+  );
+}
+
+/** Only mounted for the admin, so readers do not ask for what they may not see. */
+function Diagnostics(): ReactNode {
+  const diagnostics = useDiagnostics();
+  return (
+    <>
+      <p className="muted">Redacted on the server: no codes, addresses or sign-in data.</p>
+      <ErrorNotice error={diagnostics.error} />
+      <div className="actions">
+        <button
+          type="button"
+          className="button"
+          disabled={diagnostics.data === undefined}
+          onClick={() => {
+            download(diagnostics.data);
+          }}
+        >
+          Download diagnostics
+        </button>
+      </div>
+      {diagnostics.data === undefined ? null : (
+        <details>
+          <summary>Show</summary>
+          <pre className="diagnostics">{JSON.stringify(diagnostics.data, null, 2)}</pre>
+        </details>
+      )}
+    </>
   );
 }

@@ -51,8 +51,10 @@ describe("an ended session and a deleted parcel", () => {
   const SIGNED_OUT = {
     authenticated: false,
     method: null,
+    role: null,
     scopes: [],
     csrf_token: null,
+    reader_required: true,
     setup_required: false,
   };
 
@@ -71,7 +73,7 @@ describe("an ended session and a deleted parcel", () => {
     const user = userEvent.setup();
     renderApp(`/parcels/${ID}`);
     await user.click(await screen.findByRole("button", { name: "Archive" }));
-    expect(await screen.findByLabelText("Owner password")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
   });
 
   it("does not ask for a deleted parcel's detail again", async () => {

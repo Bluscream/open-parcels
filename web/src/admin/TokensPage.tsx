@@ -1,7 +1,8 @@
 import { useState, type SyntheticEvent, type ReactNode } from "react";
 import { useCreateToken, useRevokeToken, useTokens } from "../api/queries";
 import type { ApiToken } from "../api/types";
-import { ErrorNotice, Field, Spinner } from "../components/ui";
+import { useIsAdmin } from "../auth/session";
+import { ErrorNotice, Field, ReadOnlyHint, Spinner } from "../components/ui";
 import { formatDateTime, formatRelative } from "../lib/format";
 
 type Scope = ApiToken["scopes"][number];
@@ -104,15 +105,25 @@ function CreateToken(): ReactNode {
   );
 }
 
+/** API tokens are the admin's: readers see only a hint, and nothing is fetched. */
 export function TokensPage(): ReactNode {
-  const tokens = useTokens();
-  const revoke = useRevokeToken();
-
+  const admin = useIsAdmin();
   return (
     <section aria-labelledby="tokens-title">
       <div className="page-header">
         <h1 id="tokens-title">API tokens</h1>
       </div>
+      {admin ? <TokenList /> : <ReadOnlyHint>API tokens are for the admin only.</ReadOnlyHint>}
+    </section>
+  );
+}
+
+function TokenList(): ReactNode {
+  const tokens = useTokens();
+  const revoke = useRevokeToken();
+
+  return (
+    <>
       <CreateToken />
       <ErrorNotice error={tokens.error ?? revoke.error} />
       {tokens.data === undefined ? (
@@ -165,6 +176,6 @@ export function TokensPage(): ReactNode {
           </table>
         </div>
       )}
-    </section>
+    </>
   );
 }

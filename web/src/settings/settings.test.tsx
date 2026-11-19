@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockApi, renderApp, SIGNED_IN } from "../test/helpers";
@@ -115,14 +115,61 @@ describe("settings page", () => {
     expect(within(tracking).getByText("saved, restart to apply")).toBeInTheDocument();
   });
 
-  it("hides server settings without the admin scope", async () => {
+  it("shows a reader the settings read only, without server settings", async () => {
     const calls = mockApi({
-      "GET /api/v1/session": () => ({ body: { ...SIGNED_IN, scopes: ["read", "write"] } }),
+      "GET /api/v1/session": () => ({
+        body: { ...SIGNED_IN, role: "reader", scopes: ["read"] },
+      }),
       "GET /api/v1/carriers": () => ({ body: [] }),
       "GET /api/v1/settings": () => ({ body: { home: null, parcel_label: "tracking_number" } }),
     });
     renderApp("/settings");
     expect(await screen.findByRole("region", { name: "Default parcel label" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Name parcels by" })).toBeDisabled();
+    expect(screen.queryByLabelText("Address or coordinates")).not.toBeInTheDocument();
+    expect(screen.getByText(/for the admin only/)).toBeInTheDocument();
     expect(calls.some((call) => call.path === "/api/v1/settings/config")).toBe(false);
+  });
+
+  it("changes the admin password on the Security card", async () => {
+    const calls = mockApi({
+      "GET /api/v1/session": () => ({ body: SIGNED_IN }),
+      "GET /api/v1/carriers": () => ({ body: [] }),
+      "GET /api/v1/settings": () => ({ body: { home: null, parcel_label: "tracking_number" } }),
+      "GET /api/v1/settings/config": () => ({
+        body: [
+          {
+            key: "OPENPARCELS_ADMIN_PASSWORD",
+            group: "Security",
+            description: "Password to change anything.",
+            kind: "string",
+            choices: null,
+            apply: "env",
+            secret: true,
+            source: "override",
+            set: true,
+            value: null,
+            default: null,
+            pending_restart: false,
+          },
+        ],
+      }),
+      "PUT /api/v1/admin-password": () => ({ status: 204, body: null }),
+    });
+    const user = userEvent.setup();
+    renderApp("/settings");
+    const card = await screen.findByRole("region", { name: "Security" });
+    const current = ["old", "admin", "secret"].join(" ");
+    const next = ["new", "admin", "secret"].join(" ");
+    await user.type(within(card).getByLabelText("Current admin password"), current);
+    await user.type(within(card).getByLabelText("New admin password"), next);
+    await user.type(within(card).getByLabelText("Repeat the new password"), next);
+    await user.click(within(card).getByRole("button", { name: "Change admin password" }));
+    await waitFor(() => {
+      expect(calls.find((call) => call.path === "/api/v1/admin-password")?.body).toEqual({
+        current,
+        next,
+      });
+    });
   });
 });

@@ -3,11 +3,13 @@ import { useState, type ReactNode, type SyntheticEvent } from "react";
 import { ErrorNotice, Spinner } from "../components/ui";
 import { FALLBACK_LAYER, useMapLayers } from "../map/layers";
 import { SharedMap } from "../map/SharedMap";
+import { SecurityCard } from "./SecurityCard";
 import {
   APPLY_LABELS,
   formatValue,
   fromText,
   groupSettings,
+  SECURITY_GROUP,
   shortKey,
   SOURCE_LABELS,
   useResetServerSetting,
@@ -186,6 +188,7 @@ export function ServerSettingsCards(): ReactNode {
   if (query.isPending) return <Spinner />;
   if (query.isError) return <ErrorNotice error={query.error} />;
   return groupSettings(query.data).map(([group, settings]) => {
+    if (group === SECURITY_GROUP) return <SecurityCard key={group} settings={settings} />;
     const id = `settings-group-${group.toLowerCase().replace(/\W+/g, "-")}`;
     return (
       <section key={group} className="card stack" aria-labelledby={id}>

@@ -3,6 +3,7 @@ import {
   Activity,
   CalendarDays,
   KeyRound,
+  LogIn,
   LogOut,
   Map,
   Package,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { Suspense, useState, type ReactNode } from "react";
 import { useLiveUpdates, type LiveState } from "../api/events";
+import { SetupPage, SignInPage } from "../auth/AuthPages";
 import { useSession, useSignOut } from "../auth/session";
 import { Spinner } from "../components/ui";
 import { useTheme, type ThemeChoice } from "../lib/theme";
@@ -25,10 +27,16 @@ const NAV = [
   { to: "/orders", label: "Orders", icon: ShoppingBag },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/sources", label: "Sources", icon: Plug },
-  { to: "/tokens", label: "API tokens", icon: KeyRound },
+  { to: "/tokens", label: "API tokens", icon: KeyRound, adminOnly: true },
   { to: "/status", label: "Status", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },
-] as const satisfies readonly { to: string; label: string; icon: LucideIcon }[];
+] as const satisfies readonly {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  /** Hidden from readers. */
+  adminOnly?: true;
+}[];
 
 const LIVE_LABELS: Readonly<Record<LiveState, string>> = {
   connecting: "Connecting…",
@@ -55,12 +63,37 @@ function ThemePicker(): ReactNode {
   );
 }
 
+const ROLE_LABELS = {
+  admin: "Admin",
+  reader: "Reader",
+  anonymous: "Read only",
+} as const;
+
 export function Shell(): ReactNode {
   const session = useSession();
   const signOut = useSignOut();
   const live = useLiveUpdates(true);
   const [adding, setAdding] = useState(false);
-  const isIngress = session.data?.method === "ingress";
+  const [signingIn, setSigningIn] = useState(false);
+  const method = session.data?.method ?? null;
+  const admin = session.data?.role === "admin";
+  const roleLabel = admin
+    ? ROLE_LABELS.admin
+    : method === "anonymous"
+      ? ROLE_LABELS.anonymous
+      : ROLE_LABELS.reader;
+
+  // Reading is open (or a reader signed in) and the admin asked to sign in from the header.
+  if (signingIn && !admin) {
+    const back = (): void => {
+      setSigningIn(false);
+    };
+    return session.data?.setup_required === true ? (
+      <SetupPage onCancel={back} />
+    ) : (
+      <SignInPage onCancel={back} />
+    );
+  }
 
   return (
     <div className="app">
@@ -74,7 +107,7 @@ export function Shell(): ReactNode {
         </Link>
         <nav aria-label="Main">
           <ul className="nav">
-            {NAV.map((item) => (
+            {NAV.filter((item) => admin || !("adminOnly" in item)).map((item) => (
               <li key={item.to}>
                 <Link
                   to={item.to}
@@ -90,25 +123,46 @@ export function Shell(): ReactNode {
           </ul>
         </nav>
         <div className="topbar-tools">
-          <button
-            type="button"
-            className="header-link"
-            onClick={() => {
-              setAdding(true);
-            }}
-          >
-            <Plus size={16} aria-hidden="true" />
-            Add
-          </button>
-          <span className={`live live-${live}`} role="status" title="Live updates">
-            {LIVE_LABELS[live]}
-          </span>
-          <ThemePicker />
-          {isIngress || session.data?.method !== "session" ? null : (
+          {admin ? (
             <button
               type="button"
               className="header-link"
               onClick={() => {
+                setAdding(true);
+              }}
+            >
+              <Plus size={16} aria-hidden="true" />
+              Add
+            </button>
+          ) : null}
+          <span className={`live live-${live}`} role="status" title="Live updates">
+            {LIVE_LABELS[live]}
+          </span>
+          <ThemePicker />
+          <span
+            className={`badge role-badge role-${admin ? "admin" : "reader"}`}
+            title={admin ? "May change anything" : "May only read"}
+          >
+            {roleLabel}
+          </span>
+          {admin || method === "ingress" ? null : (
+            <button
+              type="button"
+              className="header-link"
+              onClick={() => {
+                setSigningIn(true);
+              }}
+            >
+              <LogIn size={16} aria-hidden="true" />
+              Sign in
+            </button>
+          )}
+          {method !== "session" ? null : (
+            <button
+              type="button"
+              className="header-link"
+              onClick={() => {
+                setSigningIn(false);
                 signOut.mutate();
               }}
             >
@@ -124,7 +178,7 @@ export function Shell(): ReactNode {
         </Suspense>
       </main>
       <AddParcelDialog
-        open={adding}
+        open={adding && admin}
         onClose={() => {
           setAdding(false);
         }}

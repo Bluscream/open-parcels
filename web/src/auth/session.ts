@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setCsrfToken } from "../api/fetcher";
 import {
+  deleteApiV1AdminPassword,
   deleteApiV1Session,
+  putApiV1AdminPassword,
   getApiV1Session,
   postApiV1Session,
   postApiV1Setup,
@@ -20,6 +22,14 @@ export function useSession() {
     staleTime: Infinity,
     retry: 1,
   });
+}
+
+/**
+ * May change anything: signed in with the admin password, an admin token, or Home Assistant.
+ * Everyone else only reads, and the UI hides or disables its editing controls.
+ */
+export function useIsAdmin(): boolean {
+  return useSession().data?.role === "admin";
 }
 
 /** After setup or sign-in the server has set the cookie; ask again who we are. */
@@ -42,6 +52,30 @@ export function useSetup() {
 
 export function useSignIn() {
   return useSessionMutation((password: string) => postApiV1Session({ password }));
+}
+
+/** Changing the admin password signs every session out, this one included. */
+export function useChangeAdminPassword() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { current: string | null; next: string }) => putApiV1AdminPassword(input),
+    onSuccess: async () => {
+      setCsrfToken(null);
+      await client.invalidateQueries({ queryKey: SESSION_KEY });
+    },
+  });
+}
+
+/** Back to OPENPARCELS_ADMIN_PASSWORD; signs every session out. */
+export function useResetAdminPassword() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => deleteApiV1AdminPassword(),
+    onSuccess: async () => {
+      setCsrfToken(null);
+      await client.invalidateQueries({ queryKey: SESSION_KEY });
+    },
+  });
 }
 
 export function useSignOut() {
