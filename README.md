@@ -25,6 +25,7 @@ the REST API with its event stream, the Docker image and the Unraid template.
 
 - Website, install guides and the carrier list: <https://open-parcels.github.io>
 - Home Assistant integration: [open-parcels-ha](https://github.com/open-parcels/open-parcels-ha)
+- Home Assistant app (runs the server inside Home Assistant, in the sidebar): [open-parcels-ha-apps](https://github.com/open-parcels/open-parcels-ha-apps)
 - Shared carrier and mail rules: [open-parcels-rules](https://github.com/open-parcels/open-parcels-rules)
 - Browser extension for app-only carrier sign-ins: [open-parcels-extension](https://github.com/open-parcels/open-parcels-extension)
 
