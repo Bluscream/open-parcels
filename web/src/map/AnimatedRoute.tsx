@@ -12,10 +12,13 @@ export function AnimatedRoute(props: {
   readonly positions: readonly LatLng[];
   readonly color?: string;
   readonly dashArray?: string;
+  /** 1 for the way travelled; lower for the way still ahead. */
+  readonly opacity?: number;
 }): null {
   const map = useMap();
   const color = props.color ?? "#a78bfa";
   const dashArray = props.dashArray ?? "10, 20";
+  const opacity = props.opacity ?? 1;
 
   useEffect(() => {
     if (props.positions.length === 0) {
@@ -28,6 +31,7 @@ export function AnimatedRoute(props: {
       delay: 600,
       dashArray: dashes,
       weight: 4,
+      opacity,
       color: solid ? color : "rgba(0,0,0,0)",
       pulseColor: color,
       paused: solid,
@@ -38,7 +42,7 @@ export function AnimatedRoute(props: {
     return () => {
       map.removeLayer(path);
     };
-  }, [props.positions, color, dashArray, map]);
+  }, [props.positions, color, dashArray, opacity, map]);
 
   return null;
 }

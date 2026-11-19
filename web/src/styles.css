@@ -1608,3 +1608,27 @@ tbody tr:hover {
   border-radius: 12px;
   overflow: hidden;
 }
+
+/* Parcel route map, with the distance still to go as a pill over the map. */
+.route-map {
+  position: relative;
+  height: 100%;
+}
+
+.route-distance {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 500;
+  margin: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--panel-solid);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  pointer-events: none;
+}
