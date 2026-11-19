@@ -4,11 +4,13 @@ import {
   asArray as asList,
   asObject,
   carrierKey,
+  isOAuthRefusal,
   isObject,
   isoTime,
   num,
   parseJsonBody,
   pastedRedirect,
+  requiredList,
   ruleStatus,
   SignInRejectedError,
   snapshot,
@@ -46,8 +48,13 @@ async function postToken(http: PluginHttp, form: Record<string, string>) {
     headers: { accept: "application/json" },
     body: new URLSearchParams({ client_id: clientId(), ...form }),
   });
-  if (response.status === 400 || response.status === 401) {
+  if (isOAuthRefusal(response)) {
     throw new SignInRejectedError("SwissID refused the sign-in; sign in again.");
+  }
+  if (response.status === 400 || response.status === 401) {
+    throw new UnexpectedResponseError(
+      `SwissID's token endpoint answered HTTP ${response.status} without an OAuth error.`,
+    );
   }
   if (response.status !== 200) {
     throw new TransientError(`SwissID's token endpoint answered HTTP ${response.status}.`);
@@ -161,15 +168,15 @@ async function overview(
         accept: "application/json",
       },
     });
-  const fresh =
-    stored.idToken !== null &&
-    context.clock.now().getTime() < expiresAt(stored.idToken) - MARGIN_MS;
-  let response = await send(fresh && stored.idToken !== null ? stored.idToken : await renew());
-  if (response.status === 401 || response.status === 403) {
+  const current = stored.idToken;
+  const fresh = current !== null && context.clock.now().getTime() < expiresAt(current) - MARGIN_MS;
+  // At most one renewal per run: a token renewed for its age is not renewed again after a 401.
+  let response = await send(fresh ? current : await renew());
+  if ((response.status === 401 || response.status === 403) && fresh) {
     response = await send(await renew());
-    if (response.status === 401 || response.status === 403) {
-      throw new SignInRejectedError("Swiss Post refused a freshly renewed session.");
-    }
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new SignInRejectedError("Swiss Post refused a freshly renewed session.");
   }
   if (response.status !== 200) {
     throw new TransientError(`Swiss Post's inbox answered HTTP ${response.status}.`);
@@ -220,15 +227,48 @@ export function accountSnapshot(raw: Json, report: (key: string) => void): Parce
   });
 }
 
+/**
+ * Whether the overview says it holds more than it sent. Its paging is not documented, so any
+ * paging marker (a next link, a more flag, a total above what was sent) counts.
+ */
+function hasMorePages(payload: Json): boolean {
+  const sent = ["inProgress", "completed"].reduce(
+    (sum, key) => sum + asList(payload[key]).length,
+    0,
+  );
+  const total = num(payload["totalCount"] ?? payload["total"]);
+  return (
+    payload["hasMore"] === true ||
+    text(payload["next"] ?? payload["nextPage"]) !== null ||
+    (total !== null && total > sent)
+  );
+}
+
 export async function fetchSwissPostAccount(
   context: PluginContext<unknown, unknown>,
   secret: AccountSecret,
 ): Promise<FetchResult> {
   const payload = await overview(context, secret);
   const report = unknownReporter(context, "status_code");
-  const snapshots = ["inProgress", "completed"]
-    .flatMap((key) => asList(payload[key]).filter(isObject))
-    .map((raw) => accountSnapshot(raw, report))
-    .filter((parcel): parcel is ParcelSnapshot => parcel !== null);
-  return { snapshots, complete: true };
+  // Both lists must be there: a renamed key or an error object sent with HTTP 200 would otherwise
+  // read as an empty account and mark every parcel gone.
+  const entries = ["inProgress", "completed"].flatMap((key) =>
+    requiredList(payload, key, "Swiss Post's inbox"),
+  );
+  let complete = true;
+  const snapshots: ParcelSnapshot[] = [];
+  for (const entry of entries) {
+    if (!isObject(entry)) {
+      complete = false;
+      continue;
+    }
+    const parcel = accountSnapshot(entry, report);
+    if (parcel !== null) {
+      snapshots.push(parcel);
+    } else if (text(entry["mailpieceType"])?.toUpperCase() !== "LETTER") {
+      // A parcel without its id is skipped, so the list is no longer everything.
+      complete = false;
+    }
+  }
+  return { snapshots, complete: complete && !hasMorePages(payload) };
 }

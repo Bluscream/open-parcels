@@ -260,13 +260,15 @@ export async function fetchBpostAccount(
   if (list["dbError"] === "Err_1005") {
     return { snapshots: [], complete: true };
   }
-  const items = asObject(list["response"] ?? list)["items"] ?? [];
+  // A missing list is a changed or failed answer, never an empty inbox (that is `Err_1005`).
+  const items = asObject(list["response"] ?? list)["items"];
   if (!Array.isArray(items)) {
     throw new UnexpectedResponseError("My bpost's parcel list has an unexpected shape.");
   }
   const summaries = items.filter(isObject).filter((item) => text(item["itemCode"]) !== null);
   if (summaries.length === 0) {
-    return { snapshots: [], complete: true };
+    // Only a list that really is empty is everything; entries without a code are not.
+    return { snapshots: [], complete: items.length === 0 };
   }
   const detail = asObject(
     asObject(

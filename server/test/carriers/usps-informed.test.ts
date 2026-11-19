@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { usps } from "../../src/carriers/usps/index.js";
 import { enrolledAddresses } from "../../src/carriers/usps/journey.js";
-import { SignInRejectedError, TransientError } from "../../src/plugin/api.js";
+import {
+  SignInRejectedError,
+  TransientError,
+  UnexpectedResponseError,
+} from "../../src/plugin/api.js";
 import { json, madeUp, on, raw, World } from "./harness.js";
 import { SignInDriver } from "./sign-in-driver.js";
 
@@ -230,6 +234,26 @@ describe("USPS Informed Delivery account", () => {
     await expect(revoked.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
     const offline = new World(usps, [on(TOKEN, new TypeError("offline"))]);
     await expect(offline.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(TransientError);
+  });
+
+  it("stops on a 200 that is not a JSON object, instead of reading an empty inbox", async () => {
+    for (const body of [raw("<html>maintenance</html>", 200), json({ inboundPackages: "x" })]) {
+      const world = new World(usps, [on(TOKEN, tokens("a")), on(PACKAGES, body)]);
+      await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(UnexpectedResponseError);
+    }
+  });
+
+  it("is not complete after a 204 or a package without a tracking number", async () => {
+    const empty = new World(usps, [
+      on(TOKEN, tokens("a")),
+      on(PACKAGES, new Response(null, { status: 204 })),
+    ]);
+    expect(await empty.fetchAccount({}, SECRET)).toEqual({ snapshots: [], complete: false });
+    const skipped = new World(usps, [
+      on(TOKEN, tokens("a")),
+      on(PACKAGES, json({ inboundPackages: [{ deliveryInfo: { statusCategory: "Delivered" } }] })),
+    ]);
+    expect((await skipped.fetchAccount({}, SECRET)).complete).toBe(false);
   });
 
   it("still tracks with a consumer key, and only with one", async () => {

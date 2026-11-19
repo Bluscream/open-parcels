@@ -124,6 +124,41 @@ export function readObject(response: HttpResponse, carrier: string): Json {
 }
 
 /**
+ * The list under `key`, which must be there. A missing or renamed key is an unexpected answer that
+ * stops the run, never an empty list: an account reading it as empty would mark every parcel gone.
+ */
+export function requiredList(payload: Json, key: string, carrier: string): readonly unknown[] {
+  const value = payload[key];
+  if (!Array.isArray(value)) {
+    throw new UnexpectedResponseError(`${carrier} answered without its "${key}" list.`);
+  }
+  return value as unknown[];
+}
+
+/** OAuth `error` values that mean the grant or client was refused, so signing in again is needed. */
+const OAUTH_REFUSALS = new Set([
+  "invalid_grant",
+  "invalid_client",
+  "unauthorized_client",
+  "access_denied",
+  "invalid_token",
+  "login_required",
+]);
+
+/**
+ * True when a token endpoint's 400 or 401 is an OAuth refusal (its `error` names one). Any other
+ * 400 or 401 (a proxy page, a changed endpoint, a malformed request) is not the user's sign-in
+ * failing, and must not ask them to sign in again.
+ */
+export function isOAuthRefusal(response: HttpResponse): boolean {
+  if (response.status !== 400 && response.status !== 401) {
+    return false;
+  }
+  const error = asObject(parseJsonBody(response.body))["error"];
+  return typeof error === "string" && OAUTH_REFUSALS.has(error);
+}
+
+/**
  * Any status other than the expected ones is a temporary failure, retried with backoff. With no
  * statuses given, any 2xx answer is expected.
  */

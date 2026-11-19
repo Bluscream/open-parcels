@@ -14,6 +14,7 @@ import {
   text,
   trackEach,
   TransientError,
+  UnexpectedResponseError,
   zonedIso,
   type Json,
   type ParcelSnapshot,
@@ -30,6 +31,9 @@ const PLAUSIBLE = carrierPattern("bpost");
 const LANGUAGES = ["en", "nl", "fr"] as const;
 type Language = (typeof LANGUAGES)[number];
 
+/** bpost's error values for an unknown barcode and postcode pair. */
+const NOT_FOUND = /^(NO_DATA_FOUND|ITEM_NOT_FOUND|NOT_FOUND)$/i;
+
 /** Looks a barcode up with the recipient's postcode; without it bpost withholds most fields. */
 async function lookUp(http: PluginHttp, barcode: string, postalCode: string): Promise<Json | null> {
   const url = new URL(`https://${HOST}/track/items`);
@@ -40,9 +44,19 @@ async function lookUp(http: PluginHttp, barcode: string, postalCode: string): Pr
     throw new TransientError(`bpost tracking answered HTTP ${response.status}.`);
   }
   const payload = readObject(response, "bpost tracking");
-  // An unknown pair is a 200 with an `error` key or no items.
+  // An unknown pair is a 200 with a not-found `error`, or an empty item list. Any other error is
+  // a failure, never a code that reads as not found.
+  if ("error" in payload) {
+    if (NOT_FOUND.test(text(payload["error"]) ?? "")) {
+      return null;
+    }
+    throw new UnexpectedResponseError("bpost tracking answered with an error it does not explain.");
+  }
+  if (!Array.isArray(payload["items"])) {
+    throw new UnexpectedResponseError("bpost tracking answered without its item list.");
+  }
   const item = asArray(payload["items"])[0];
-  return "error" in payload || !isObject(item) ? null : item;
+  return isObject(item) ? item : null;
 }
 
 /** "2026-11-18" plus an optional "13:06" (or "13:06:00"), as Brussels time. */

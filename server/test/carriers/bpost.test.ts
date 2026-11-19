@@ -92,6 +92,13 @@ describe("bpost tracking", () => {
     expect((await w.track([CODE], config)).snapshots).toEqual([]);
   });
 
+  it("fails on any other error, or an answer without items, instead of reading not found", async () => {
+    const w = new World(bpost);
+    w.routes = [on(ROUTE, json({ error: "SERVICE_UNAVAILABLE" }), json({ message: "x" }))];
+    await expect(w.track([CODE], config)).rejects.toThrow(/does not explain/u);
+    await expect(w.track([CODE], config)).rejects.toThrow(/item list/u);
+  });
+
   it("reports a step code outside the vocabulary", async () => {
     const w = new World(bpost);
     w.routes = [on(ROUTE, json(item({ knownProcessStep: "TELEPORTING" })))];

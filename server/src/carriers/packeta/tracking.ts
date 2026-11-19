@@ -25,7 +25,10 @@ export function isPlausibleBarcode(barcode: string): boolean {
   return BARCODE_PATTERN.test(barcode);
 }
 
-/** Looks one code up. 404, or a 200 carrying an error instead of an item, means not found. */
+/** The error values that mean "no such parcel"; any other error is a failure, not a missing code. */
+const NOT_FOUND_ERRORS = new Set(["notfound", "packetnotfound", "not found"]);
+
+/** Looks one code up. 404, or a 200 carrying a not-found error instead of an item, means not found. */
 export async function lookUp(http: PluginHttp, barcode: string): Promise<Json | null> {
   const url = new URL(
     `https://${TRACKING_HOST}/api/getPacketById/${encodeURIComponent(barcode)}/en`,
@@ -53,8 +56,14 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Json | 
   if (typeof item === "object" && item !== null && !Array.isArray(item)) {
     return item as Json;
   }
-  if ((payload as Json)["error"] !== undefined) {
+  const error: unknown = (payload as Json)["error"];
+  if (typeof error === "string" && NOT_FOUND_ERRORS.has(error.toLowerCase())) {
     return null;
+  }
+  if (error !== undefined) {
+    throw new UnexpectedResponseError(
+      "Packeta tracking answered with an error it does not explain.",
+    );
   }
   throw new UnexpectedResponseError("Packeta tracking answered without an item.");
 }
@@ -94,10 +103,12 @@ export function trackingSnapshot(
   const history = events(raw, reportText);
   const delivered = status === "delivered";
   const pickupPoint = text(raw["branchAddress"]);
-  const ownCode = text(raw["barcode"]) ?? barcode;
+  const ownCode = text(raw["barcode"]);
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: ownCode,
+    // Filed under the code as tracked; Packeta's own spelling is only a reference.
+    barcode,
+    externalRef: ownCode !== null && ownCode !== barcode ? ownCode : null,
     status,
     rawStatus: text(raw["packetStatus"]) ?? code,
     delivered,
@@ -105,7 +116,7 @@ export function trackingSnapshot(
     deliveredAt: delivered ? (history[0]?.at ?? null) : null,
     pickup: pickupPoint !== null,
     pickupPoint,
-    url: publicUrl(ownCode),
+    url: publicUrl(ownCode ?? barcode),
     sender: text(raw["sender"]),
     history,
     raw,

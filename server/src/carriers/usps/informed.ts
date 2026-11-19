@@ -4,6 +4,7 @@ import {
   TransientError,
   UnexpectedResponseError,
   asObject,
+  isObject,
   isoTime,
   objects,
   parseJsonBody,
@@ -98,7 +99,11 @@ class Chain {
   }
 }
 
-async function search(deps: Deps, access: string, zip11: string): Promise<Json | "expired"> {
+async function search(
+  deps: Deps,
+  access: string,
+  zip11: string,
+): Promise<Json | "expired" | "no-content"> {
   const response = await deps.http.request(new URL(PACKAGES_URL), {
     method: "POST",
     headers: {
@@ -125,12 +130,29 @@ async function search(deps: Deps, access: string, zip11: string): Promise<Json |
     throw new SignInRejectedError("USPS revoked the Informed Delivery session.");
   }
   if (response.status === 204) {
-    return {};
+    // No body says nothing about what the inbox holds; read as "nothing known", never as empty.
+    return "no-content";
   }
   if (response.status !== 200) {
     throw new TransientError(`USPS's inbox answered HTTP ${response.status}.`);
   }
-  return asObject(parseJsonBody(response.body));
+  const payload = parseJsonBody(response.body);
+  if (!isObject(payload)) {
+    throw new UnexpectedResponseError("USPS's inbox did not answer with a JSON object.");
+  }
+  return payload;
+}
+
+/** A package list of the inbox. Missing means none; anything but a list is a changed answer. */
+function packageList(inbox: Json, key: string): Json[] {
+  const value = inbox[key];
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new UnexpectedResponseError(`USPS's inbox sent "${key}" as something other than a list.`);
+  }
+  return objects(value);
 }
 
 /** The request date is US Eastern, whatever the address's own zone. */
@@ -238,15 +260,20 @@ export async function fetchInformed(
         throw new SignInRejectedError("USPS refused a freshly renewed session.");
       }
     }
-    const lists = [objects(inbox["inboundPackages"]), objects(inbox["addedPackages"])];
+    if (inbox === "no-content") {
+      complete = false;
+      continue;
+    }
+    const lists = [packageList(inbox, "inboundPackages"), packageList(inbox, "addedPackages")];
     complete &&= lists.every((records) => records.length < LIST_LIMIT);
-    const parcels = lists.flat().map((record) =>
-      informedSnapshot(record, zone, (category) => {
+    for (const record of lists.flat()) {
+      const parcel = informedSnapshot(record, zone, (category) => {
         deps.reportUnknown("informed_status", category);
-      }),
-    );
-    for (const parcel of parcels) {
-      if (parcel !== null && !snapshots.some((known) => known.barcode === parcel.barcode)) {
+      });
+      if (parcel === null) {
+        // A package without a tracking number is left out, so the list is not everything.
+        complete = false;
+      } else if (!snapshots.some((known) => known.barcode === parcel.barcode)) {
         snapshots.push(parcel);
       }
     }

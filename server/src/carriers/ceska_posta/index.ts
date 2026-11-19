@@ -151,7 +151,8 @@ type Secret = z.infer<typeof secretSchema>;
 
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
   const report = unknownReporter(context, "status_code", { once: false });
-  const codes = barcodes.filter((code) => PLAUSIBLE.test(code));
+  // A code listed twice is asked for once.
+  const codes = [...new Set(barcodes)].filter((code) => PLAUSIBLE.test(code));
   const snapshots: ParcelSnapshot[] = [];
   for (let start = 0; start < codes.length; start += BATCH_SIZE) {
     const batch = codes.slice(start, start + BATCH_SIZE);

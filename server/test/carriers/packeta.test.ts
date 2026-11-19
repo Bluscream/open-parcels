@@ -79,6 +79,21 @@ describe("Packeta public tracking", () => {
     expect((await plugin.track(base, {}, null, [CODE, CODE])).snapshots).toEqual([]);
   });
 
+  it("fails on an error that does not say not found, instead of dropping the code", async () => {
+    const { fetchImpl } = scripted([ok(JSON.stringify({ error: "internalError" }))]);
+    const { base } = fakeContext(packeta.http, fetchImpl);
+    await expect(plugin.track(base, {}, null, [CODE])).rejects.toThrow(/error/u);
+  });
+
+  it("files the answer under the tracked code, keeping Packeta's spelling as a reference", async () => {
+    const echoed = JSON.parse(item("2", HISTORY)) as { item: Record<string, unknown> };
+    echoed.item["barcode"] = "Z 000 000 0001";
+    const { fetchImpl } = scripted([ok(JSON.stringify(echoed))]);
+    const { base } = fakeContext(packeta.http, fetchImpl);
+    const [parcel] = (await plugin.track(base, {}, null, [CODE])).snapshots;
+    expect(parcel).toMatchObject({ barcode: CODE, externalRef: "Z 000 000 0001" });
+  });
+
   it("reports unknown status ids and event texts", async () => {
     const odd = [{ text: "Something new happened.", time: "2026-07-01 10:00:00" }];
     const { fetchImpl } = scripted([ok(item("4242", odd))]);

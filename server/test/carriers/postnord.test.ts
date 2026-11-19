@@ -96,6 +96,14 @@ describe("PostNord tracking", () => {
     expect(world.calls).toHaveLength(1);
   });
 
+  it("files an item id's shipment under the item id, keeping the shipment id as reference", async () => {
+    const world = new World(postnord, [
+      onPrefix(API, shipment("EN_ROUTE", [], { shipmentId: OTHER })),
+    ]);
+    const [parcel] = (await world.track([CODE])).snapshots;
+    expect(parcel).toMatchObject({ barcode: CODE, externalRef: OTHER });
+  });
+
   it("reports an unknown shipment status", async () => {
     const world = new World(postnord, [onPrefix(API, shipment("TELEPORTED", []))]);
     const [parcel] = (await world.track([CODE])).snapshots;

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { bpost } from "../../src/carriers/bpost/index.js";
 import { carrierKey } from "../../src/plugin/rules.js";
-import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
+import {
+  SignInRejectedError,
+  TransientError,
+  UnexpectedResponseError,
+} from "../../src/plugin/errors.js";
 import { json, madeUp, on, World } from "./harness.js";
 
 // Made-up item codes, accounts and tokens only.
@@ -69,6 +73,19 @@ describe("My bpost account", () => {
       on(`${API}/users/login`, json({ code: "BAD_CREDENTIALS" }, 401)),
     ]);
     await expect(wrong.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
+  });
+
+  it("stops on a list without items, and an inbox of code-less entries is not complete", async () => {
+    const missing = new World(bpost, [
+      on(`${API}/users/login`, json(tokens("a1"))),
+      on(`${API}/parcel/getparcelslist`, json({ response: {} })),
+    ]);
+    await expect(missing.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(UnexpectedResponseError);
+    const codeless = new World(bpost, [
+      on(`${API}/users/login`, json(tokens("a1"))),
+      on(`${API}/parcel/getparcelslist`, json({ response: { items: [{ Status: "x" }] } })),
+    ]);
+    expect(await codeless.fetchAccount({}, SECRET)).toEqual({ snapshots: [], complete: false });
   });
 
   it("renews at most once per run, however many calls are refused", async () => {

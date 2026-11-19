@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   carrierPattern,
   asObject,
+  asTracked,
   defineCarrier,
   RateLimitedError,
   SignInRejectedError,
@@ -113,12 +114,14 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
         timeline.length > 0
           ? await wordingTable(session, context.clock.now().getTime(), context.logger)
           : new Map<string, string>();
-      snapshots.push(shipmentSnapshot(raw, timeline, texts, report));
+      // Filed under the code tracked; Swiss Post's shipment number may be missing or spelled
+      // differently, and is kept as the reference.
+      snapshots.push(asTracked(shipmentSnapshot(raw, timeline, texts, report), barcode));
     }
   } finally {
     await session.save(context.session);
   }
-  return { snapshots, complete: true };
+  return { snapshots, complete: false };
 }
 
 /** Test hook: forget the cached wording table. */

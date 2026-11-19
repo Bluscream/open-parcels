@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   carrierPattern,
   asArray,
+  asTracked,
   carrierKey,
   defineCarrier,
   isObject,
@@ -61,9 +62,11 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     if (!isObject(first)) {
       throw new UnexpectedResponseError("PostNord listed something that is not a shipment.");
     }
-    snapshots.push(shipmentSnapshot(first, barcode, report));
+    // An item id or SSCC answers with its shipment: filed under the code tracked, the shipment id
+    // kept as the reference, so the tracked code never reads as not found.
+    snapshots.push(asTracked(shipmentSnapshot(first, barcode, report), barcode));
   }
-  return { snapshots, complete: true };
+  return { snapshots, complete: false };
 }
 
 /** PostNord (Denmark, Sweden, Norway, Finland): the public recipient view and the receiver app account. */
