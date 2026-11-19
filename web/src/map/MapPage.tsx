@@ -20,6 +20,7 @@ import {
   iconVan,
 } from "./mapIcons";
 import { pinFor, type Pin } from "./pins";
+import { PopupMeta } from "./PopupMeta";
 import { SharedMap } from "./SharedMap";
 
 function PinMarker({ pin }: { readonly pin: Pin }): ReactNode {
@@ -51,7 +52,7 @@ function PinMarker({ pin }: { readonly pin: Pin }): ReactNode {
                 ? `, ${pin.parcel.live.stops_away} stops away`
                 : null}
             </span>
-            <span className="muted">{formatRelative(pin.at)}</span>
+            <PopupMeta when={formatRelative(pin.at)} point={pin.point} />
           </div>
         </Popup>
       </Marker>

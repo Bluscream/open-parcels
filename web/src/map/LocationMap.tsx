@@ -15,6 +15,7 @@ import {
   iconVan,
   type LatLng,
 } from "./mapIcons";
+import { PopupMeta } from "./PopupMeta";
 import { SharedMap } from "./SharedMap";
 
 interface Stop {
@@ -101,7 +102,7 @@ export default function LocationMap({ parcel }: { readonly parcel: ParcelDetail 
               <Popup>
                 <div className="popup-content">
                   <strong>{stop.label}</strong>
-                  <span className="muted">{formatDateTime(stop.at)}</span>
+                  <PopupMeta when={formatDateTime(stop.at)} point={stop.point} />
                 </div>
               </Popup>
             </Marker>
@@ -112,7 +113,7 @@ export default function LocationMap({ parcel }: { readonly parcel: ParcelDetail 
             <Popup>
               <div className="popup-content">
                 <strong>Courier</strong>
-                <span className="muted">{formatDateTime(live?.position_at)}</span>
+                <PopupMeta when={formatDateTime(live?.position_at)} point={courier} />
               </div>
             </Popup>
           </Marker>
