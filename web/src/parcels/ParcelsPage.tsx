@@ -3,11 +3,21 @@ import { useState, type ReactNode } from "react";
 import { useParcels } from "../api/queries";
 import { ErrorNotice, Spinner } from "../components/ui";
 import { AddParcelDialog } from "./AddParcelDialog";
-import { ParcelTable, type ParcelFilter } from "./ParcelTable";
+import { flag, pickOne, useUrlParam } from "../lib/urlState";
+import { PARCEL_FILTERS, ParcelTable, type ParcelFilter } from "./ParcelTable";
 
+/** Linkable: `?status=active|delivered|all`, `?archived=1`, `?carrier=dhl`, `?q=…`, `?sort=-updated_at`. */
 export function ParcelsPage(): ReactNode {
-  const [archived, setArchived] = useState(false);
-  const [filter, setFilter] = useState<ParcelFilter>("active");
+  const [archivedParam, setArchivedParam] = useUrlParam("archived");
+  const [statusParam, setStatusParam] = useUrlParam("status");
+  const archived = flag(archivedParam);
+  const filter = pickOne(statusParam, PARCEL_FILTERS, "active");
+  const setArchived = (value: boolean): void => {
+    setArchivedParam(value ? "1" : null);
+  };
+  const setFilter = (value: ParcelFilter): void => {
+    setStatusParam(value === "active" ? null : value);
+  };
   const [adding, setAdding] = useState(false);
   const parcels = useParcels(archived);
 

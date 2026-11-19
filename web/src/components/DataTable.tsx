@@ -6,9 +6,11 @@ import {
   useReactTable,
   type ColumnDef,
   type SortingState,
+  type Updater,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronsUpDown, ChevronUp, Search } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
+import { useMaybeUrlParam } from "../lib/urlState";
 
 export interface DataTableProps<TData> {
   /** Column definitions; build them with `createColumnHelper<TData>()`. */
@@ -21,7 +23,29 @@ export interface DataTableProps<TData> {
   /** Controls placed beside the search box, such as filters. */
   readonly extraControls?: ReactNode;
   readonly defaultSort?: SortingState;
+  /** Keep search and sorting in the address under these keys (`?q=…&sort=-column`). */
+  readonly urlKeys?: { readonly search: string; readonly sort: string };
   readonly rowClassName?: (row: TData) => string | undefined;
+}
+
+/** `-updated_at,label` → updated_at descending, then label ascending; unknown columns are dropped. */
+function parseSort(raw: string | null, ids: ReadonlySet<string | undefined>): SortingState | null {
+  if (raw === null) return null;
+  if (raw === "none") return [];
+  const sorting = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "")
+    .map((part) => ({ id: part.replace(/^-/, ""), desc: part.startsWith("-") }))
+    .filter((entry) => ids.has(entry.id));
+  return sorting.length === 0 ? null : sorting;
+}
+
+/** Empty sorting is written as "none" so it stays empty instead of falling back to the default. */
+function formatSort(sorting: SortingState): string {
+  return sorting.length === 0
+    ? "none"
+    : sorting.map((entry) => `${entry.desc ? "-" : ""}${entry.id}`).join(",");
 }
 
 function SortIcon({ sorted }: { readonly sorted: false | "asc" | "desc" }): ReactNode {
@@ -34,8 +58,18 @@ function SortIcon({ sorted }: { readonly sorted: false | "asc" | "desc" }): Reac
 
 /** A sortable, searchable table built on TanStack Table. Headers are buttons, so sorting works by keyboard. */
 export function DataTable<TData>(props: DataTableProps<TData>): ReactNode {
-  const [sorting, setSorting] = useState<SortingState>(props.defaultSort ?? []);
-  const [filter, setFilter] = useState("");
+  const [sortParam, setSortParam] = useMaybeUrlParam(props.urlKeys?.sort);
+  const [searchParam, setSearchParam] = useMaybeUrlParam(props.urlKeys?.search);
+  const ids = new Set(props.columns.map((column) => column.id));
+  const sorting = parseSort(sortParam, ids) ?? props.defaultSort ?? [];
+  const filter = searchParam ?? "";
+  const setSorting = (updater: Updater<SortingState>): void => {
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    setSortParam(formatSort(next));
+  };
+  const setFilter = (updater: Updater<string>): void => {
+    setSearchParam(typeof updater === "function" ? updater(filter) : updater);
+  };
   const searchId = useId();
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table returns fresh functions on purpose.
   const table = useReactTable({

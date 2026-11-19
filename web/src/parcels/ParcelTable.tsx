@@ -1,14 +1,16 @@
 import { apiUrl } from "../api/fetcher";
 import { Link } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { useUrlParam } from "../lib/urlState";
 import type { Parcel } from "../api/types";
 import { CarrierLogo } from "../components/CarrierLogo";
 import { DataTable } from "../components/DataTable";
 import { formatRelative, formatWindow } from "../lib/format";
 import { ArchivedBadge, LookupBadge, StatusBadge } from "./badges";
 
-export type ParcelFilter = "active" | "delivered" | "all";
+export const PARCEL_FILTERS = ["active", "delivered", "all"] as const;
+export type ParcelFilter = (typeof PARCEL_FILTERS)[number];
 
 const column = createColumnHelper<Parcel>();
 
@@ -96,7 +98,11 @@ export function ParcelTable(props: {
   readonly onFilterChange: (filter: ParcelFilter) => void;
 }): ReactNode {
   const { filter, onFilterChange: setFilter } = props;
-  const [carrier, setCarrier] = useState("");
+  const [carrierParam, setCarrierParam] = useUrlParam("carrier");
+  const carrier = carrierParam?.toLowerCase() ?? "";
+  const setCarrier = (value: string): void => {
+    setCarrierParam(value === "" ? null : value);
+  };
   const carriers = useMemo(
     () => [...new Set(props.parcels.map((parcel) => parcel.carrier))].sort(),
     [props.parcels],
@@ -155,6 +161,7 @@ export function ParcelTable(props: {
       searchLabel="Search parcels"
       extraControls={controls}
       defaultSort={[{ id: "updated_at", desc: true }]}
+      urlKeys={{ search: "q", sort: "sort" }}
       emptyText={filter === "active" ? "No parcels on the way." : "No parcels."}
       rowClassName={(parcel) => (parcel.lookup.state === "not_found" ? "row-warning" : undefined)}
     />

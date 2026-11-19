@@ -9,6 +9,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { useCalendar, useCarriers } from "../api/queries";
 import { ErrorNotice } from "../components/ui";
+import { pickOne, useUrlParam } from "../lib/urlState";
 import { UI_HOUR12, UI_LOCALE } from "../lib/locale";
 import { toCalendarEvent } from "./events";
 
@@ -27,7 +28,36 @@ function initialRange(): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+/** Short names for the address (`?view=week`) and FullCalendar's view ids. */
+const VIEWS = {
+  month: "dayGridMonth",
+  week: "timeGridWeek",
+  day: "timeGridDay",
+  list: "listWeek",
+  year: "multiMonthYear",
+} as const;
+type ViewName = keyof typeof VIEWS;
+const VIEW_NAMES = Object.keys(VIEWS) as ViewName[];
+
+function viewName(fullCalendarId: string): ViewName {
+  return VIEW_NAMES.find((name) => VIEWS[name] === fullCalendarId) ?? "month";
+}
+
+/** A local calendar day as YYYY-MM-DD. */
+function dayString(date: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Linkable: `?view=month|week|day|list|year` and `?date=YYYY-MM-DD` (a day in the shown range). */
 export default function CalendarPage(): ReactNode {
+  const [viewParam, setViewParam] = useUrlParam("view");
+  const [dateParam, setDateParam] = useUrlParam("date");
+  // Read once: FullCalendar takes them only when it mounts; afterwards it reports back.
+  const [initial] = useState(() => ({
+    view: VIEWS[pickOne(viewParam, VIEW_NAMES, "month")],
+    date: dateParam !== null && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined,
+  }));
   const [range, setRange] = useState(initialRange);
   const calendar = useCalendar(range.from, range.to);
   const carriers = useCarriers();
@@ -49,6 +79,14 @@ export default function CalendarPage(): ReactNode {
     if (next.from !== range.from || next.to !== range.to) {
       setRange(next);
     }
+    const name = viewName(arg.view.type);
+    const shownDay = dayString(arg.view.currentStart);
+    const today = new Date();
+    const containsToday = today >= arg.view.currentStart && today < arg.view.currentEnd;
+    const wantedView = name === "month" ? null : name;
+    const wantedDate = containsToday ? null : shownDay;
+    if (wantedView !== viewParam) setViewParam(wantedView);
+    if (wantedDate !== dateParam) setDateParam(wantedDate);
   };
 
   const onClick = (arg: EventClickArg): void => {
@@ -67,7 +105,8 @@ export default function CalendarPage(): ReactNode {
       <div className="card calendar">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, multiMonthPlugin]}
-          initialView="dayGridMonth"
+          initialView={initial.view}
+          {...(initial.date === undefined ? {} : { initialDate: initial.date })}
           headerToolbar={{
             left: "prev,next today",
             center: "title",

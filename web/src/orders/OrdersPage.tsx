@@ -1,7 +1,8 @@
 /** Orders from shop sources and mails, sorted into open, delivered and archived. */
 import { Link } from "@tanstack/react-router";
 import { ShoppingBag } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { pickOne, useUrlParam } from "../lib/urlState";
 import { useOrders } from "../api/queries";
 import type { Order, OrderView } from "../api/types";
 import { ErrorNotice, Spinner } from "../components/ui";
@@ -48,8 +49,15 @@ const EMPTY: Readonly<Record<OrderView, string>> = {
   all: "No orders yet.",
 };
 
+const VIEWS: readonly OrderView[] = ["open", "delivered", "archived", "all"];
+
+/** Linkable: `?view=open|delivered|archived|all`. */
 export function OrdersPage(): ReactNode {
-  const [view, setView] = useState<OrderView>("open");
+  const [viewParam, setViewParam] = useUrlParam("view");
+  const view = pickOne(viewParam, VIEWS, "open");
+  const setView = (next: OrderView): void => {
+    setViewParam(next === "open" ? null : next);
+  };
   const orders = useOrders(view);
   const tab = ORDER_VIEW_TABS.find((entry) => entry.view === view);
 
