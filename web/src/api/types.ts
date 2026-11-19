@@ -2,6 +2,8 @@
 import type {
   GetApiV1Calendar200Item,
   GetApiV1Carriers200Item,
+  GetApiV1Orders200Item,
+  GetApiV1OrdersView,
   GetApiV1Parcels200Item,
   GetApiV1ParcelsId200,
   GetApiV1Session200,
@@ -25,6 +27,9 @@ export type SignInStepResult = Extract<SignInResult, { status: "step" }>;
 export type SignInStep = SignInStepResult["step"];
 export type ApiToken = GetApiV1Tokens200Item;
 export type CalendarEntry = GetApiV1Calendar200Item;
+export type Order = GetApiV1Orders200Item;
+export type OrderStatus = Order["status"];
+export type OrderView = GetApiV1OrdersView;
 
 export const PARCEL_STATUSES: readonly ParcelStatus[] = [
   "registered",
