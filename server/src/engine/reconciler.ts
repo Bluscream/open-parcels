@@ -226,7 +226,10 @@ export class Reconciler {
         summary[outcome.created ? "created" : "updated"] += 1;
         summary.events += outcome.events;
       }
-      if (result.complete) {
+      // A tracking source only answers for the codes it was asked about. Whether such a code is
+      // gone is the not-found lookup state's call (archived after 30 days, ADR §2.5), never
+      // `parcel.removed`, whatever the plug-in says about completeness.
+      if (result.complete && source.kind !== "tracking") {
         await this.#markMissing(trx, sourceId, seen);
       }
       summary.found = await this.#recordLookup(trx, asked, seen);
@@ -805,6 +808,8 @@ export class Reconciler {
                   inner("parcel_sources.missing_since", "is", null),
                   inner("parcel_sources.missing_since", ">", cutoff),
                   inner("sources.state", "!=", "ok"),
+                  // A tracking link never judges a removal, even one marked by an older version.
+                  inner("sources.kind", "=", "tracking"),
                 ]),
               ),
           ),

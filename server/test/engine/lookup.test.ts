@@ -103,6 +103,102 @@ describe("carrier lookups", () => {
   });
 });
 
+describe("tracking sources never remove parcels", () => {
+  it("keeps a code the carrier does not know yet, even when the plug-in claims completeness", async () => {
+    post.complete = true;
+    const id = await track("FP4001");
+    await context.services.scheduler.runDue();
+    for (let pass = 0; pass < 3; pass += 1) {
+      context.clock.advance(7 * 60 * 60 * 1000);
+      const [source] = await context.services.sources.list();
+      await context.services.sources.requestRun(source?.id ?? "");
+      await context.services.scheduler.runDue();
+    }
+    const parcel = await context.services.parcels.repository.get(id);
+    expect(parcel?.lookup.state).toBe("not_found");
+    const removed = await context.services.db
+      .selectFrom("parcels")
+      .select("removed_at")
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    expect(removed.removed_at).toBeNull();
+    const links = await context.services.db
+      .selectFrom("parcel_sources")
+      .select("missing_since")
+      .execute();
+    expect(links.map((link) => link.missing_since)).toEqual([null]);
+    const types = await context.services.db.selectFrom("outbox").select("type").execute();
+    expect(types.map((row) => row.type)).not.toContain("parcel.removed");
+  });
+
+  it("revives at startup a parcel removed only through a tracking lookup", async () => {
+    const trackedOnly = await track("FP4002");
+    const withAccount = await track("FP4003");
+    const tracking = await context.services.db
+      .selectFrom("sources")
+      .select("id")
+      .where("kind", "=", "tracking")
+      .executeTakeFirstOrThrow();
+    const account = await context.services.sources.create({
+      plugin: "fakepost",
+      kind: "account",
+      label: "account",
+      config: {},
+      secret: { username: "user@example.invalid", password: ["p", "q"].join("-") },
+    });
+    const marked = "2026-11-10T00:00:00.000Z";
+    await context.services.db
+      .insertInto("parcel_sources")
+      .values({
+        parcel_id: withAccount,
+        source_id: account.id,
+        external_ref: null,
+        role: "primary",
+        last_seen_at: marked,
+        missing_since: marked,
+      })
+      .execute();
+    // As an older version left them: marked missing on every link, then removed.
+    await context.services.db
+      .updateTable("parcel_sources")
+      .set({ missing_since: marked })
+      .execute();
+    await context.services.db
+      .updateTable("parcels")
+      .set({ removed_at: "2026-11-10T06:00:00.000Z" })
+      .execute();
+
+    const restart = async () =>
+      createServices({
+        config: context.services.config,
+        db: context.services.db,
+        logger: context.services.logger,
+        clock: context.clock,
+        secrets: context.services.secrets,
+        plugins: [fakePost(post)],
+      });
+    await restart();
+    await restart();
+
+    const rows = await context.services.db
+      .selectFrom("parcels")
+      .select(["id", "removed_at"])
+      .orderBy("barcode")
+      .execute();
+    expect(rows).toEqual([
+      { id: trackedOnly, removed_at: null },
+      // An account listing took part in removing this one, so it stays removed.
+      { id: withAccount, removed_at: "2026-11-10T06:00:00.000Z" },
+    ]);
+    const trackingLinks = await context.services.db
+      .selectFrom("parcel_sources")
+      .select("missing_since")
+      .where("source_id", "=", tracking.id)
+      .execute();
+    expect(trackingLinks.map((link) => link.missing_since)).toEqual([null, null]);
+  });
+});
+
 describe("startup repair", () => {
   it("links active parcels without a tracking source to their carrier, once", async () => {
     const now = context.clock.now().toISOString();

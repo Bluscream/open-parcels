@@ -73,7 +73,7 @@ export async function trackEach(
   barcodes: readonly string[],
   options: RegExp | TrackOptions,
   lookUp: (code: string, tracked: string) => Promise<ParcelSnapshot | null>,
-): Promise<FetchResult & { readonly complete: true }> {
+): Promise<FetchResult> {
   const settings: TrackOptions =
     options instanceof RegExp ? { plausible: options, normalize: asGiven, dedupe: false } : options;
   const normalize = settings.normalize ?? defaultNormalize;
@@ -90,7 +90,9 @@ export async function trackEach(
       snapshots.push(found);
     }
   }
-  return { snapshots, complete: true };
+  // A lookup answers only for the codes asked; whether a missing one is gone is the not-found
+  // lookup state's call (archived after 30 days), never the removal grace period's.
+  return { snapshots, complete: false };
 }
 
 /**

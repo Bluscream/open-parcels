@@ -89,7 +89,7 @@ describe("inpost tracking", () => {
     });
     const { base } = context(fetchImpl);
     const result = await plugin.track(base, {}, null, [MISSING, ACTIVE]);
-    expect(result).toEqual({ snapshots: [], complete: true });
+    expect(result).toEqual({ snapshots: [], complete: false });
   });
 
   it("treats a body reporting 500 as an outage, not a parcel", async () => {

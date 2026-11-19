@@ -19,6 +19,7 @@ import { Scheduler } from "./engine/scheduler.js";
 import { repairOrderShops } from "./engine/order-repair.js";
 import { mergeDuplicateTrackingSources } from "./engine/source-dedup.js";
 import { SourceService } from "./engine/sources.js";
+import { reviveTrackingRemovals } from "./engine/tracking-removal-repair.js";
 import { EventBus } from "./events/bus.js";
 import { ImageProxy } from "./images/proxy.js";
 import { loadRules } from "open-parcels-rules";
@@ -161,6 +162,10 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   const repairedOrders = await repairOrderShops(db, clock);
   if (repairedOrders > 0) {
     logger.info({ repaired: repairedOrders }, "Moved orders filed under the wrong shop.");
+  }
+  const revived = await reviveTrackingRemovals(db, clock);
+  if (revived > 0) {
+    logger.info({ revived }, "Revived parcels removed only because a lookup did not find them.");
   }
   if (await followUntracked(sources, registry, logger)) {
     logger.info("Linked parcels without a tracking source to their carrier.");

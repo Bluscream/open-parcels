@@ -32,7 +32,7 @@ describe("4PX tracking", () => {
     const w = new World(fourPx);
     w.routes = [on(ROUTE, json(found("FPX_D_SD")))];
     const result = await w.track([CODE]);
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
     const [parcel] = result.snapshots;
     expect(parcel).toMatchObject({
       carrier: "4px",
@@ -67,7 +67,7 @@ describe("4PX tracking", () => {
     const w = new World(fourPx);
     w.routes = [on(ROUTE, json({ result: 1, data: [{ serverCode: null, tracks: null }] }))];
     const result = await w.track([CODE]);
-    expect(result).toEqual({ snapshots: [], complete: true });
+    expect(result).toEqual({ snapshots: [], complete: false });
   });
 
   it("reports an unmapped event code and keeps the status unknown", async () => {
