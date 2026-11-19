@@ -2,7 +2,6 @@ import { MapPin } from "lucide-react";
 import type { ReactNode } from "react";
 import { Marker, Popup } from "react-leaflet";
 import type { ParcelDetail } from "../api/types";
-import { distanceKm, formatDistance } from "../lib/geo";
 import { formatDateTime } from "../lib/format";
 import { useHome } from "../settings/home";
 import { AnimatedRoute } from "./AnimatedRoute";
@@ -85,7 +84,6 @@ export default function LocationMap({ parcel }: { readonly parcel: ParcelDetail 
     );
   }
 
-  const away = homePoint === null || parcel.delivered ? null : distanceKm(current, homePoint);
   const transport =
     courier === null ? getTransportMarkerIcon(determineTransportMethod(parcel.history)) : iconVan;
 
@@ -137,11 +135,6 @@ export default function LocationMap({ parcel }: { readonly parcel: ParcelDetail 
           </Marker>
         )}
       </SharedMap>
-      {away === null ? null : (
-        <p className="route-distance" role="status">
-          {formatDistance(away)} away{courier === null ? " (from the last scan)" : ""}
-        </p>
-      )}
     </div>
   );
 }

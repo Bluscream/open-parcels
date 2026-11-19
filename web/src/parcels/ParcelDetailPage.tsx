@@ -15,6 +15,9 @@ import {
   STATUS_LABELS,
 } from "../lib/format";
 import { ArchivedBadge, LookupBadge } from "./badges";
+import { formatDistance } from "../lib/geo";
+import { useHome } from "../settings/home";
+import { kmToHome } from "./distance";
 import { EditableStatus, EditableTitle, ParcelActions, useCanEdit } from "./InlineEdit";
 
 const LocationMap = lazy(() => import("../map/LocationMap"));
@@ -62,12 +65,21 @@ function Facts({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
 }
 
 function EtaCard({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
+  const { home } = useHome();
   const done = parcel.delivered;
+  const km = kmToHome(parcel, home?.point ?? null);
+  const away = km === null ? null : `${formatDistance(km)} away`;
+  const planned = parcel.planned_from !== null || parcel.planned_to !== null;
   const when = done
     ? `${formatDateTime(parcel.delivered_at)} (${formatRelative(parcel.delivered_at)})`
-    : parcel.planned_from === null && parcel.planned_to === null
-      ? "Pending information"
-      : `${formatWindow(parcel.planned_from, parcel.planned_to)} (${formatRelative(parcel.planned_from ?? parcel.planned_to)})`;
+    : planned
+      ? `${formatWindow(parcel.planned_from, parcel.planned_to)} (${[
+          formatRelative(parcel.planned_from ?? parcel.planned_to),
+          ...(away === null ? [] : [away]),
+        ].join("; ")})`
+      : away === null
+        ? "Pending information"
+        : `Pending information (${away})`;
   return (
     <div className={done ? "eta-card done" : "eta-card"}>
       {done ? (
