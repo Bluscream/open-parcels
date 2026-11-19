@@ -1,5 +1,6 @@
 import {
   asObject,
+  carrierKey,
   isObject,
   mayHaveMorePages,
   readObject,
@@ -10,7 +11,7 @@ import {
   type PluginContext,
 } from "../../plugin/api.js";
 import type { InPostSession } from "./session.js";
-import { INBOX_HOST, text, type Market } from "./shared.js";
+import { CARRIER_ID, INBOX_HOST, text, type Market } from "./shared.js";
 
 type Http = PluginContext<unknown, unknown>["http"];
 
@@ -20,10 +21,13 @@ export const IT_INBOX_URL = `https://${INBOX_HOST}/global/cps/api/v1/parcels`;
 export const IT_MAX_PAGES = 10;
 
 /** The inbox expects the client to state its API version. */
-const INBOX_HEADERS = { accept: "application/json", "x-api-version": "1" };
+const inboxHeaders = () => ({
+  accept: "application/json",
+  "x-api-version": carrierKey(CARRIER_ID, "inbox_api_version"),
+});
 
 async function get(http: Http, url: URL, token: string) {
-  return http.request(url, { headers: { ...INBOX_HEADERS, authorization: `Bearer ${token}` } });
+  return http.request(url, { headers: { ...inboxHeaders(), authorization: `Bearer ${token}` } });
 }
 
 /** One authenticated GET; a refused token is renewed once and the request repeated once. */

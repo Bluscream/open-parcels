@@ -21,8 +21,9 @@ import {
 import { API_BASE, appHeaders, CARRIER_ID, PORTAL, portalPhoneKey, readBody } from "./shared.js";
 
 export const B2C_HOST = "mycargus.b2clogin.com";
-const POLICY = "B2C_1A_ACCOUNTLINK_SUSI_WEB";
-const B2C = `https://${B2C_HOST}/myCargus.onmicrosoft.com/${POLICY}`;
+/** The web sign-in's B2C policy, from the shared rules. */
+const policy = (): string => carrierKey(CARRIER_ID, "b2c_policy");
+const b2c = (): string => `https://${B2C_HOST}/myCargus.onmicrosoft.com/${policy()}`;
 const REDIRECT_URI = `${PORTAL}/authentication/login-callback`;
 const REFRESH_MARGIN_MS = 300_000;
 /** The list types the portal walks; their meaning is not documented. */
@@ -85,7 +86,7 @@ export async function signIn(
   const state = b64url(randomBytes(24));
   const jar = new CookieJar();
   const browser = { "user-agent": browserAgent(), "accept-language": "ro-RO,ro;q=0.9,en;q=0.7" };
-  const authorize = new URL(`${B2C}/oauth2/v2.0/authorize`);
+  const authorize = new URL(`${b2c()}/oauth2/v2.0/authorize`);
   authorize.search = new URLSearchParams({
     client_id: carrierKey(CARRIER_ID, "client_id"),
     redirect_uri: REDIRECT_URI,
@@ -112,24 +113,27 @@ export async function signIn(
   if (page.status !== 200 || tx === null || csrf === null) {
     throw new UnexpectedResponseError("The MyCargus sign-in page has no form state.");
   }
-  const asserted = await http.request(new URL(`${B2C}/SelfAsserted?tx=${quoted(tx)}&p=${POLICY}`), {
-    method: "POST",
-    headers: {
-      ...browser,
-      accept: "application/json",
-      "x-requested-with": "XMLHttpRequest",
-      "x-csrf-token": csrf,
-      origin: `https://${B2C_HOST}`,
-      referer: page.url,
+  const asserted = await http.request(
+    new URL(`${b2c()}/SelfAsserted?tx=${quoted(tx)}&p=${policy()}`),
+    {
+      method: "POST",
+      headers: {
+        ...browser,
+        accept: "application/json",
+        "x-requested-with": "XMLHttpRequest",
+        "x-csrf-token": csrf,
+        origin: `https://${B2C_HOST}`,
+        referer: page.url,
+      },
+      body: new URLSearchParams({
+        request_type: "RESPONSE",
+        signInName: credentials.username,
+        password: credentials.password,
+      }),
+      jar,
+      redirect: "manual",
     },
-    body: new URLSearchParams({
-      request_type: "RESPONSE",
-      signInName: credentials.username,
-      password: credentials.password,
-    }),
-    jar,
-    redirect: "manual",
-  });
+  );
   const assertedStatus = text(asObject(parseJsonBody(asserted.body))["status"]);
   if ([400, 401, 403].includes(asserted.status) || (assertedStatus ?? "200") !== "200") {
     throw new SignInRejectedError("MyCargus rejected the e-mail address or password.");
@@ -139,7 +143,7 @@ export async function signIn(
   }
   const confirmed = await http.request(
     new URL(
-      `${B2C}/api/CombinedSigninAndSignup/confirmed?rememberMe=false&csrf_token=${encodeURIComponent(csrf)}&tx=${quoted(tx)}&p=${POLICY}`,
+      `${b2c()}/api/CombinedSigninAndSignup/confirmed?rememberMe=false&csrf_token=${encodeURIComponent(csrf)}&tx=${quoted(tx)}&p=${policy()}`,
     ),
     { headers: { ...browser, accept: "text/html", referer: page.url }, jar, redirect: "manual" },
   );
@@ -149,7 +153,7 @@ export async function signIn(
   if (code === null || back?.searchParams.get("state") !== state) {
     throw new UnexpectedResponseError("MyCargus asked for a sign-in step this service cannot do.");
   }
-  const token = await http.request(new URL(`${B2C}/oauth2/v2.0/token`), {
+  const token = await http.request(new URL(`${b2c()}/oauth2/v2.0/token`), {
     method: "POST",
     headers: { "user-agent": browserAgent(), accept: "application/json" },
     body: new URLSearchParams({
@@ -168,7 +172,7 @@ export async function signIn(
 }
 
 async function refresh(http: PluginHttp, tokens: Tokens, now: number): Promise<Tokens> {
-  const response = await http.request(new URL(`${B2C}/oauth2/v2.0/token`), {
+  const response = await http.request(new URL(`${b2c()}/oauth2/v2.0/token`), {
     method: "POST",
     headers: { "user-agent": browserAgent(), accept: "application/json" },
     body: new URLSearchParams({
@@ -273,7 +277,7 @@ export class CargusAccount {
     return {
       ...common,
       K: portalPhoneKey(this.phone),
-      Source: "1",
+      Source: carrierKey(CARRIER_ID, "source_header"),
       origin: PORTAL,
       referer: `${PORTAL}/`,
       "user-agent": browserAgent(),

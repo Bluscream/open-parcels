@@ -1,4 +1,5 @@
 import {
+  carrierKey,
   carrierPattern,
   asArray,
   asObject,
@@ -22,19 +23,19 @@ export const TRACKING_HOST = "www.canadapost-postescanada.ca";
 export const PLAUSIBLE = carrierPattern("canadapost");
 
 /** The route answers 406 to a plain JSON Accept and wants the page's own empty Basic header. */
-const DETAIL_HEADERS = {
-  authorization: "Basic Og==",
+const detailHeaders = () => ({
+  authorization: carrierKey(CARRIER_ID, "tracking_basic_auth"),
   referer: `https://${TRACKING_HOST}/track-reperage/en`,
   "x-requested-with": "XMLHttpRequest",
   accept: "application/vnd.cpc.trackweb-v1+json",
-};
+});
 
 /** One PIN's detail; null when Canada Post has no history for it (an `error` in the body). */
 export async function lookUp(http: PluginHttp, pin: string): Promise<Json | null> {
   const url = new URL(
     `https://${TRACKING_HOST}/track-reperage/rs/track/json/package/${encodeURIComponent(pin)}/detail`,
   );
-  const response = await http.request(url, { headers: DETAIL_HEADERS });
+  const response = await http.request(url, { headers: detailHeaders() });
   if (response.status !== 200 && response.status !== 206) {
     throw new TransientError(`Canada Post tracking answered HTTP ${response.status}.`);
   }

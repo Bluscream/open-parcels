@@ -72,8 +72,8 @@ class Account {
     const headers: Record<string, string> = {
       "x-api-key": carrierKey("bpost", "app_key"),
       "content-type": "application/json",
-      os: "android",
-      osVersion: "14",
+      os: carrierKey("bpost", "app_os"),
+      osVersion: carrierKey("bpost", "app_os_version"),
     };
     if (options.app) {
       headers["appVersion"] = carrierKey("bpost", "app_version");

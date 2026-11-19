@@ -8,6 +8,7 @@ import {
   isoTime,
   objects,
   parseJsonBody,
+  rulesStatus,
   rulesTrackingUrl,
   snapshot,
   text,
@@ -33,22 +34,16 @@ type Deps = Pick<PluginContext<unknown, unknown>, "http" | "session" | "clock" |
 type Status = NonNullable<ParcelSnapshot["status"]>;
 
 /**
- * Prefixes of the inbox's `statusCategory`, deliberately narrower than the Tracking API's list:
- * only categories seen in real inboxes. The `status` beside it carries a location suffix.
+ * The inbox's `statusCategory`, as `informed:<category>` prefixes in the shared USPS table:
+ * deliberately narrower than the Tracking API's texts, only categories seen in real inboxes.
  */
-const PREFIXES: readonly (readonly [string, Status])[] = [
-  ["delivered", "delivered"],
-  ["out for delivery", "out_for_delivery"],
-  ["preparing for delivery", "in_transit"],
-  ["on the way", "in_transit"],
-  ["accepted", "in_transit"],
-  // Still with the shipper's own partner; USPS has not scanned it yet.
-  ["usps awaiting item", "registered"],
-];
-
 function mapCategory(value: string | null): Status | null {
   const folded = value?.trim().toLowerCase() ?? "";
-  return PREFIXES.find(([prefix]) => folded.startsWith(prefix))?.[1] ?? null;
+  if (folded === "") {
+    return null;
+  }
+  const mapped = rulesStatus("usps", { code: `informed:${folded}` })?.status ?? null;
+  return mapped === "unknown" ? null : mapped;
 }
 
 const fingerprint = (value: string): string =>

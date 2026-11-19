@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  carrierKey,
   carrierPattern,
   asArray,
   asObject,
@@ -36,8 +37,8 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
     `https://${HOST}/canonico/eventos_envio_servicio/${encodeURIComponent(code)}`,
   );
   for (const [key, value] of Object.entries({
-    codAplicacion: "60",
-    codCanal: "3",
+    codAplicacion: carrierKey(CARRIER_ID, "application_code"),
+    codCanal: carrierKey(CARRIER_ID, "channel_code"),
     codIdioma: "ES",
     indUltEvento: "N",
   })) {

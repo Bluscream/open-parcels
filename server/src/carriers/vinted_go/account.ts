@@ -7,6 +7,7 @@ import {
   isObject,
   objects,
   readJson,
+  ruleStatus,
   snapshot,
   text,
   type FetchResult,
@@ -221,7 +222,8 @@ export async function fetchVintedAccount(
         ? snapshot({
             carrier: "vinted_go",
             barcode: code,
-            status: text(shipment["resolution"]) === "delivered" ? "delivered" : null,
+            // The finished shipment's resolution, in the shared table as `resolution:<value>`.
+            status: ruleStatus("vinted_go", `resolution:${text(shipment["resolution"]) ?? ""}`),
             rawStatus: text(shipment["shipment_state"]),
             url: `https://vintedgo.com/en/tracking/${encodeURIComponent(code)}`,
           })
