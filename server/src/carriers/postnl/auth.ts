@@ -136,6 +136,7 @@ type SessionDeps = Pick<PluginContext<unknown, unknown>, "http" | "clock" | "ses
 /** The access token of one account source. A rotated refresh token is saved before use. */
 export class PostnlSession {
   #stored: Stored;
+  #renewed = false;
 
   constructor(
     private readonly deps: SessionDeps,
@@ -158,8 +159,15 @@ export class PostnlSession {
     return this.renew();
   }
 
-  /** Refreshes now; used once when PostNL refuses an access token it issued. */
+  /**
+   * Refreshes now, at most once per run: a token renewed this run (for its age, or after a
+   * refusal) that PostNL refuses again means the sign-in itself is gone.
+   */
   async renew(): Promise<string> {
+    if (this.#renewed) {
+      throw new SignInRejectedError("PostNL refused a freshly renewed session.");
+    }
+    this.#renewed = true;
     const tokens = await postToken(this.deps.http, {
       grant_type: "refresh_token",
       refresh_token: this.#stored.refreshToken,

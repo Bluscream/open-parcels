@@ -4,6 +4,7 @@ import {
   asArray as asList,
   asObject,
   carrierKey,
+  isOAuthRefusal,
   isObject,
   num,
   parseJsonBody,
@@ -44,20 +45,26 @@ export interface AccountSecret {
 
 const clientId = (): string => carrierKey(CARRIER_ID, "receiver_app_client_id");
 
-/** Only an explicit 4xx refusal of a grant is a sign-in problem; a 5xx or network error is not. */
+/**
+ * Only an OAuth refusal of the grant (a 400 or 401 naming one) is a sign-in problem. A WAF's 403,
+ * a 404, a 5xx or a network error is not, and never asks the user to sign in again.
+ */
 async function postToken(http: PluginHttp, form: Record<string, string>) {
   const response = await http.request(new URL(`https://${ACCOUNT_HOST}/oauth2/token`), {
     method: "POST",
     headers: { accept: "application/json" },
     body: new URLSearchParams({ client_id: clientId(), ...form }),
   });
-  if (response.status >= 500 || response.status === 429) {
+  if (isOAuthRefusal(response)) {
+    throw new SignInRejectedError("PostNord refused the sign-in; sign in again.");
+  }
+  if (response.status !== 200) {
     throw new TransientError(`PostNord's token endpoint answered HTTP ${response.status}.`);
   }
   const body = asObject(parseJsonBody(response.body));
   const access = text(body["access_token"]);
-  if (response.status !== 200 || access === null) {
-    throw new SignInRejectedError("PostNord refused the sign-in; sign in again.");
+  if (access === null) {
+    throw new UnexpectedResponseError("PostNord's token answer has no access token.");
   }
   return {
     access,
@@ -176,15 +183,15 @@ async function readInbox(
     });
   const fresh =
     stored.accessToken !== null && context.clock.now().getTime() < stored.expiresAt - MARGIN_MS;
-  let response = await send(
-    fresh && stored.accessToken !== null ? stored.accessToken : await renew(),
-  );
-  if (response.status === 401 || response.status === 403) {
+  const current = stored.accessToken;
+  // At most one renewal per run: a token renewed for its age is not renewed again after a 401.
+  let response = await send(fresh && current !== null ? current : await renew());
+  if ((response.status === 401 || response.status === 403) && fresh) {
     response = await send(await renew());
-    if (response.status === 401 || response.status === 403) {
-      // A just-renewed token refused: the app's gateway key was rotated, not the user's sign-in.
-      throw new TransientError("PostNord's gateway refused the app key.");
-    }
+  }
+  if (response.status === 401 || response.status === 403) {
+    // A just-renewed token refused: the app's gateway key was rotated, not the user's sign-in.
+    throw new TransientError("PostNord's gateway refused the app key.");
   }
   if (response.status !== 200) {
     throw new TransientError(`PostNord's account answered HTTP ${response.status}.`);

@@ -138,13 +138,16 @@ export const acsCourier = defineCarrier<Config, null>({
       "*": { intervalMs: 10_000, burst: 1 },
     },
   },
-  track: (context: PluginContext<Config, null>, barcodes) =>
-    trackEach(barcodes, PLAUSIBLE, async (barcode) => {
-      const raw = await lookUp(context.http, context.session, barcode);
+  track: (context: PluginContext<Config, null>, barcodes) => {
+    // The lookup token is fetched from the page at most once per run, whatever the code count.
+    const run = { fetched: false };
+    return trackEach(barcodes, PLAUSIBLE, async (barcode) => {
+      const raw = await lookUp(context.http, context.session, barcode, run);
       return raw === null
         ? null
         : acsSnapshot(raw, barcode, (key) => {
             context.reportUnknown("status_code", key);
           });
-    }),
+    });
+  },
 });

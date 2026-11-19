@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { postnord } from "../../src/carriers/postnord/index.js";
 import { carrierKey } from "../../src/plugin/rules.js";
-import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
+import {
+  SignInRejectedError,
+  TransientError,
+  UnexpectedResponseError,
+} from "../../src/plugin/errors.js";
 import type { InteractiveSignIn } from "../../src/plugin/sign-in.js";
-import { json, madeUp, on, World } from "./harness.js";
+import { html, json, madeUp, on, World } from "./harness.js";
 
 // Made-up shipment ids and tokens only.
 const TOKEN = "POST account.postnord.com/oauth2/token";
@@ -49,17 +53,23 @@ describe("PostNord account", () => {
 
   it("treats a refused fresh token as the app key's problem and a missing bucket as a change", async () => {
     const world = new World(postnord, [
-      on(
-        TOKEN,
-        json({ access_token: "a1" }),
-        json({ access_token: "a2" }),
-        json({ access_token: "a3" }),
-      ),
-      on(INBOX, json({}, 403), json({}, 403), json({ activeShipments: [] })),
+      on(TOKEN, json({ access_token: "a1" }), json({ access_token: "a2" })),
+      on(INBOX, json({}, 403), json({ activeShipments: [] })),
     ]);
     await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(TransientError);
+    // A token renewed for its age is not renewed again in the same run.
+    expect(world.requests().filter((key) => key === TOKEN)).toHaveLength(1);
     world.stored = null;
     await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(UnexpectedResponseError);
+  });
+
+  it("never asks for a new sign-in on a WAF 403 or a 404 from the token endpoint", async () => {
+    for (const status of [403, 404]) {
+      const world = new World(postnord, [on(TOKEN, html("<html>blocked</html>", status))]);
+      await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(TransientError);
+    }
+    const refused = new World(postnord, [on(TOKEN, json({ error: "invalid_grant" }, 400))]);
+    await expect(refused.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
   });
 
   it("accepts the pasted app redirect with a Location label", async () => {

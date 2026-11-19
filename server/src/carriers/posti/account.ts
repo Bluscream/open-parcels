@@ -135,21 +135,26 @@ export async function fetchPostiAccount(
   toSnapshot: ToSnapshot,
 ): Promise<FetchResult> {
   let tokens = current(deps, secret);
-  if (expiresSoon(tokens.idToken, deps.clock.now().getTime())) {
+  // At most one renewal per run: tokens renewed for their age are not renewed again on refusal.
+  const renewedForAge = expiresSoon(tokens.idToken, deps.clock.now().getTime());
+  if (renewedForAge) {
     tokens = await renewed(deps, secret, tokens);
   }
   let hits = await allPages(deps, tokens);
-  if (hits === "refused") {
+  if (hits === "refused" && !renewedForAge) {
     tokens = await renewed(deps, secret, tokens);
     hits = await allPages(deps, tokens);
-    if (hits === "refused") {
-      throw new SignInRejectedError("Posti refused freshly renewed tokens.");
-    }
+  }
+  if (hits === "refused") {
+    throw new SignInRejectedError("Posti refused freshly renewed tokens.");
   }
   const snapshots: ParcelSnapshot[] = [];
+  let complete = true;
   for (const hit of hits) {
     const code = text(hit["displayId"]) ?? text(hit["shipmentId"]);
     if (code === null) {
+      // A shipment without a number is left out, so the list is not everything.
+      complete = false;
       continue;
     }
     const outgoing = hit["userRole"] === "SENDER";
@@ -163,5 +168,5 @@ export async function fetchPostiAccount(
       receiver: outgoing ? other : parcel.receiver,
     });
   }
-  return { snapshots, complete: true };
+  return { snapshots, complete };
 }

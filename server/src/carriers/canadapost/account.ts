@@ -52,6 +52,7 @@ function body(response: HttpResponse): unknown {
 
 export class CanadaPostAccount {
   #tokens: Tokens | null;
+  #renewed = false;
 
   constructor(
     private readonly http: PluginHttp,
@@ -136,8 +137,15 @@ export class CanadaPostAccount {
     return true;
   }
 
-  /** Makes sure there are fresh tokens: refresh first, then the password once. */
+  /**
+   * Makes sure there are fresh tokens: refresh first, then the password once. At most once per
+   * run, however many pages follow: a session renewed this run that is refused again is gone.
+   */
   async #renew(credentials: Credentials): Promise<void> {
+    if (this.#renewed) {
+      throw new SignInRejectedError("Canada Post refused the renewed session.");
+    }
+    this.#renewed = true;
     if (!(await this.#refresh())) {
       await this.signIn(credentials);
     }
@@ -186,6 +194,8 @@ export class CanadaPostAccount {
   /** Every live, own tracked item on the account. */
   async listItems(credentials: Credentials): Promise<Json[]> {
     if (this.#tokens === null) {
+      // Signed in just now: a refusal of these tokens is not renewed again this run.
+      this.#renewed = true;
       await this.signIn(credentials);
     } else if (
       this.#tokens.expiresAt !== null &&

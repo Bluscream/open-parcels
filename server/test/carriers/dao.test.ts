@@ -175,6 +175,16 @@ describe("DAO account", () => {
     expect(calls.filter((call) => call.key === TOKEN).length).toBeLessThanOrEqual(2);
   });
 
+  it("renews at most once per run, across every request of the run", async () => {
+    const { fetchImpl, calls } = fakeNetwork([
+      routeTable({ [TOKEN]: [tokens(1), tokens(2)], [LIST]: [json({}, 401)] }, "host"),
+    ]);
+    // No stored bearer: the first request renews, so a refusal of that one is not renewed again.
+    const { base } = fakeContext(dao.http, fetchImpl);
+    await expect(plugin.fetchAccount(base, {}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
+    expect(calls.filter((call) => call.key === TOKEN)).toHaveLength(1);
+  });
+
   it("signs in with PKCE and refuses an address from another sign-in", async () => {
     const clock = new FakeClock();
     const { url, state } = await pasted(plugin).start({}, clock);

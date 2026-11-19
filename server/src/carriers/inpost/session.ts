@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   carrierKey,
+  isOAuthRefusal,
   isObject,
   SignInRejectedError,
   TransientError,
@@ -88,8 +89,8 @@ interface Tokens {
 }
 
 /**
- * One token request. HTTP 400 or 401 is the sign-in refusing the code or refresh token;
- * anything else, network errors included, is transient and never leads to a new sign-in.
+ * One token request. Only a 400 or 401 naming an OAuth refusal is the sign-in refusing the code
+ * or refresh token; anything else, network errors included, never leads to a new sign-in.
  */
 async function postToken(http: Http, form: Record<string, string>): Promise<Tokens> {
   const response = await http.request(new URL(TOKEN_URL), {
@@ -97,8 +98,13 @@ async function postToken(http: Http, form: Record<string, string>): Promise<Toke
     headers: { accept: "application/json" },
     body: new URLSearchParams({ client_id: clientId(), ...form }),
   });
-  if (response.status === 400 || response.status === 401) {
+  if (isOAuthRefusal(response)) {
     throw new SignInRejectedError(`InPost refused the sign-in (HTTP ${response.status}).`);
+  }
+  if (response.status === 400 || response.status === 401) {
+    throw new UnexpectedResponseError(
+      `InPost's token endpoint answered HTTP ${response.status} without an OAuth error.`,
+    );
   }
   if (response.status !== 200) {
     throw new TransientError(`InPost's token endpoint answered HTTP ${response.status}.`);
@@ -166,6 +172,7 @@ type SessionDeps = Pick<PluginContext<unknown, unknown>, "http" | "session">;
 /** The access token of one account source; a rotated refresh token is saved before use. */
 export class InPostSession {
   #stored: Stored;
+  #renewed = false;
 
   constructor(
     private readonly deps: SessionDeps,
@@ -183,8 +190,15 @@ export class InPostSession {
     return this.#stored.accessToken ?? this.refresh();
   }
 
-  /** Renews the access token. Called once after InPost refused one; callers never loop on it. */
+  /**
+   * Renews the access token, at most once per run: a token renewed this run (for a missing one,
+   * or after a refusal) that InPost refuses again means the sign-in itself is gone.
+   */
   async refresh(): Promise<string> {
+    if (this.#renewed) {
+      throw new SignInRejectedError("InPost refused a freshly renewed session.");
+    }
+    this.#renewed = true;
     const tokens = await postToken(this.deps.http, {
       grant_type: "refresh_token",
       refresh_token: this.#stored.refreshToken,

@@ -56,24 +56,35 @@ async function ask(http: PluginHttp, barcode: string, token: string) {
   );
 }
 
+/** What one run has done with the lookup token: it is fetched from the page at most once. */
+export interface TokenRun {
+  fetched: boolean;
+}
+
 /**
- * Looks one code up. A refused token is replaced once from the public page; a second refusal
- * pauses lookups instead of hammering the page. Returns null when ACS does not know the code.
+ * Looks one code up. A refused token is replaced from the public page once per run; a token
+ * refused after that pauses lookups instead of hammering the page. Returns null when ACS does
+ * not know the code.
  */
 export async function lookUp(
   http: PluginHttp,
   session: SessionStore,
   barcode: string,
+  run: TokenRun = { fetched: false },
 ): Promise<Json | null> {
-  let token = storedToken(session) ?? (await freshToken(http));
+  const fetch = async (): Promise<string> => {
+    run.fetched = true;
+    return freshToken(http);
+  };
+  let token = storedToken(session) ?? (await fetch());
   let response = await ask(http, barcode, token);
-  if (response.status === 401 || response.status === 403) {
-    token = await freshToken(http);
+  if ((response.status === 401 || response.status === 403) && !run.fetched) {
+    token = await fetch();
     response = await ask(http, barcode, token);
-    if (response.status === 401 || response.status === 403) {
-      await session.save(null);
-      throw new RateLimitedError("ACS Courier refused the lookup twice.", REFUSED_PAUSE_SECONDS);
-    }
+  }
+  if (response.status === 401 || response.status === 403) {
+    await session.save(null);
+    throw new RateLimitedError("ACS Courier refused a fresh lookup token.", REFUSED_PAUSE_SECONDS);
   }
   await session.save({ token });
   const isJson = (response.headers.get("content-type") ?? "").toLowerCase().includes("json");

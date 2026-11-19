@@ -49,8 +49,20 @@ async function lookUp(http: PluginHttp, code: string): Promise<Json | null> {
   if (!isObject(envelope) || error["codError"] === undefined || error["codError"] === null) {
     throw new UnexpectedResponseError("Correos answered without a shipment envelope.");
   }
-  return text(error["codError"]) === "0" ? envelope : null;
+  const errorCode = text(error["codError"]);
+  if (errorCode === "0") {
+    return envelope;
+  }
+  // "No traceability" is the normal not-found; any other error is a failure, never a code that
+  // silently reads as not found.
+  if (errorCode !== null && NOT_FOUND_CODES.has(errorCode)) {
+    return null;
+  }
+  throw new UnexpectedResponseError("Correos answered with an error it does not explain.");
 }
+
+/** Correos's `codError` for a shipment it has no traceability for. */
+const NOT_FOUND_CODES: ReadonlySet<string> = new Set(["1"]);
 
 /** `fecEvento` (DD/MM/YYYY) and `horEvento` (HH:MM:SS), in Spanish local time. */
 function eventTime(event: Json): string | null {

@@ -138,21 +138,26 @@ async function search(
 
 const compact = (code: string): string => code.replace(/\s+/gu, "").toUpperCase();
 
-/** Looks codes up with one token pair, minting a new one once if Posti refuses it. */
+/**
+ * Looks codes up with one token pair, minting a new one at most once per run if Posti refuses
+ * it, however many codes the run has.
+ */
 export class PostiTracking {
   #tokens: Tokens | null = null;
+  #reminted = false;
 
   constructor(private readonly http: PluginHttp) {}
 
   async lookUp(code: string): Promise<Json | null> {
     this.#tokens ??= await mint(this.http);
     let result = await search(this.http, this.#tokens, code);
-    if (result === "expired") {
+    if (result === "expired" && !this.#reminted) {
+      this.#reminted = true;
       this.#tokens = await mint(this.http);
       result = await search(this.http, this.#tokens, code);
-      if (result === "expired") {
-        throw new TransientError("Posti refused a freshly minted anonymous token.");
-      }
+    }
+    if (result === "expired") {
+      throw new TransientError("Posti refused a freshly minted anonymous token.");
     }
     return result;
   }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { inpost } from "../../src/carriers/inpost/index.js";
 import { register } from "../../src/engine/registry.js";
@@ -131,16 +132,19 @@ function plParcel(status: string, statusGroup: string) {
 describe("inpost account", () => {
   it("lists the Polish inbox, renews the token once when refused, and saves the session", async () => {
     const { fetchImpl, calls } = fake({
-      [TOKEN]: [
-        { status: 200, body: { access_token: "at-1", refresh_token: "rt-2" } },
-        { status: 200, body: { access_token: "at-2" } },
-      ],
+      [TOKEN]: [{ status: 200, body: { access_token: "at-2", refresh_token: "rt-2" } }],
       [PL_INBOX]: [
         { status: 401, body: {} },
         { status: 200, body: { parcels: [plParcel("ready_to_pickup", "TO_PICKUP")] } },
       ],
     });
-    const { base, saved, unknown } = context(fetchImpl);
+    // The access token of an earlier run, which InPost has since refused.
+    const earlier = {
+      base: createHash("sha256").update(SECRET.refreshToken).digest("hex").slice(0, 16),
+      accessToken: "at-1",
+      refreshToken: SECRET.refreshToken,
+    };
+    const { base, saved, unknown } = context(fetchImpl, earlier);
     const result = await plugin.fetchAccount(base, {}, SECRET);
     expect(result.complete).toBe(true);
     const parcel = result.snapshots[0];

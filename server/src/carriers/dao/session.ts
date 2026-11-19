@@ -131,6 +131,7 @@ type Deps = Pick<PluginContext<unknown, unknown>, "http" | "clock" | "session">;
  */
 export class DaoSession {
   #stored: Stored;
+  #renewed = false;
 
   constructor(
     private readonly deps: Deps,
@@ -144,7 +145,12 @@ export class DaoSession {
         : { base, refreshToken: signedInWith, accessToken: null, expiresAt: 0 };
   }
 
+  /** Renews the bearer at most once per run, across every `get()` of the run. */
   async #renew(): Promise<string> {
+    if (this.#renewed) {
+      throw new SignInRejectedError("DAO refused a freshly renewed session.");
+    }
+    this.#renewed = true;
     const tokens = await postToken(this.deps.http, {
       grant_type: "refresh_token",
       refresh_token: this.#stored.refreshToken,

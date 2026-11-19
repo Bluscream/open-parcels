@@ -59,6 +59,10 @@ describe("Correos tracking", () => {
       onFragment("/eventos_envio_servicio/", json([{ error: { codError: "1", desError: "x" } }])),
     ];
     expect((await world.track([CODE], {}, null)).snapshots).toEqual([]);
+    world.routes = [
+      onFragment("/eventos_envio_servicio/", json([{ error: { codError: "99", desError: "x" } }])),
+    ];
+    await expect(world.track([CODE], {}, null)).rejects.toThrow(/does not explain/u);
   });
 
   it("reports an unmapped event code", async () => {
