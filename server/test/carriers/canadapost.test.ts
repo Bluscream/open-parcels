@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canadapost } from "../../src/carriers/canadapost/index.js";
+import { InvalidSourceConfigError, register } from "../../src/engine/registry.js";
 import { SignInRejectedError, TransientError } from "../../src/plugin/errors.js";
 import { json, onFragment, World, type Route } from "./harness.js";
 
@@ -95,6 +96,18 @@ describe("Canada Post tracking", () => {
     world.routes = [detailRoute(PIN, detail(PIN, "InTransit", { returnedToSender: true }))];
     const [parcel] = (await world.track([PIN], {}, null)).snapshots;
     expect(parcel?.status).toBe("returning");
+  });
+});
+
+describe("Canada Post settings", () => {
+  it("reject a time zone that does not exist, so it fails when saved instead of every run", () => {
+    const plugin = register(canadapost);
+    expect(() => {
+      plugin.validateConfig({ timeZone: "America/Nowhere" });
+    }).toThrow(InvalidSourceConfigError);
+    expect(() => {
+      plugin.validateConfig({ timeZone: "America/Vancouver" });
+    }).not.toThrow();
   });
 });
 

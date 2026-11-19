@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   defineCarrier,
+  isTimeZone,
   SignInRejectedError,
   snapshot,
   text,
@@ -21,7 +22,7 @@ import {
 
 const configSchema = z.looseObject({
   /** Zone for dates Canada Post gives without an offset (the delivery day). */
-  timeZone: z.string().min(1).optional(),
+  timeZone: z.string().refine(isTimeZone, "Not a known time zone.").optional(),
   language: z.enum(["en", "fr"]).optional(),
 });
 type Config = z.infer<typeof configSchema>;
