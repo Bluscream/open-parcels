@@ -30,6 +30,89 @@ function current(services: Services): z.infer<typeof settingsSchema> {
   return { home: services.settings.home, parcel_label: services.settings.labelMode };
 }
 
+const settingValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+const settingInfoSchema = z.object({
+  key: z.string(),
+  group: z.string(),
+  description: z.string(),
+  kind: z.enum(["string", "number", "boolean"]),
+  choices: z.array(z.string()).nullable(),
+  apply: z
+    .enum(["env", "restart", "live"])
+    .describe(
+      "env: only from the environment; restart: saved now, used after a restart; live: used at once.",
+    ),
+  secret: z.boolean().describe("The value is never returned."),
+  source: z.enum(["env", "default", "override"]).describe("override: saved in the UI."),
+  set: z.boolean(),
+  value: settingValueSchema.nullable().describe("Null when unset or secret."),
+  default: settingValueSchema.nullable(),
+  pending_restart: z.boolean().describe("Saved, but the server runs with the previous value."),
+});
+
+function settingInfos(services: Services): z.infer<typeof settingInfoSchema>[] {
+  return services.configSettings.list().map(({ pendingRestart, choices, ...rest }) => ({
+    ...rest,
+    choices: choices === null ? null : [...choices],
+    pending_restart: pendingRestart,
+  }));
+}
+
+/** The OPENPARCELS_* settings: the environment, with values saved here on top. Admin only. */
+function registerConfigRoutes(app: TypedApp, services: Services): void {
+  app.get(
+    "/api/v1/settings/config",
+    {
+      preHandler: requireScope("admin"),
+      schema: {
+        tags: ["settings"],
+        summary: "The server settings, where each value comes from and how a change applies.",
+        response: { 200: z.array(settingInfoSchema) },
+      },
+    },
+    () => settingInfos(services),
+  );
+
+  app.patch(
+    "/api/v1/settings/config",
+    {
+      preHandler: requireScope("admin"),
+      schema: {
+        tags: ["settings"],
+        summary: "Save server settings; all or nothing. Saved values win over the environment.",
+        body: z.record(z.string(), settingValueSchema),
+        response: { 200: z.array(settingInfoSchema), 400: errorBodySchema },
+      },
+    },
+    async (request) => {
+      const result = await services.configSettings.patch(request.body);
+      if (!result.ok) throw new ApiError(400, "invalid_setting", result.error);
+      if (result.changed.length > 0) await announce(services, result.changed.join(","));
+      return settingInfos(services);
+    },
+  );
+
+  app.delete(
+    "/api/v1/settings/config/:key",
+    {
+      preHandler: requireScope("admin"),
+      schema: {
+        tags: ["settings"],
+        summary: "Forget a saved server setting, so the environment or default applies again.",
+        params: z.object({ key: z.string() }),
+        response: { 200: z.array(settingInfoSchema), 404: errorBodySchema },
+      },
+    },
+    async (request) => {
+      const result = await services.configSettings.reset(request.params.key);
+      if (!result.ok) throw new ApiError(404, "not_found", result.error);
+      if (result.changed.length > 0) await announce(services, request.params.key);
+      return settingInfos(services);
+    },
+  );
+}
+
 export function registerSettingsRoutes(app: TypedApp, services: Services): void {
   app.get(
     "/api/v1/settings",
@@ -92,6 +175,8 @@ export function registerSettingsRoutes(app: TypedApp, services: Services): void 
       return current(services);
     },
   );
+
+  registerConfigRoutes(app, services);
 
   app.get(
     "/api/v1/geocode",

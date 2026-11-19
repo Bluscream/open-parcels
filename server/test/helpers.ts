@@ -43,6 +43,8 @@ export interface TestOptions {
   readonly fetchImpl?: FetchLike;
   readonly mailClientFactory?: MailboxClientFactory;
   readonly mailInterpreter?: MailInterpreter;
+  /** Extra OPENPARCELS_* environment variables. */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export async function createTestContext(options: TestOptions = {}): Promise<TestContext> {
@@ -50,6 +52,7 @@ export async function createTestContext(options: TestOptions = {}): Promise<Test
   const config = loadConfig({
     OPENPARCELS_DATA_DIR: dataDir,
     OPENPARCELS_TIMEZONE: "Europe/Berlin",
+    ...options.env,
   });
   const { db } = openDatabase(config.databasePath);
   await migrateToLatest(db);

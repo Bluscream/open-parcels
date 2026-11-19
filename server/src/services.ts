@@ -36,6 +36,7 @@ import { OrderService } from "./orders/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
 import { TileProxy } from "./tiles/proxy.js";
 import { Geocoder } from "./geo/geocoder.js";
+import { ConfigSettings } from "./settings/config-settings.js";
 import { SettingsStore } from "./settings/store.js";
 import { CollageMaker } from "./images/collage.js";
 
@@ -87,6 +88,7 @@ export interface Services {
   readonly tiles: TileProxy;
   readonly geocoder: Geocoder;
   readonly settings: SettingsStore;
+  readonly configSettings: ConfigSettings;
   readonly collages: CollageMaker;
   readonly mail: MailWatcher;
   readonly reconciler: Reconciler;
@@ -161,6 +163,11 @@ async function loadInstallId(db: Kysely<Database>, clock: Clock): Promise<string
 
 export async function createServices(deps: ServiceDeps): Promise<Services> {
   const { db, clock, logger } = deps;
+  // First: values saved in the UI change `deps.config` in place before anything reads it.
+  const configSettings = new ConfigSettings(db, clock, logger, deps.config, (key, config) => {
+    if (key === "OPENPARCELS_LOG_LEVEL") logger.level = config.logLevel;
+  });
+  await configSettings.load();
   const installId = await loadInstallId(db, clock);
   const auth = new AuthStore(db, clock);
   const bus = new EventBus(db, clock, logger);
@@ -245,7 +252,10 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     clock,
     logger,
     timeZone: deps.config.timeZone,
-    quietWindow: deps.config.quietWindow,
+    // Read on every run, so a change on the Settings page applies at once.
+    get quietWindow() {
+      return deps.config.quietWindow;
+    },
     installId,
     pollIntervalOf: (plugin) => registry.get(plugin)?.info.pollIntervalMs ?? null,
     onRunSucceeded: (sourceId, liveTargets) => {
@@ -307,6 +317,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     tiles,
     geocoder,
     settings,
+    configSettings,
     collages: new CollageMaker(path.join(deps.config.dataDir, "collages")),
     mail,
     reconciler,

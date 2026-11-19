@@ -11,6 +11,7 @@ import * as m0007 from "./migrations/0007-event-coordinates.js";
 import * as m0008 from "./migrations/0008-order-items.js";
 import * as m0009 from "./migrations/0009-idle-source-state.js";
 import * as m0010 from "./migrations/0010-order-lifecycle.js";
+import * as m0011 from "./migrations/0011-setting-overrides.js";
 import type { Database } from "./schema.js";
 
 /**
@@ -28,6 +29,7 @@ const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0008-order-items": m0008,
   "0009-idle-source-state": m0009,
   "0010-order-lifecycle": m0010,
+  "0011-setting-overrides": m0011,
 };
 
 const staticProvider: MigrationProvider = {

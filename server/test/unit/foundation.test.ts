@@ -163,6 +163,7 @@ describe("migrations", () => {
         "0008-order-items",
         "0009-idle-source-state",
         "0010-order-lifecycle",
+        "0011-setting-overrides",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

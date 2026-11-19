@@ -342,6 +342,184 @@ export type PutApiV1SettingsParcelLabel200 = {
   parcel_label: PutApiV1SettingsParcelLabel200ParcelLabel;
 };
 
+export type GetApiV1SettingsConfig200ItemKind =
+  (typeof GetApiV1SettingsConfig200ItemKind)[keyof typeof GetApiV1SettingsConfig200ItemKind];
+
+export const GetApiV1SettingsConfig200ItemKind = {
+  string: "string",
+  number: "number",
+  boolean: "boolean",
+} as const;
+
+/**
+ * env: only from the environment; restart: saved now, used after a restart; live: used at once.
+ */
+export type GetApiV1SettingsConfig200ItemApply =
+  (typeof GetApiV1SettingsConfig200ItemApply)[keyof typeof GetApiV1SettingsConfig200ItemApply];
+
+export const GetApiV1SettingsConfig200ItemApply = {
+  env: "env",
+  restart: "restart",
+  live: "live",
+} as const;
+
+/**
+ * override: saved in the UI.
+ */
+export type GetApiV1SettingsConfig200ItemSource =
+  (typeof GetApiV1SettingsConfig200ItemSource)[keyof typeof GetApiV1SettingsConfig200ItemSource];
+
+export const GetApiV1SettingsConfig200ItemSource = {
+  env: "env",
+  default: "default",
+  override: "override",
+} as const;
+
+export type GetApiV1SettingsConfig200Item = {
+  key: string;
+  group: string;
+  description: string;
+  kind: GetApiV1SettingsConfig200ItemKind;
+  /** @nullable */
+  choices: string[] | null;
+  /** env: only from the environment; restart: saved now, used after a restart; live: used at once. */
+  apply: GetApiV1SettingsConfig200ItemApply;
+  /** The value is never returned. */
+  secret: boolean;
+  /** override: saved in the UI. */
+  source: GetApiV1SettingsConfig200ItemSource;
+  set: boolean;
+  /** Null when unset or secret. */
+  value: string | number | boolean | null;
+  default: string | number | boolean | null;
+  /** Saved, but the server runs with the previous value. */
+  pending_restart: boolean;
+};
+
+export type PatchApiV1SettingsConfigBody = { [key: string]: string | number | boolean };
+
+export type PatchApiV1SettingsConfig200ItemKind =
+  (typeof PatchApiV1SettingsConfig200ItemKind)[keyof typeof PatchApiV1SettingsConfig200ItemKind];
+
+export const PatchApiV1SettingsConfig200ItemKind = {
+  string: "string",
+  number: "number",
+  boolean: "boolean",
+} as const;
+
+/**
+ * env: only from the environment; restart: saved now, used after a restart; live: used at once.
+ */
+export type PatchApiV1SettingsConfig200ItemApply =
+  (typeof PatchApiV1SettingsConfig200ItemApply)[keyof typeof PatchApiV1SettingsConfig200ItemApply];
+
+export const PatchApiV1SettingsConfig200ItemApply = {
+  env: "env",
+  restart: "restart",
+  live: "live",
+} as const;
+
+/**
+ * override: saved in the UI.
+ */
+export type PatchApiV1SettingsConfig200ItemSource =
+  (typeof PatchApiV1SettingsConfig200ItemSource)[keyof typeof PatchApiV1SettingsConfig200ItemSource];
+
+export const PatchApiV1SettingsConfig200ItemSource = {
+  env: "env",
+  default: "default",
+  override: "override",
+} as const;
+
+export type PatchApiV1SettingsConfig200Item = {
+  key: string;
+  group: string;
+  description: string;
+  kind: PatchApiV1SettingsConfig200ItemKind;
+  /** @nullable */
+  choices: string[] | null;
+  /** env: only from the environment; restart: saved now, used after a restart; live: used at once. */
+  apply: PatchApiV1SettingsConfig200ItemApply;
+  /** The value is never returned. */
+  secret: boolean;
+  /** override: saved in the UI. */
+  source: PatchApiV1SettingsConfig200ItemSource;
+  set: boolean;
+  /** Null when unset or secret. */
+  value: string | number | boolean | null;
+  default: string | number | boolean | null;
+  /** Saved, but the server runs with the previous value. */
+  pending_restart: boolean;
+};
+
+export type PatchApiV1SettingsConfig400 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type DeleteApiV1SettingsConfigKey200ItemKind =
+  (typeof DeleteApiV1SettingsConfigKey200ItemKind)[keyof typeof DeleteApiV1SettingsConfigKey200ItemKind];
+
+export const DeleteApiV1SettingsConfigKey200ItemKind = {
+  string: "string",
+  number: "number",
+  boolean: "boolean",
+} as const;
+
+/**
+ * env: only from the environment; restart: saved now, used after a restart; live: used at once.
+ */
+export type DeleteApiV1SettingsConfigKey200ItemApply =
+  (typeof DeleteApiV1SettingsConfigKey200ItemApply)[keyof typeof DeleteApiV1SettingsConfigKey200ItemApply];
+
+export const DeleteApiV1SettingsConfigKey200ItemApply = {
+  env: "env",
+  restart: "restart",
+  live: "live",
+} as const;
+
+/**
+ * override: saved in the UI.
+ */
+export type DeleteApiV1SettingsConfigKey200ItemSource =
+  (typeof DeleteApiV1SettingsConfigKey200ItemSource)[keyof typeof DeleteApiV1SettingsConfigKey200ItemSource];
+
+export const DeleteApiV1SettingsConfigKey200ItemSource = {
+  env: "env",
+  default: "default",
+  override: "override",
+} as const;
+
+export type DeleteApiV1SettingsConfigKey200Item = {
+  key: string;
+  group: string;
+  description: string;
+  kind: DeleteApiV1SettingsConfigKey200ItemKind;
+  /** @nullable */
+  choices: string[] | null;
+  /** env: only from the environment; restart: saved now, used after a restart; live: used at once. */
+  apply: DeleteApiV1SettingsConfigKey200ItemApply;
+  /** The value is never returned. */
+  secret: boolean;
+  /** override: saved in the UI. */
+  source: DeleteApiV1SettingsConfigKey200ItemSource;
+  set: boolean;
+  /** Null when unset or secret. */
+  value: string | number | boolean | null;
+  default: string | number | boolean | null;
+  /** Saved, but the server runs with the previous value. */
+  pending_restart: boolean;
+};
+
+export type DeleteApiV1SettingsConfigKey404 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
 export type GetApiV1GeocodeParams = {
   /**
    * @minLength 2
@@ -3719,6 +3897,58 @@ export const putApiV1SettingsParcelLabel = async (
     method: "PUT",
     headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
     body: JSON.stringify(putApiV1SettingsParcelLabelBody),
+  });
+};
+
+export const getGetApiV1SettingsConfigUrl = () => {
+  return `/api/v1/settings/config`;
+};
+
+/**
+ * @summary The server settings, where each value comes from and how a change applies.
+ */
+export const getApiV1SettingsConfig = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<GetApiV1SettingsConfig200Item[]> => {
+  return apiFetch<GetApiV1SettingsConfig200Item[]>(getGetApiV1SettingsConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getPatchApiV1SettingsConfigUrl = () => {
+  return `/api/v1/settings/config`;
+};
+
+/**
+ * @summary Save server settings; all or nothing. Saved values win over the environment.
+ */
+export const patchApiV1SettingsConfig = async (
+  patchApiV1SettingsConfigBody: PatchApiV1SettingsConfigBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<PatchApiV1SettingsConfig200Item[]> => {
+  return apiFetch<PatchApiV1SettingsConfig200Item[]>(getPatchApiV1SettingsConfigUrl(), {
+    ...options,
+    method: "PATCH",
+    headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
+    body: JSON.stringify(patchApiV1SettingsConfigBody),
+  });
+};
+
+export const getDeleteApiV1SettingsConfigKeyUrl = (key: string) => {
+  return `/api/v1/settings/config/${key}`;
+};
+
+/**
+ * @summary Forget a saved server setting, so the environment or default applies again.
+ */
+export const deleteApiV1SettingsConfigKey = async (
+  key: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<DeleteApiV1SettingsConfigKey200Item[]> => {
+  return apiFetch<DeleteApiV1SettingsConfigKey200Item[]>(getDeleteApiV1SettingsConfigKeyUrl(key), {
+    ...options,
+    method: "DELETE",
   });
 };
 

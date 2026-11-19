@@ -252,6 +252,8 @@ export interface Database {
   sessions: SessionTable;
   api_tokens: ApiTokenTable;
   settings: SettingTable;
+  /** OPENPARCELS_* values saved in the UI; same shape as `settings`. See migration 0011. */
+  setting_overrides: SettingTable;
   sources: SourceTable;
   orders: OrderTable;
   parcels: ParcelTable;

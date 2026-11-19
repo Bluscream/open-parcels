@@ -873,6 +873,453 @@
         }
       }
     },
+    "/api/v1/settings/config": {
+      "get": {
+        "summary": "The server settings, where each value comes from and how a change applies.",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      },
+                      "choices": {
+                        "nullable": true,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "apply": {
+                        "type": "string",
+                        "enum": [
+                          "env",
+                          "restart",
+                          "live"
+                        ],
+                        "description": "env: only from the environment; restart: saved now, used after a restart; live: used at once."
+                      },
+                      "secret": {
+                        "type": "boolean",
+                        "description": "The value is never returned."
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "env",
+                          "default",
+                          "override"
+                        ],
+                        "description": "override: saved in the UI."
+                      },
+                      "set": {
+                        "type": "boolean"
+                      },
+                      "value": {
+                        "nullable": true,
+                        "description": "Null when unset or secret.",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "default": {
+                        "nullable": true,
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "pending_restart": {
+                        "type": "boolean",
+                        "description": "Saved, but the server runs with the previous value."
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "group",
+                      "description",
+                      "kind",
+                      "choices",
+                      "apply",
+                      "secret",
+                      "source",
+                      "set",
+                      "value",
+                      "default",
+                      "pending_restart"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Save server settings; all or nothing. Saved values win over the environment.",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      },
+                      "choices": {
+                        "nullable": true,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "apply": {
+                        "type": "string",
+                        "enum": [
+                          "env",
+                          "restart",
+                          "live"
+                        ],
+                        "description": "env: only from the environment; restart: saved now, used after a restart; live: used at once."
+                      },
+                      "secret": {
+                        "type": "boolean",
+                        "description": "The value is never returned."
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "env",
+                          "default",
+                          "override"
+                        ],
+                        "description": "override: saved in the UI."
+                      },
+                      "set": {
+                        "type": "boolean"
+                      },
+                      "value": {
+                        "nullable": true,
+                        "description": "Null when unset or secret.",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "default": {
+                        "nullable": true,
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "pending_restart": {
+                        "type": "boolean",
+                        "description": "Saved, but the server runs with the previous value."
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "group",
+                      "description",
+                      "kind",
+                      "choices",
+                      "apply",
+                      "secret",
+                      "source",
+                      "set",
+                      "value",
+                      "default",
+                      "pending_restart"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/config/{key}": {
+      "delete": {
+        "summary": "Forget a saved server setting, so the environment or default applies again.",
+        "tags": [
+          "settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      },
+                      "choices": {
+                        "nullable": true,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "apply": {
+                        "type": "string",
+                        "enum": [
+                          "env",
+                          "restart",
+                          "live"
+                        ],
+                        "description": "env: only from the environment; restart: saved now, used after a restart; live: used at once."
+                      },
+                      "secret": {
+                        "type": "boolean",
+                        "description": "The value is never returned."
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "env",
+                          "default",
+                          "override"
+                        ],
+                        "description": "override: saved in the UI."
+                      },
+                      "set": {
+                        "type": "boolean"
+                      },
+                      "value": {
+                        "nullable": true,
+                        "description": "Null when unset or secret.",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "default": {
+                        "nullable": true,
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "pending_restart": {
+                        "type": "boolean",
+                        "description": "Saved, but the server runs with the previous value."
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "group",
+                      "description",
+                      "kind",
+                      "choices",
+                      "apply",
+                      "secret",
+                      "source",
+                      "set",
+                      "value",
+                      "default",
+                      "pending_restart"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/geocode": {
       "get": {
         "summary": "Look up an address or place (OpenStreetMap Nominatim, through this server).",
