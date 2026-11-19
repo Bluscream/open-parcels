@@ -214,7 +214,7 @@ h3 {
   font-weight: 700;
   margin: 0;
   text-decoration: none;
-  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+  background: linear-gradient(135deg, var(--accent-hover) 0%, var(--violet) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
