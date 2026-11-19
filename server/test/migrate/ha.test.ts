@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { secretAad, sessionAad } from "../../src/engine/sources.js";
 import { importHaEntries, markerKey } from "../../src/migrate/ha/import.js";
@@ -267,6 +268,40 @@ describe("Home Assistant suite import", () => {
       .where("key", "=", markerKey("e-hermes"))
       .executeTakeFirstOrThrow();
     expect(marker.value).not.toContain(HERMES_REFRESH);
+  });
+
+  it("keys the credential fingerprint and still honours an unkeyed one from before", async () => {
+    await run(fixture());
+    const hermes = await sourceByLabel("Hermes (user@example.invalid)");
+    const read = async () =>
+      JSON.parse(
+        (
+          await context.services.db
+            .selectFrom("settings")
+            .select("value")
+            .where("key", "=", markerKey("e-hermes"))
+            .executeTakeFirstOrThrow()
+        ).value,
+      ) as { credentials: string; sourceId: string };
+    const stored = await read();
+    const session = decrypt(hermes.session_blob, sessionAad(hermes.id));
+    const secret =
+      hermes.secret_blob === null ? null : decrypt(hermes.secret_blob, secretAad(hermes.id));
+    const plain = createHash("sha256")
+      .update(JSON.stringify({ secret, session }))
+      .digest("hex")
+      .slice(0, 16);
+    expect(stored.credentials).toMatch(/^[0-9a-f]{16}$/);
+    expect(stored.credentials).not.toBe(plain);
+
+    // A marker written by an earlier version (unkeyed) is not mistaken for a new HA sign-in.
+    await context.services.db
+      .updateTable("settings")
+      .set({ value: JSON.stringify({ ...stored, credentials: plain }) })
+      .where("key", "=", markerKey("e-hermes"))
+      .execute();
+    const again = await run(fixture());
+    expect(again.sources.find((s) => s.plugin === "hermes")?.credentialsWritten).toBe(false);
   });
 
   it("creates sources it cannot sign in as needing a sign-in, with the reason", async () => {

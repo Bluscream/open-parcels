@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import type { Kysely, Transaction } from "kysely";
 import { z } from "zod";
 import { isoNow, type Clock } from "../../clock.js";
@@ -73,12 +73,24 @@ const markerSchema = z.object({
 });
 type Marker = z.infer<typeof markerSchema>;
 
-/** A fingerprint of the sign-in data as HA had it, to tell a changed HA entry from a re-run. */
-function credentialsFingerprint(plan: SourcePlan): string {
-  return createHash("sha256")
-    .update(JSON.stringify({ secret: plan.secret, session: plan.session }))
+const credentialsJson = (plan: SourcePlan): string =>
+  JSON.stringify({ secret: plan.secret, session: plan.session });
+
+/**
+ * A fingerprint of the sign-in data as HA had it, to tell a changed HA entry from a re-run.
+ * Keyed with the instance's secret, so the stored value cannot be used to test guesses of a
+ * password or token offline.
+ */
+function credentialsFingerprint(secrets: SecretBox, plan: SourcePlan): string {
+  return createHmac("sha256", secrets.derive("ha-import"))
+    .update(credentialsJson(plan))
     .digest("hex")
     .slice(0, 16);
+}
+
+/** The unkeyed fingerprint earlier versions stored; still recognised so a re-run keeps tokens. */
+function legacyFingerprint(plan: SourcePlan): string {
+  return createHash("sha256").update(credentialsJson(plan)).digest("hex").slice(0, 16);
 }
 
 async function readMarker(trx: Transaction<Database>, entryId: string): Promise<Marker | null> {
@@ -127,7 +139,7 @@ function blobs(ctx: Context, id: string, plan: SourcePlan) {
 
 /** Creates the plan's source, or updates the one an earlier run created for the same HA entry. */
 async function writeSource(ctx: Context, plan: SourcePlan): Promise<Written> {
-  const fingerprint = credentialsFingerprint(plan);
+  const fingerprint = credentialsFingerprint(ctx.secrets, plan);
   const marker = await readMarker(ctx.trx, plan.entryId);
   const existing =
     marker === null
@@ -163,7 +175,8 @@ async function writeSource(ctx: Context, plan: SourcePlan): Promise<Written> {
   }
   if (marker !== null && existing?.plugin === plan.plugin) {
     // Same HA sign-in as last time: the source may have rotated its tokens since, so keep them.
-    const fresh = marker.credentials !== fingerprint;
+    const fresh =
+      marker.credentials !== fingerprint && marker.credentials !== legacyFingerprint(plan);
     await ctx.trx
       .updateTable("sources")
       .set({
