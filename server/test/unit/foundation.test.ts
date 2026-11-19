@@ -161,6 +161,7 @@ describe("migrations", () => {
         "0006-auto-created-sources",
         "0007-event-coordinates",
         "0008-order-items",
+        "0009-idle-source-state",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

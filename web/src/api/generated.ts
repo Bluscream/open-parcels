@@ -2171,6 +2171,7 @@ export type GetApiV1Sources200ItemState =
 
 export const GetApiV1Sources200ItemState = {
   ok: "ok",
+  idle: "idle",
   needs_sign_in: "needs_sign_in",
   error: "error",
   disabled: "disabled",
@@ -2241,6 +2242,7 @@ export type PostApiV1Sources201State =
 
 export const PostApiV1Sources201State = {
   ok: "ok",
+  idle: "idle",
   needs_sign_in: "needs_sign_in",
   error: "error",
   disabled: "disabled",
@@ -2298,6 +2300,7 @@ export type PatchApiV1SourcesId200State =
 
 export const PatchApiV1SourcesId200State = {
   ok: "ok",
+  idle: "idle",
   needs_sign_in: "needs_sign_in",
   error: "error",
   disabled: "disabled",

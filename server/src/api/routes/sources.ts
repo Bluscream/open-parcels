@@ -29,7 +29,7 @@ const sourceSchema = z.object({
   has_secret: z
     .boolean()
     .describe("Whether sign-in data is stored. The data itself is never returned."),
-  state: z.enum(["ok", "needs_sign_in", "error", "disabled"]),
+  state: z.enum(["ok", "idle", "needs_sign_in", "error", "disabled"]),
   state_detail: z.string().nullable(),
   next_run_at: z.string().nullable(),
   last_run_at: z.string().nullable(),
