@@ -1,12 +1,14 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   useCarriers,
   useDeleteSource,
+  useParcels,
   useSources,
   useSyncSource,
   useUpdateSource,
 } from "../api/queries";
-import type { Carrier, Source } from "../api/types";
+import type { Carrier, Parcel, Source } from "../api/types";
+import { CarrierLogo } from "../components/CarrierLogo";
 import { ErrorNotice, Spinner } from "../components/ui";
 import { formatRelative } from "../lib/format";
 import { SourceStateBadge } from "../parcels/badges";
@@ -30,8 +32,42 @@ export function canSignIn(source: Source, carriers: readonly Carrier[] | undefin
   );
 }
 
+export interface SourceStats {
+  readonly active: number;
+  readonly delivered: number;
+  readonly total: number;
+}
+
+const NO_STATS: SourceStats = { active: 0, delivered: 0, total: 0 };
+
+/** Parcels per source (archived included): on the way, delivered, and all it has found. */
+export function statsBySource(parcels: readonly Parcel[]): ReadonlyMap<string, SourceStats> {
+  const stats = new Map<string, SourceStats>();
+  for (const parcel of parcels) {
+    for (const ref of new Set(parcel.sources.map((entry) => entry.source_id))) {
+      const current = stats.get(ref) ?? NO_STATS;
+      stats.set(ref, {
+        active: current.active + (parcel.delivered || parcel.archived_at !== null ? 0 : 1),
+        delivered: current.delivered + (parcel.delivered ? 1 : 0),
+        total: current.total + 1,
+      });
+    }
+  }
+  return stats;
+}
+
+function Stat(props: { readonly label: string; readonly value: number | string }): ReactNode {
+  return (
+    <div className="source-stat">
+      <span className="source-stat-value">{props.value}</span>
+      <span className="source-stat-label">{props.label}</span>
+    </div>
+  );
+}
+
 function SourceRow(props: {
   readonly source: Source;
+  readonly stats: SourceStats | undefined;
   readonly signIn: boolean;
   readonly onEdit: () => void;
   readonly onSignIn: () => void;
@@ -41,21 +77,35 @@ function SourceRow(props: {
   const update = useUpdateSource();
   const remove = useDeleteSource();
   const enabled = source.state !== "disabled";
+  const stats = props.stats ?? NO_STATS;
   return (
-    <li className="card source-row">
+    <li className="card source-card">
       <div className="source-head">
-        <h2>{source.label}</h2>
+        <CarrierLogo carrier={source.plugin} size={32} />
+        <div className="source-title">
+          <h2 title={source.label}>{source.label}</h2>
+          <span className="muted">
+            {source.plugin} · {source.kind}
+          </span>
+        </div>
         <SourceStateBadge state={source.state} lastOkAt={source.last_ok_at} />
-        <span className="muted">
-          {source.plugin} · {source.kind}
-        </span>
       </div>
-      {source.state_detail === null ? null : <p className="muted">{source.state_detail}</p>}
-      <p className="muted">
-        Last run {formatRelative(source.last_run_at)} · last success{" "}
-        {formatRelative(source.last_ok_at)}
-        {source.next_run_at === null ? "" : ` · next ${formatRelative(source.next_run_at)}`}
-      </p>
+      {source.state_detail === null ? null : (
+        <p className="muted source-detail">{source.state_detail}</p>
+      )}
+      <div className="source-stats">
+        <Stat label="on the way" value={stats.active} />
+        <Stat label="delivered" value={stats.delivered} />
+        <Stat label="parcels found" value={stats.total} />
+      </div>
+      <dl className="source-times">
+        <dt>Last run</dt>
+        <dd>{formatRelative(source.last_run_at)}</dd>
+        <dt>Last success</dt>
+        <dd>{formatRelative(source.last_ok_at)}</dd>
+        <dt>Next run</dt>
+        <dd>{source.next_run_at === null ? "—" : formatRelative(source.next_run_at)}</dd>
+      </dl>
       <ErrorNotice error={sync.error ?? update.error ?? remove.error} />
       <div className="actions">
         {/* A disabled source neither runs nor signs in; enabling it comes first. */}
@@ -112,6 +162,13 @@ function SourceRow(props: {
 export function SourcesPage(): ReactNode {
   const sources = useSources();
   const carriers = useCarriers();
+  const parcels = useParcels(true);
+  const stats = useMemo(() => statsBySource(parcels.data ?? []), [parcels.data]);
+  const list = sources.data ?? [];
+  const working = list.filter((source) => source.state === "ok" || source.state === "idle").length;
+  const attention = list.filter(
+    (source) => source.state !== "ok" && source.state !== "idle" && source.state !== "disabled",
+  ).length;
   const [editing, setEditing] = useState<Editing>(null);
   const [signingIn, setSigningIn] = useState<Source | null>(null);
 
@@ -130,6 +187,19 @@ export function SourcesPage(): ReactNode {
         </button>
       </div>
       <ErrorNotice error={sources.error} />
+      {list.length === 0 ? null : (
+        <div className="source-summary glass-panel">
+          <Stat label="sources" value={list.length} />
+          <Stat label="working" value={working} />
+          <Stat label="need attention" value={attention} />
+          <Stat
+            label="parcels on the way"
+            value={
+              parcels.data?.filter((p) => !p.delivered && p.archived_at === null).length ?? "…"
+            }
+          />
+        </div>
+      )}
       {sources.data === undefined ? (
         sources.isPending ? (
           <Spinner />
@@ -137,11 +207,12 @@ export function SourcesPage(): ReactNode {
       ) : sources.data.length === 0 ? (
         <p className="muted">No sources yet. Add a carrier account, a shop or a mailbox.</p>
       ) : (
-        <ul className="plain-list source-list">
+        <ul className="plain-list source-grid">
           {sources.data.map((source) => (
             <SourceRow
               key={source.id}
               source={source}
+              stats={stats.get(source.id)}
               signIn={canSignIn(source, carriers.data)}
               onEdit={() => {
                 setEditing({ mode: "edit", source });
