@@ -97,7 +97,8 @@ export function SharedMap(props: {
   const chosen = useMapStyle();
   const base = props.style?.base ?? chosen.base;
   const overlay = props.style === undefined ? chosen.overlay : props.style.overlay;
-  const dark = prefersDark() && !base.satellite;
+  // Satellite imagery and styles that are dark already keep their own colours.
+  const dark = prefersDark() && !base.satellite && !base.dark;
   return (
     <div
       className={dark ? "map-frame map-dark" : "map-frame"}

@@ -8,7 +8,7 @@ import { LayerControl } from "./LayerControl";
 import { tileUrl, useMapStyle, type MapLayer } from "./layers";
 
 function layer(id: string, label: string, kind: MapLayer["kind"] = "base"): MapLayer {
-  return { id, label, kind, max_zoom: 18, attribution: label, satellite: id === "satellite" };
+  return { id, label, kind, max_zoom: 18, attribution: label, satellite: id === "satellite", dark: false };
 }
 
 const LAYERS = [

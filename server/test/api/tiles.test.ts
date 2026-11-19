@@ -85,6 +85,17 @@ describe("map tiles", () => {
     expect(upstream).toEqual([`https://tiles.example.org/2/1/1.jpg?key=${KEY}`]);
   });
 
+  it("serves the CARTO styles once a CARTO key is set, with the key added on the server", async () => {
+    const { app, headers } = await setUp({ env: { OPENPARCELS_MAP_CARTO_KEY: KEY } });
+    const tile = await app.inject({ url: "/tiles/carto_dark/2/1/1", headers });
+    expect(tile.statusCode).toBe(200);
+    expect(upstream).toEqual([
+      `https://basemaps.cartocdn.com/rastertiles/dark_all/2/1/1.png?key=${KEY}`,
+    ]);
+    const layers = await app.inject({ url: "/api/v1/map/layers", headers });
+    expect(layers.body).not.toContain(KEY);
+  });
+
   it("refuses an invalid custom template and applies a valid one at once", async () => {
     const { app, headers } = await setUp();
     const bad = await app.inject({

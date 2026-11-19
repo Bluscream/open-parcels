@@ -24,6 +24,8 @@ export interface TileLayerDef {
   readonly attribution: string;
   /** Photographic imagery: the dark-mode filter is not applied. */
   readonly satellite: boolean;
+  /** A dark style already: the dark-mode filter would turn it light, so it is not applied. */
+  readonly dark?: boolean;
   /** Folder under the tile cache; changes when the upstream does. */
   readonly cacheKey: string;
   /** Filled into `{key}`; never sent to the browser. */
@@ -120,6 +122,7 @@ export const CARTO_LAYERS: readonly TileLayerDef[] = (
   maxZoom: 20,
   attribution: CARTO,
   satellite: false,
+  dark: style === "dark_all",
   cacheKey: `carto-${style}`,
 }));
 

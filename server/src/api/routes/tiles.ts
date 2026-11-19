@@ -20,6 +20,7 @@ const layerSchema = z.object({
   max_zoom: z.number().int(),
   attribution: z.string().describe("HTML for the map's attribution control."),
   satellite: z.boolean().describe("Photographic imagery: no dark-mode filter."),
+  dark: z.boolean().describe("A dark style already: no dark-mode filter."),
 });
 
 const layersSchema = z.object({
@@ -71,6 +72,7 @@ export function registerTileRoutes(app: TypedApp, services: Services): void {
           max_zoom: layer.maxZoom,
           attribution: layer.attribution,
           satellite: layer.satellite,
+          dark: layer.dark ?? false,
         })),
         // A custom default without a usable custom provider falls back to the plain map.
         default_base: hasBase ? baseLayer : "osm",
@@ -87,7 +89,7 @@ export function registerTileRoutes(app: TypedApp, services: Services): void {
         tags: ["map"],
         summary: "A map tile of one of the listed layers, fetched and cached by this server.",
         params: z.object({
-          layer: z.string().regex(/^[a-z0-9-]{1,32}$/),
+          layer: z.string().regex(/^[a-z0-9_-]{1,32}$/),
           z: z.coerce.number().int().min(0).max(TILE_MAX_ZOOM_ANY),
           x: coordinate(TILE_MAX_ZOOM_ANY),
           y: coordinate(TILE_MAX_ZOOM_ANY),

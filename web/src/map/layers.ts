@@ -16,6 +16,7 @@ export const FALLBACK_LAYER: MapLayer = {
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   satellite: false,
+  dark: false,
 };
 
 /**
