@@ -42,6 +42,8 @@ export function amazonCarrier(rules?: Rules): CarrierPlugin<AmazonConfig, Amazon
     name: "Amazon",
     countries: STOREFRONT_COUNTRIES,
     sourceKinds: ["shop"],
+    // Product thumbnails: the current CDN and the older image hosts still linked on some pages.
+    imageHosts: ["m.media-amazon.com", ".ssl-images-amazon.com", ".images-amazon.com"],
     configSchema,
     secretSchema: amazonSecretSchema.nullable(),
     signIn: pastedRedirect<AmazonConfig, AmazonSecret | null>({

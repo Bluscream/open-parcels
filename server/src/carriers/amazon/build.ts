@@ -179,7 +179,7 @@ export function buildSnapshot(input: BuildInput): ParcelSnapshot | null {
     history: events,
     items: input.tiles.map((tile) => ({
       title: tile.title,
-      imageUrl: null,
+      imageUrl: tile.imageUrl,
       url: null,
       externalId: tile.lineItemId === "" ? null : tile.lineItemId,
       quantity: null,

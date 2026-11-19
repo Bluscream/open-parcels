@@ -257,6 +257,47 @@ describe("Amazon account", () => {
     expect(dpd?.handoff).toEqual({ carrier: "dpd", barcode: "01234567890123" });
   });
 
+  it("gives each item its order line's product image, the larger one when offered", async () => {
+    const withImages: TileSpec[] = [
+      {
+        ...OWN_FLEET,
+        image:
+          'src="https://m.media-amazon.com/images/I/made-up._SS142_.jpg" ' +
+          'data-a-hires="https://m.media-amazon.com/images/I/made-up._SS284_.jpg?a=1&amp;b=2"',
+      },
+      { ...BY_DHL, image: 'src="https://images-eu.ssl-images-amazon.com/images/I/book.jpg"' },
+      { ...BY_DPD, image: 'src="data:image/gif;base64,R0lGOD"' },
+    ];
+    const h = harness(storefront(withImages, PAGES));
+    const [own, dhl, dpd] = (await readAccount(h.context, rules)).snapshots;
+    expect(own?.items[0]?.imageUrl).toBe(
+      "https://m.media-amazon.com/images/I/made-up._SS284_.jpg?a=1&b=2",
+    );
+    expect(dhl?.items[0]?.imageUrl).toBe(
+      "https://images-eu.ssl-images-amazon.com/images/I/book.jpg",
+    );
+    // A placeholder is not an image, and an image outside a product-image block is not the item's.
+    expect(dpd?.items[0]?.imageUrl).toBeNull();
+  });
+
+  it("does not give the last line an image far below it", async () => {
+    const far =
+      '<div class="product-image"><img src="https://m.media-amazon.com/images/I/far.jpg"></div>';
+    const h = harness((url, init) =>
+      url.pathname === "/your-orders/orders"
+        ? html(ordersPage([OWN_FLEET]) + "x".repeat(5000) + far)
+        : storefront([OWN_FLEET], PAGES)(url, init),
+    );
+    const [own] = (await readAccount(h.context, rules)).snapshots;
+    expect(own?.items[0]?.imageUrl).toBeNull();
+  });
+
+  it("allows the Amazon image hosts in the image proxy", () => {
+    expect(plugin.imageHosts).toEqual(
+      expect.arrayContaining(["m.media-amazon.com", ".ssl-images-amazon.com"]),
+    );
+  });
+
   it("never stores the account id, the map key or destination coordinates", async () => {
     const h = harness(storefront([OWN_FLEET], PAGES));
     const result = await readAccount(h.context, rules);

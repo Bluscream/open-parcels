@@ -18,6 +18,8 @@ export interface OrderTile {
   readonly note: string | null;
   readonly placedText: string | null;
   readonly position: number;
+  /** The line's product thumbnail, the larger one when offered. */
+  readonly imageUrl: string | null;
 }
 
 /** The shipment a line belongs to; a line not yet shipped is keyed by its line id. */
@@ -57,6 +59,14 @@ export interface TrackPage {
 }
 
 const TILE_RE = /<a class="item-card__link" href="([^"]*)" aria-label="([^"]*)"/g;
+/**
+ * The product thumbnail beside an order line. The page also shows recommendations, so only the
+ * image in the line's own product-image block is taken as this item's.
+ */
+const TILE_IMAGE_RE = /class="product-image[^"]*">\s*(<img\b[^>]*>)/;
+const IMAGE_SRC_RE = /\b(data-a-hires|src)="(https:\/\/[^"]+)"/g;
+/** Characters after the last line searched for its image; a real line is about half this. */
+const TILE_SPAN = 4000;
 const PLACED_RE =
   /,\s*(?:Order placed|Bestellt am|Bestellung aufgegeben(?: am)?)\s+([^,]+)(?:,\s*(.*))?$/s;
 const ORDER_ID_RE = /\d{3}-\d{7}-\d{7}/;
@@ -125,11 +135,31 @@ function splitLabel(
   return { title: label, statusText: "", note: null, placedText: null };
 }
 
+/** The product thumbnail in one order line's stretch of page, the larger one if offered. */
+function tileImage(fragment: string): string | null {
+  const tag = TILE_IMAGE_RE.exec(fragment)?.[1];
+  if (tag === undefined) {
+    return null;
+  }
+  const sources = new Map<string, string>();
+  for (const match of tag.matchAll(IMAGE_SRC_RE)) {
+    sources.set(match[1] ?? "", match[2] ?? "");
+  }
+  const url = sources.get("data-a-hires") ?? sources.get("src");
+  return url === undefined || url === "" ? null : unescapeHtml(url);
+}
+
 /** Every order line on an orders page, in page order. */
 export function parseOrderTiles(page: string, isStatus: (text: string) => boolean): OrderTile[] {
   const tiles: OrderTile[] = [];
   let position = 0;
-  for (const match of page.matchAll(TILE_RE)) {
+  const matches = [...page.matchAll(TILE_RE)];
+  for (const [index, match] of matches.entries()) {
+    // A line's image sits after its link and before the next line; the last line gets a line's
+    // worth of page, never the rest of it.
+    const start = match.index;
+    const end = matches[index + 1]?.index ?? start + match[0].length + TILE_SPAN;
+    const fragment = page.slice(start, end);
     const path = unescapeHtml(match[1] ?? "");
     const label = cleanText(match[2] ?? "");
     const query = queryOf(path);
@@ -149,6 +179,7 @@ export function parseOrderTiles(page: string, isStatus: (text: string) => boolea
       note: parts.note,
       placedText: parts.placedText,
       position,
+      imageUrl: tileImage(fragment),
     });
     position += 1;
   }

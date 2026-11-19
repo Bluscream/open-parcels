@@ -11,6 +11,8 @@ export interface TileSpec {
   readonly status: string;
   /** Links straight to the package page instead of the order line. */
   readonly direct?: boolean;
+  /** Raw attributes of the line's product-image `<img>`, e.g. `src="…"`. */
+  readonly image?: string;
 }
 
 const attr = (text: string): string =>
@@ -35,7 +37,11 @@ export function ordersPage(tiles: readonly TileSpec[]): string {
       (tile) =>
         `<div class="item-card"><a class="item-card__link" href="${attr(tilePath(tile))}" ` +
         `aria-label="${attr(`${tile.title}, Order placed 10 November 2026, ${tile.status}`)}">` +
-        `<img src="https://img.example.invalid/1.jpg"></a></div>`,
+        `<img src="https://img.example.invalid/1.jpg"></a>` +
+        (tile.image === undefined
+          ? ""
+          : `<div class="product-image a-spacing-none"><img alt="" ${tile.image}></div>`) +
+        `</div>`,
     )
     .join("\n");
   return `<html><body><h1>Your Orders</h1>${cards}</body></html>`;
