@@ -16,8 +16,10 @@ describe("first start and sign-in", () => {
           : {
               authenticated: false,
               method: null,
+              role: null,
               scopes: [],
               csrf_token: null,
+              reader_required: true,
               setup_required: true,
             },
       }),
@@ -31,7 +33,7 @@ describe("first start and sign-in", () => {
     renderApp();
 
     await user.type(await screen.findByLabelText("Setup code"), "ABCD-EFGH");
-    await user.type(screen.getByLabelText("Owner password"), OWNER_PASSWORD);
+    await user.type(screen.getByLabelText("Admin password"), OWNER_PASSWORD);
     await user.type(screen.getByLabelText("Repeat the password"), OWNER_PASSWORD);
     await user.click(screen.getByRole("button", { name: /set password/i }));
 
@@ -46,8 +48,10 @@ describe("first start and sign-in", () => {
         body: {
           authenticated: false,
           method: null,
+          role: null,
           scopes: [],
           csrf_token: null,
+          reader_required: true,
           setup_required: true,
         },
       }),
@@ -55,7 +59,7 @@ describe("first start and sign-in", () => {
     const user = userEvent.setup();
     renderApp();
     await user.type(await screen.findByLabelText("Setup code"), "ABCD");
-    await user.type(screen.getByLabelText("Owner password"), OWNER_PASSWORD);
+    await user.type(screen.getByLabelText("Admin password"), OWNER_PASSWORD);
     await user.type(screen.getByLabelText("Repeat the password"), `${OWNER_PASSWORD}x`);
     await user.click(screen.getByRole("button", { name: /set password/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("do not match");
@@ -71,8 +75,10 @@ describe("first start and sign-in", () => {
           : {
               authenticated: false,
               method: null,
+              role: null,
               scopes: [],
               csrf_token: null,
+              reader_required: true,
               setup_required: false,
             },
       }),
@@ -92,15 +98,49 @@ describe("first start and sign-in", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.type(await screen.findByLabelText("Owner password"), "wrong-one");
+    await user.type(await screen.findByLabelText("Password"), "wrong-one");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("not correct");
 
-    await user.type(screen.getByLabelText("Owner password"), OWNER_PASSWORD);
+    await user.type(screen.getByLabelText("Password"), OWNER_PASSWORD);
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Parcels" })).toBeInTheDocument();
     });
+  });
+
+  it("opens read only without a reader password, with a Sign in for the admin", async () => {
+    let admin = false;
+    const ANONYMOUS = {
+      authenticated: false,
+      method: "anonymous",
+      role: "reader",
+      scopes: ["read"],
+      csrf_token: null,
+      reader_required: false,
+      setup_required: false,
+    };
+    mockApi({
+      "GET /api/v1/session": () => ({ body: admin ? SIGNED_IN : ANONYMOUS }),
+      "POST /api/v1/session": () => {
+        admin = true;
+        return { body: { csrf_token: "csrf-test-value", role: "admin" } };
+      },
+      "GET /api/v1/parcels": () => ({ body: [] }),
+    });
+    const user = userEvent.setup();
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: "Parcels" })).toBeInTheDocument();
+    expect(screen.getByText("Read only")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /API tokens/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.type(await screen.findByLabelText("Password"), OWNER_PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByText("Admin")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
   });
 
   it("needs no sign-in under Home Assistant ingress", async () => {

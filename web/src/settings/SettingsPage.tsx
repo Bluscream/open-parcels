@@ -2,7 +2,7 @@ import type L from "leaflet";
 import { Search, X } from "lucide-react";
 import { useMemo, useState, type ReactNode, type SyntheticEvent } from "react";
 import { Marker, useMapEvents } from "react-leaflet";
-import { ErrorNotice, Spinner, errorMessage } from "../components/ui";
+import { ErrorNotice, ReadOnlyHint, Spinner, errorMessage } from "../components/ui";
 import { formatLatLng, parseLatLng, type LatLngTuple } from "../lib/geo";
 import { iconHome } from "../map/mapIcons";
 import { SharedMap } from "../map/SharedMap";
@@ -36,6 +36,7 @@ function ClickToPlace({ onPlace }: { readonly onPlace: (point: LatLngTuple) => v
 }
 
 function HomeSection(): ReactNode {
+  const admin = useIsAdmin();
   const { home, loading } = useHome();
   const save = useSaveHome();
   const clear = useClearHome();
@@ -87,40 +88,44 @@ function HomeSection(): ReactNode {
       <h2 id="home-title">Home location</h2>
       <p className="muted">
         Where your parcels go. The maps centre on it, draw the way still ahead and show how far a
-        parcel is. Type an address or coordinates (“52.520008, 13.404954”), or click the map.
+        parcel is.
+        {admin ? " Type an address or coordinates (“52.520008, 13.404954”), or click the map." : ""}
       </p>
-      <form className="search-row" onSubmit={submit}>
-        <div className="input-with-clear">
-          <input
-            aria-label="Address or coordinates"
-            value={shown}
-            placeholder="Address, place or “latitude, longitude”"
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => {
-              setText(e.target.value);
-              setPlaces(null);
-            }}
-          />
-          {shown.length > 0 ? (
-            <button
-              type="button"
-              className="clear-button"
-              aria-label="Clear the box"
-              onClick={() => {
-                setText("");
+      {admin ? null : <ReadOnlyHint />}
+      {admin ? (
+        <form className="search-row" onSubmit={submit}>
+          <div className="input-with-clear">
+            <input
+              aria-label="Address or coordinates"
+              value={shown}
+              placeholder="Address, place or “latitude, longitude”"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => {
+                setText(e.target.value);
                 setPlaces(null);
-                setSearchError(null);
               }}
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-        <button type="submit" className="button primary" disabled={searching || save.isPending}>
-          <Search size={16} aria-hidden="true" /> {searching ? "Searching…" : "Find"}
-        </button>
-      </form>
+            />
+            {shown.length > 0 ? (
+              <button
+                type="button"
+                className="clear-button"
+                aria-label="Clear the box"
+                onClick={() => {
+                  setText("");
+                  setPlaces(null);
+                  setSearchError(null);
+                }}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+          <button type="submit" className="button primary" disabled={searching || save.isPending}>
+            <Search size={16} aria-hidden="true" /> {searching ? "Searching…" : "Find"}
+          </button>
+        </form>
+      ) : null}
       {searchError === null ? null : <p className="error">{searchError}</p>}
       {places === null ? null : places.length === 0 ? (
         <p className="muted">Nothing found. Try a fuller address or coordinates.</p>
@@ -147,16 +152,18 @@ function HomeSection(): ReactNode {
           {...(point === null ? {} : { center: point, zoom: 16 })}
           {...(bounds === undefined ? {} : { bounds, fitMaxZoom: 17 })}
         >
-          <ClickToPlace
-            onPlace={(clicked) => {
-              place({ point: clicked, label: null });
-            }}
-          />
+          {admin ? (
+            <ClickToPlace
+              onPlace={(clicked) => {
+                place({ point: clicked, label: null });
+              }}
+            />
+          ) : null}
           {point === null ? null : (
             <Marker
               position={[point[0], point[1]]}
               icon={iconHome}
-              draggable
+              draggable={admin}
               eventHandlers={{
                 dragend: (event) => {
                   const { lat, lng } = (event.target as L.Marker).getLatLng();
@@ -175,7 +182,7 @@ function HomeSection(): ReactNode {
             : `Saved: ${formatLatLng(point)}`}
       </p>
       <ErrorNotice error={save.error ?? clear.error} />
-      {home === null ? null : (
+      {home === null || !admin ? null : (
         <div className="actions">
           <button
             type="button"
@@ -195,6 +202,7 @@ function HomeSection(): ReactNode {
 }
 
 function LabelSection(): ReactNode {
+  const admin = useIsAdmin();
   const mode = useParcelLabel();
   const save = useSaveParcelLabel();
   return (
@@ -208,7 +216,8 @@ function LabelSection(): ReactNode {
         <span>Name parcels by</span>
         <select
           value={save.isPending ? save.variables : mode}
-          disabled={save.isPending}
+          disabled={save.isPending || !admin}
+          title={admin ? undefined : "Sign in as admin to change this."}
           onChange={(e) => {
             save.mutate(e.target.value as ParcelLabelMode);
           }}
@@ -232,7 +241,14 @@ export function SettingsPage(): ReactNode {
       <div className="settings-grid">
         <HomeSection />
         <LabelSection />
-        {admin ? <ServerSettingsCards /> : null}
+        {admin ? (
+          <ServerSettingsCards />
+        ) : (
+          <section className="card stack">
+            <h2>Server settings</h2>
+            <ReadOnlyHint>Server settings and passwords are for the admin only.</ReadOnlyHint>
+          </section>
+        )}
       </div>
     </section>
   );

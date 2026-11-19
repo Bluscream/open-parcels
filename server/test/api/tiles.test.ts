@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "../../src/api/app.js";
-import { createTestContext, signIn, type TestContext, type TestOptions } from "../helpers.js";
+import {
+  createTestContext,
+  READER_PASSWORD,
+  signIn,
+  type TestContext,
+  type TestOptions,
+} from "../helpers.js";
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3]);
 const KEY = "very-secret-tile-key";
@@ -53,8 +59,8 @@ describe("map tiles", () => {
     expect(upstream).toEqual([]);
   });
 
-  it("needs a session", async () => {
-    await setUp();
+  it("needs a session when reading needs a sign-in", async () => {
+    await setUp({ env: { OPENPARCELS_PASSWORD: READER_PASSWORD } });
     const app = await context.app();
     expect((await app.inject({ url: "/tiles/osm/1/0/0" })).statusCode).toBe(401);
   });

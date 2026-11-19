@@ -126,7 +126,7 @@ export function registerEventRoutes(app: TypedApp, services: Services): void {
       );
       // Each heartbeat also checks the credential: a signed-out session or a revoked token ends
       // the stream within one heartbeat instead of streaming on until the client goes away.
-      const stillAllowed = credentialCheck(request, services.auth);
+      const stillAllowed = credentialCheck(request, services.auth, services.access);
       const heartbeat = setInterval(() => {
         stillAllowed().then(
           (allowed) => {

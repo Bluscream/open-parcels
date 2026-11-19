@@ -69,8 +69,10 @@ export function renderApp(path = "/"): RenderResult {
 export const SIGNED_IN = {
   authenticated: true,
   method: "session",
+  role: "admin",
   scopes: ["read", "write", "admin"],
   csrf_token: "csrf-test-value",
+  reader_required: false,
   setup_required: false,
 };
 

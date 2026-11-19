@@ -4,7 +4,14 @@ import { useSetup, useSignIn } from "./session";
 
 const MIN_PASSWORD = 10;
 
-function AuthCard(props: { readonly title: string; readonly children: ReactNode }): ReactNode {
+interface AuthPageProps {
+  /** Set when reading is open and this page was opened from the app: a way back to it. */
+  readonly onCancel?: () => void;
+}
+
+function AuthCard(
+  props: AuthPageProps & { readonly title: string; readonly children: ReactNode },
+): ReactNode {
   return (
     <main className="auth-page">
       <section className="card auth-card" aria-labelledby="auth-title">
@@ -14,13 +21,18 @@ function AuthCard(props: { readonly title: string; readonly children: ReactNode 
         </p>
         <h1 id="auth-title">{props.title}</h1>
         {props.children}
+        {props.onCancel === undefined ? null : (
+          <button type="button" className="link-button" onClick={props.onCancel}>
+            Back to the app (read only)
+          </button>
+        )}
       </section>
     </main>
   );
 }
 
-/** First start: the setup code from the container log, then the owner password. */
-export function SetupPage(): ReactNode {
+/** First start: the setup code from the container log, then the admin password. */
+export function SetupPage(props: AuthPageProps): ReactNode {
   const setup = useSetup();
   const [setupCode, setSetupCode] = useState("");
   const [password, setPassword] = useState("");
@@ -42,10 +54,10 @@ export function SetupPage(): ReactNode {
   };
 
   return (
-    <AuthCard title="Set up open-parcels">
+    <AuthCard title="Set up open-parcels" {...props}>
       <p className="muted">
         This is the first start. Enter the setup code printed in the container log, then choose the
-        owner password.
+        admin password.
       </p>
       <form onSubmit={submit} className="stack">
         <Field label="Setup code" hint="Look for “enter the setup code” in the container log.">
@@ -62,7 +74,7 @@ export function SetupPage(): ReactNode {
             />
           )}
         </Field>
-        <Field label="Owner password" hint={`At least ${MIN_PASSWORD} characters.`}>
+        <Field label="Admin password" hint={`At least ${MIN_PASSWORD} characters.`}>
           {(id, hint) => (
             <input
               id={id}
@@ -105,7 +117,8 @@ export function SetupPage(): ReactNode {
   );
 }
 
-export function SignInPage(): ReactNode {
+/** One box: the admin password signs in to change things, the reader password only to read. */
+export function SignInPage(props: AuthPageProps): ReactNode {
   const signIn = useSignIn();
   const [password, setPassword] = useState("");
 
@@ -119,12 +132,16 @@ export function SignInPage(): ReactNode {
   };
 
   return (
-    <AuthCard title="Sign in">
+    <AuthCard title="Sign in" {...props}>
       <form onSubmit={submit} className="stack">
-        <Field label="Owner password">
-          {(id) => (
+        <Field
+          label="Password"
+          hint="The admin password to change things, or the reader password to read."
+        >
+          {(id, hint) => (
             <input
               id={id}
+              aria-describedby={hint}
               type="password"
               autoComplete="current-password"
               required

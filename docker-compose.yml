@@ -13,6 +13,10 @@ services:
       OPENPARCELS_LOG_LEVEL: info
       # OPENPARCELS_PUBLIC_URL: https://parcels.example.com
       # OPENPARCELS_SECURE_COOKIES: "true"
+      # Without a reader password anyone who can reach the server can read (not change) everything.
+      # OPENPARCELS_PASSWORD: change-me-reader
+      # Without an admin password, the first start asks for the setup code from the log.
+      # OPENPARCELS_ADMIN_PASSWORD: change-me-admin-password
     read_only: true
     tmpfs:
       - /tmp

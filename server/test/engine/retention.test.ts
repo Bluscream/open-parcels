@@ -68,7 +68,8 @@ describe("retention", () => {
 describe("diagnostics", () => {
   it("is admin-only and contains no configuration or secrets", async () => {
     const app = await context.app();
-    expect((await app.inject("/api/v1/diagnostics")).statusCode).toBe(401);
+    // Reading is open here, but diagnostics need the admin.
+    expect((await app.inject("/api/v1/diagnostics")).statusCode).toBe(403);
     const session = await signIn(context, app);
     await context.services.sources.create({
       plugin: "imap",

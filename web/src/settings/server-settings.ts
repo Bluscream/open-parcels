@@ -5,18 +5,17 @@ import {
   patchApiV1SettingsConfig,
   type GetApiV1SettingsConfig200Item,
 } from "../api/generated";
-import { useSession } from "../auth/session";
 import { mapLayersKey } from "../map/layers";
+
+export { useIsAdmin } from "../auth/session";
 
 export type ServerSetting = GetApiV1SettingsConfig200Item;
 export type ServerSettingValue = string | number | boolean;
 
 export const serverSettingsKey = ["settings", "config"] as const;
 
-/** Server settings are for the admin scope only. */
-export function useIsAdmin(): boolean {
-  return useSession().data?.scopes.includes("admin") === true;
-}
+/** The passwords' group: edited on the Security card, not the generic editor. */
+export const SECURITY_GROUP = "Security";
 
 export function useServerSettings() {
   return useQuery({

@@ -85,7 +85,7 @@ describe("first-start setup", () => {
   });
 
   it("accepts a lower-case setup code without dashes", async () => {
-    const code = (context.services.setup.code ?? "").replaceAll("-", "").toLowerCase();
+    const code = (context.services.access.setupCode ?? "").replaceAll("-", "").toLowerCase();
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/setup",
@@ -98,7 +98,7 @@ describe("first-start setup", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/setup",
-      payload: { setup_code: context.services.setup.code ?? "", password: SHORT_PASSWORD },
+      payload: { setup_code: context.services.access.setupCode ?? "", password: SHORT_PASSWORD },
     });
     expect(response.statusCode).toBe(400);
   });
@@ -153,9 +153,12 @@ describe("sessions", () => {
   it("expires sessions after 30 days without use", async () => {
     const session = await signIn(context, app);
     context.clock.advance(31 * 24 * 60 * 60 * 1000);
+    // Reading is open here (no OPENPARCELS_PASSWORD), so the lost admin role shows on a write.
     const response = await app.inject({
+      method: "POST",
       url: "/api/v1/parcels",
-      headers: { cookie: session.cookie },
+      headers: { cookie: session.cookie, "x-csrf-token": session.csrf },
+      payload: { carrier: "dhl", barcode: "00340434000000000001" },
     });
     expect(response.statusCode).toBe(401);
   });
@@ -167,8 +170,8 @@ describe("sessions", () => {
       url: "/api/v1/session",
       headers: { cookie: session.cookie, "x-csrf-token": session.csrf },
     });
-    const after = await app.inject({ url: "/api/v1/parcels", headers: { cookie: session.cookie } });
-    expect(after.statusCode).toBe(401);
+    const after = await app.inject({ url: "/api/v1/session", headers: { cookie: session.cookie } });
+    expect(after.json()).toMatchObject({ authenticated: false, method: "anonymous" });
   });
 });
 
@@ -234,8 +237,10 @@ describe("Home Assistant ingress", () => {
 
   it("ignores the ingress address on the normal listener", async () => {
     const response = await app.inject({
+      method: "POST",
       url: "/api/v1/parcels",
       remoteAddress: HA_INGRESS_ADDRESS,
+      payload: { carrier: "dhl", barcode: "00340434000000000001" },
     });
     expect(response.statusCode).toBe(401);
   });

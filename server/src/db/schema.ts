@@ -25,6 +25,8 @@ export interface SessionTable {
   expires_at: Timestamp;
   last_seen_at: Timestamp;
   user_agent: string | null;
+  /** `admin` or `reader`; see migration 0012. */
+  role: string;
 }
 
 export interface ApiTokenTable {

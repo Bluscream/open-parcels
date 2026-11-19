@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyRequest } from "fastify";
 import type { App } from "../../src/api/app.js";
 import { credentialCheck } from "../../src/api/auth-plugin.js";
-import { createTestContext, signIn, type TestContext } from "../helpers.js";
+import { createTestContext, READER_PASSWORD, signIn, type TestContext } from "../helpers.js";
 
 let context: TestContext;
 let app: App;
@@ -87,7 +87,8 @@ async function track(barcode: string): Promise<void> {
 }
 
 describe("SSE event stream", () => {
-  it("requires authentication", async () => {
+  it("requires authentication when reading needs a sign-in", async () => {
+    await context.services.configSettings.patch({ OPENPARCELS_PASSWORD: READER_PASSWORD });
     const response = await fetch(`${baseUrl}/api/v1/events`);
     expect(response.status).toBe(401);
   });
@@ -99,18 +100,22 @@ describe("SSE event stream", () => {
       headers: { authorization: `Bearer ${token}` },
       cookies: {},
     } as unknown as FastifyRequest;
-    const tokenAllowed = credentialCheck(byToken, context.services.auth);
+    const tokenAllowed = credentialCheck(byToken, context.services.auth, context.services.access);
     expect(await tokenAllowed()).toBe(true);
     await context.services.auth.deleteToken(tokenId);
     expect(await tokenAllowed()).toBe(false);
 
-    const session = await context.services.auth.createSession(null);
+    const session = await context.services.auth.createSession(null, "admin");
     const bySession = {
       auth: { kind: "session", csrfToken: session.csrfToken, scopes: ["read"] },
       headers: {},
       cookies: { op_session: session.cookieValue },
     } as unknown as FastifyRequest;
-    const sessionAllowed = credentialCheck(bySession, context.services.auth);
+    const sessionAllowed = credentialCheck(
+      bySession,
+      context.services.auth,
+      context.services.access,
+    );
     expect(await sessionAllowed()).toBe(true);
     await context.services.auth.deleteSession(session.cookieValue);
     expect(await sessionAllowed()).toBe(false);

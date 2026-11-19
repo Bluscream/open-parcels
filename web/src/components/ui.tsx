@@ -40,6 +40,15 @@ export function Field(props: {
   );
 }
 
+/** Shown where editing controls are hidden because the caller may only read. */
+export function ReadOnlyHint({ children }: { readonly children?: ReactNode }): ReactNode {
+  return (
+    <p className="muted read-only-hint">
+      {children ?? "Read only. Sign in as admin to change this."}
+    </p>
+  );
+}
+
 export function Spinner({ label = "Loading…" }: { readonly label?: string }): ReactNode {
   return (
     <p className="muted" role="status">

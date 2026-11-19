@@ -895,6 +895,19 @@ tbody tr:hover {
   color: var(--danger);
 }
 
+/* Who is signed in: the admin may change things, everyone else only reads. */
+.role-badge {
+  white-space: nowrap;
+}
+
+.role-admin {
+  color: var(--accent);
+}
+
+.read-only-hint {
+  font-style: italic;
+}
+
 /* Carrier tile */
 .carrier-logo {
   display: inline-flex;

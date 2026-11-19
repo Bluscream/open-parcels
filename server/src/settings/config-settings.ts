@@ -41,6 +41,7 @@ export type PatchResult =
   | { readonly ok: false; readonly error: string };
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const isOwnForm = (key: SettingKey): boolean => "ownForm" in SETTINGS[key];
 const shown = (value: unknown): string => (value === undefined ? "unset" : JSON.stringify(value));
 
 /**
@@ -50,6 +51,8 @@ const shown = (value: unknown): string => (value === undefined ? "unset" : JSON.
  */
 export class ConfigSettings {
   readonly #overrides = new Map<SettingKey, SettingValue>();
+  /** Own-form settings whose UI value is kept elsewhere (the hashed admin password). */
+  readonly #savedElsewhere = new Set<SettingKey>();
   /** What the server runs with; restart settings keep their start-up value here. */
   readonly #running: SettingValues;
 
@@ -85,6 +88,12 @@ export class ConfigSettings {
     for (const key of this.#overrides.keys()) this.onChange?.(key, this.config);
   }
 
+  /** Records whether an own-form setting has a value saved in the UI, for `list`. */
+  markSavedElsewhere(key: SettingKey, saved: boolean): void {
+    if (saved) this.#savedElsewhere.add(key);
+    else this.#savedElsewhere.delete(key);
+  }
+
   list(): SettingInfo[] {
     return SETTING_KEYS.map((key) => this.#info(key));
   }
@@ -94,6 +103,7 @@ export class ConfigSettings {
     const accepted: [SettingKey, SettingValue][] = [];
     for (const [key, raw] of Object.entries(input)) {
       if (!isSettingKey(key)) return { ok: false, error: `${key}: there is no such setting.` };
+      if (isOwnForm(key)) return { ok: false, error: `${key}: change it with its own form.` };
       if (SETTINGS[key].apply === "env") {
         return {
           ok: false,
@@ -135,6 +145,7 @@ export class ConfigSettings {
   /** Deletes the saved value, so the environment or default applies again. */
   async reset(key: string): Promise<PatchResult> {
     if (!isSettingKey(key)) return { ok: false, error: `${key}: there is no such setting.` };
+    if (isOwnForm(key)) return { ok: false, error: `${key}: reset it with its own form.` };
     if (!this.#overrides.has(key)) return { ok: true, changed: [] };
     const previous = this.#overrides.get(key);
     await this.db.deleteFrom("setting_overrides").where("key", "=", key).execute();
@@ -172,6 +183,8 @@ export class ConfigSettings {
     const secret = def.secret === true;
     const value = this.#configured(key);
     const fallback: SettingValue | undefined = def.default;
+    const savedElsewhere = this.#savedElsewhere.has(key);
+    const overridden = savedElsewhere || this.#overrides.has(key);
     return {
       key,
       group: def.group,
@@ -180,8 +193,9 @@ export class ConfigSettings {
       choices: "choices" in def ? def.choices : null,
       apply: def.apply,
       secret,
-      source: this.#overrides.has(key) ? "override" : this.config.env.sources[key],
-      set: value !== undefined,
+      source: overridden ? "override" : this.config.env.sources[key],
+      // An empty secret (an open reader password) is as good as unset.
+      set: savedElsewhere || (value !== undefined && value !== ""),
       value: secret ? null : (value ?? null),
       default: secret ? null : (fallback ?? null),
       pendingRestart: def.apply === "restart" && !same(value, this.#running[key]),

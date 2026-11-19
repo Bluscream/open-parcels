@@ -10,7 +10,8 @@ import {
 } from "../api/queries";
 import type { Carrier, Parcel, Source } from "../api/types";
 import { CarrierLogo } from "../components/CarrierLogo";
-import { ErrorNotice, Spinner } from "../components/ui";
+import { useIsAdmin } from "../auth/session";
+import { ErrorNotice, ReadOnlyHint, Spinner } from "../components/ui";
 import { formatRelative } from "../lib/format";
 import { SourceStateBadge } from "../parcels/badges";
 import { MAIL_PLUGIN } from "./mail";
@@ -70,14 +71,12 @@ function SourceRow(props: {
   readonly source: Source;
   readonly stats: SourceStats | undefined;
   readonly signIn: boolean;
+  /** Readers see the card without its actions. */
+  readonly admin: boolean;
   readonly onEdit: () => void;
   readonly onSignIn: () => void;
 }): ReactNode {
   const { source } = props;
-  const sync = useSyncSource();
-  const update = useUpdateSource();
-  const remove = useDeleteSource();
-  const enabled = source.state !== "disabled";
   const stats = props.stats ?? NO_STATS;
   return (
     <li className="card source-card">
@@ -113,6 +112,25 @@ function SourceRow(props: {
         <dt>Next run</dt>
         <dd>{source.next_run_at === null ? "—" : formatRelative(source.next_run_at)}</dd>
       </dl>
+      {props.admin ? <SourceActions {...props} /> : null}
+    </li>
+  );
+}
+
+/** Sign in, sync, edit, pause and remove: the admin's controls on a source card. */
+function SourceActions(props: {
+  readonly source: Source;
+  readonly signIn: boolean;
+  readonly onEdit: () => void;
+  readonly onSignIn: () => void;
+}): ReactNode {
+  const { source } = props;
+  const sync = useSyncSource();
+  const update = useUpdateSource();
+  const remove = useDeleteSource();
+  const enabled = source.state !== "disabled";
+  return (
+    <>
       <ErrorNotice error={sync.error ?? update.error ?? remove.error} />
       <div className="actions">
         {/* A disabled source neither runs nor signs in; enabling it comes first. */}
@@ -178,11 +196,12 @@ function SourceRow(props: {
           </button>
         </span>
       </div>
-    </li>
+    </>
   );
 }
 
 export function SourcesPage(): ReactNode {
+  const admin = useIsAdmin();
   const sources = useSources();
   const carriers = useCarriers();
   const parcels = useParcels(true);
@@ -212,16 +231,19 @@ export function SourcesPage(): ReactNode {
             />
           </div>
         )}
-        <button
-          type="button"
-          className="button primary"
-          onClick={() => {
-            setEditing({ mode: "add" });
-          }}
-        >
-          Add a source
-        </button>
+        {admin ? (
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => {
+              setEditing({ mode: "add" });
+            }}
+          >
+            Add a source
+          </button>
+        ) : null}
       </div>
+      {admin ? null : <ReadOnlyHint />}
       <ErrorNotice error={sources.error} />
       {sources.data === undefined ? (
         sources.isPending ? (
@@ -237,6 +259,7 @@ export function SourcesPage(): ReactNode {
               source={source}
               stats={stats.get(source.id)}
               signIn={canSignIn(source, carriers.data)}
+              admin={admin}
               onEdit={() => {
                 setEditing({ mode: "edit", source });
               }}
