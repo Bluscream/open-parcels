@@ -65,16 +65,48 @@ export class LiveTracker {
 
   /** Replaces a source's targets after a full poll; a full poll also lifts the failure stop. */
   setTargets(sourceId: string, targets: readonly { parcelId: string; target: LiveTarget }[]): void {
+    const kept = new Set(targets.map(({ parcelId }) => parcelId));
+    const dropped: string[] = [];
     for (const [parcelId, tracked] of this.#targets) {
       if (tracked.sourceId === sourceId) {
         this.#targets.delete(parcelId);
+        if (!kept.has(parcelId)) dropped.push(parcelId);
       }
     }
     for (const { parcelId, target } of targets) {
       this.#targets.set(parcelId, { sourceId, target });
     }
     this.#failures.delete(sourceId);
+    void this.#retire(sourceId, dropped).catch((error: unknown) => {
+      this.deps.logger.error({ err: error }, "Ending dropped live sessions failed.");
+    });
     this.wake();
+  }
+
+  /**
+   * The source no longer offers a courier map for these parcels (just dropped, or left stored
+   * from before a restart): a session still on the road ends with one "ended" transition, and
+   * the stored state goes, so no stale "en route" is left behind.
+   */
+  async #retire(sourceId: string, dropped: readonly string[]): Promise<void> {
+    const stored = await this.deps.db
+      .selectFrom("live_state")
+      .innerJoin("parcel_sources", "parcel_sources.parcel_id", "live_state.parcel_id")
+      .select(["live_state.parcel_id", "live_state.state", "live_state.stops_away"])
+      .where("parcel_sources.source_id", "=", sourceId)
+      .execute();
+    const states = new Map(stored.map((row) => [row.parcel_id, row]));
+    for (const parcelId of new Set([...dropped, ...states.keys()])) {
+      if (this.#targets.has(parcelId)) continue;
+      const row = states.get(parcelId);
+      const previous =
+        this.#sessions.get(parcelId) ??
+        (row === undefined ? undefined : { state: row.state, stopsAway: row.stops_away });
+      if (onRoad(previous)) {
+        await this.#record(parcelId, previous, null);
+      }
+      await this.#forget(parcelId);
+    }
   }
 
   start(): void {

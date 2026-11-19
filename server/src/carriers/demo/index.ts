@@ -58,6 +58,8 @@ function fromShop(parcel: DemoParcel, now: number): ParcelSnapshot {
     receiver: null,
     weightKg: null,
     history: [],
+    // Drops what an earlier version of the demo shop stored as its own history.
+    historyComplete: true,
     items: parcel.items,
     order: order(parcel, now),
     externalRef: null,

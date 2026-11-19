@@ -62,7 +62,43 @@ async function liveEvents(): Promise<Record<string, unknown>[]> {
   return rows.map((row) => JSON.parse(row.payload) as Record<string, unknown>);
 }
 
+async function liveState(parcelId: string): Promise<string | undefined> {
+  return (
+    await context.services.db
+      .selectFrom("live_state")
+      .select("state")
+      .where("parcel_id", "=", parcelId)
+      .executeTakeFirst()
+  )?.state;
+}
+
 describe("live courier tracking", () => {
+  it("ends a session and clears its state when the source stops offering the map", async () => {
+    const parcelId = await poll("out_for_delivery", true);
+    shop.liveScript = [reading("en_route", 4, COURIER)];
+    await context.services.live.pass();
+    expect(await liveState(parcelId)).toBe("en_route");
+
+    // The next poll lists the parcel without a courier map.
+    shop.listing = [
+      snapshot({
+        carrier: "fakeshop",
+        barcode: "SHOP-1",
+        status: "in_transit",
+        rawStatus: "in_transit",
+        live: null,
+      }),
+    ];
+    await context.services.sources.requestRun(sourceId);
+    await context.services.scheduler.runDue();
+    await vi.waitFor(async () => {
+      expect(await liveState(parcelId)).toBeUndefined();
+    });
+    expect((await liveEvents()).map((event) => event["new_live_state"])).toEqual([
+      "en_route",
+      null,
+    ]);
+  });
   it("probes every five minutes while out for delivery without a map, then reads every 30 s", async () => {
     await poll("out_for_delivery");
     shop.liveScript = [null];
