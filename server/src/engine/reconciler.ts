@@ -14,6 +14,7 @@ import { deriveEvents, type EventView } from "./rules.js";
 import { utcSnapshot } from "./utc.js";
 import { normaliseBarcode } from "./barcode.js";
 import { foldParcel } from "./fold.js";
+import { scrubRaw } from "./raw-scrub.js";
 import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
 
 /** A parcel missing from every complete listing for this long, undelivered, counts as removed. */
@@ -692,18 +693,13 @@ export class Reconciler {
         .execute();
     }
     if (snapshot.raw !== null) {
+      // Codes that open something and personal data (names, addresses) never reach storage.
+      const payload = JSON.stringify(scrubRaw(snapshot.raw));
       await trx
         .insertInto("parcel_raw")
-        .values({
-          parcel_id: parcelId,
-          source_id: sourceId,
-          fetched_at: now,
-          payload: JSON.stringify(snapshot.raw),
-        })
+        .values({ parcel_id: parcelId, source_id: sourceId, fetched_at: now, payload })
         .onConflict((oc) =>
-          oc
-            .columns(["parcel_id", "source_id"])
-            .doUpdateSet({ fetched_at: now, payload: JSON.stringify(snapshot.raw) }),
+          oc.columns(["parcel_id", "source_id"]).doUpdateSet({ fetched_at: now, payload }),
         )
         .execute();
     }

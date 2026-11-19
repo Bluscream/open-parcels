@@ -11,6 +11,7 @@ import type { SecretBox } from "./crypto/secrets.js";
 import type { Database } from "./db/schema.js";
 import { LiveTracker } from "./engine/live.js";
 import { repairBarcodes } from "./engine/barcode-repair.js";
+import { scrubStoredRaw } from "./engine/raw-scrub.js";
 import { trackingSourceIn } from "./engine/linking.js";
 import { Reconciler } from "./engine/reconciler.js";
 import { PluginRegistry, type RegisteredPlugin } from "./engine/registry.js";
@@ -176,6 +177,10 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
       barcodes,
       "Stored codes in their carrier's spelling and merged case or space twins.",
     );
+  }
+  const scrubbed = await scrubStoredRaw(db);
+  if (scrubbed > 0) {
+    logger.info({ scrubbed }, "Removed codes and personal data from stored raw payloads.");
   }
   const revived = await reviveTrackingRemovals(db, clock);
   if (revived > 0) {
