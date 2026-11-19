@@ -202,6 +202,106 @@ export type DeleteApiV1TokensId404 = {
   message: string;
 };
 
+/**
+ * Where parcels go: centres the maps and gives distances. Set by the user.
+ * @nullable
+ */
+export type GetApiV1Settings200Home = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  /**
+   * @maxLength 300
+   * @nullable
+   */
+  label: string | null;
+} | null;
+
+export type GetApiV1Settings200 = {
+  /**
+   * Where parcels go: centres the maps and gives distances. Set by the user.
+   * @nullable
+   */
+  home: GetApiV1Settings200Home;
+};
+
+/**
+ * Where parcels go: centres the maps and gives distances. Set by the user.
+ */
+export type PutApiV1SettingsHomeBody = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  /**
+   * @maxLength 300
+   * @nullable
+   */
+  label?: string | null;
+};
+
+/**
+ * Where parcels go: centres the maps and gives distances. Set by the user.
+ */
+export type PutApiV1SettingsHome200 = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  /**
+   * @maxLength 300
+   * @nullable
+   */
+  label: string | null;
+};
+
+export type GetApiV1GeocodeParams = {
+  /**
+   * @minLength 2
+   * @maxLength 200
+   */
+  q: string;
+};
+
+export type GetApiV1Geocode200Item = {
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+export type GetApiV1Geocode400 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type GetApiV1Geocode502 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
 export type GetApiV1ParcelsParams = {
   active?: GetApiV1ParcelsActive;
   status?: GetApiV1ParcelsStatus;
@@ -2558,6 +2658,84 @@ export const deleteApiV1TokensId = async (
   return apiFetch<null>(getDeleteApiV1TokensIdUrl(id), {
     ...options,
     method: "DELETE",
+  });
+};
+
+export const getGetApiV1SettingsUrl = () => {
+  return `/api/v1/settings`;
+};
+
+/**
+ * @summary The app's settings.
+ */
+export const getApiV1Settings = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<GetApiV1Settings200> => {
+  return apiFetch<GetApiV1Settings200>(getGetApiV1SettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getPutApiV1SettingsHomeUrl = () => {
+  return `/api/v1/settings/home`;
+};
+
+/**
+ * @summary Set the home location.
+ */
+export const putApiV1SettingsHome = async (
+  putApiV1SettingsHomeBody: PutApiV1SettingsHomeBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<PutApiV1SettingsHome200> => {
+  return apiFetch<PutApiV1SettingsHome200>(getPutApiV1SettingsHomeUrl(), {
+    ...options,
+    method: "PUT",
+    headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
+    body: JSON.stringify(putApiV1SettingsHomeBody),
+  });
+};
+
+export const getDeleteApiV1SettingsHomeUrl = () => {
+  return `/api/v1/settings/home`;
+};
+
+/**
+ * @summary Forget the home location.
+ */
+export const deleteApiV1SettingsHome = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getDeleteApiV1SettingsHomeUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getGetApiV1GeocodeUrl = (params: GetApiV1GeocodeParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/geocode?${stringifiedParams}` : `/api/v1/geocode`;
+};
+
+/**
+ * @summary Look up an address or place (OpenStreetMap Nominatim, through this server).
+ */
+export const getApiV1Geocode = async (
+  params: GetApiV1GeocodeParams,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<GetApiV1Geocode200Item[]> => {
+  return apiFetch<GetApiV1Geocode200Item[]>(getGetApiV1GeocodeUrl(params), {
+    ...options,
+    method: "GET",
   });
 };
 

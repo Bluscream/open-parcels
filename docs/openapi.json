@@ -633,6 +633,253 @@
         }
       }
     },
+    "/api/v1/settings": {
+      "get": {
+        "summary": "The app's settings.",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "home": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "latitude": {
+                          "type": "number",
+                          "minimum": -90,
+                          "maximum": 90
+                        },
+                        "longitude": {
+                          "type": "number",
+                          "minimum": -180,
+                          "maximum": 180
+                        },
+                        "label": {
+                          "default": null,
+                          "nullable": true,
+                          "type": "string",
+                          "maxLength": 300
+                        }
+                      },
+                      "required": [
+                        "latitude",
+                        "longitude",
+                        "label"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Where parcels go: centres the maps and gives distances. Set by the user."
+                    }
+                  },
+                  "required": [
+                    "home"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/home": {
+      "put": {
+        "summary": "Set the home location.",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "longitude": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  },
+                  "label": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "required": [
+                  "latitude",
+                  "longitude"
+                ],
+                "description": "Where parcels go: centres the maps and gives distances. Set by the user."
+              }
+            }
+          },
+          "description": "Where parcels go: centres the maps and gives distances. Set by the user."
+        },
+        "responses": {
+          "200": {
+            "description": "Where parcels go: centres the maps and gives distances. Set by the user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "latitude": {
+                      "type": "number",
+                      "minimum": -90,
+                      "maximum": 90
+                    },
+                    "longitude": {
+                      "type": "number",
+                      "minimum": -180,
+                      "maximum": 180
+                    },
+                    "label": {
+                      "default": null,
+                      "nullable": true,
+                      "type": "string",
+                      "maxLength": 300
+                    }
+                  },
+                  "required": [
+                    "latitude",
+                    "longitude",
+                    "label"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Where parcels go: centres the maps and gives distances. Set by the user."
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Forget the home location.",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/geocode": {
+      "get": {
+        "summary": "Look up an address or place (OpenStreetMap Nominatim, through this server).",
+        "tags": [
+          "settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "q",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "latitude": {
+                        "type": "number"
+                      },
+                      "longitude": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "latitude",
+                      "longitude"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/parcels": {
       "get": {
         "summary": "List parcels, newest change first.",

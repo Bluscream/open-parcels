@@ -1306,8 +1306,9 @@ tbody tr:hover {
   filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
 }
 
-.leaflet-container {
-  background: transparent;
+/* Beats leaflet.css (loaded later): outside the world tiles the map shows the page colour. */
+.map-frame .leaflet-container {
+  background: var(--bg);
   font-family: var(--font);
 }
 
@@ -1534,4 +1535,76 @@ tbody tr:hover {
     flex-direction: column;
     gap: 2px;
   }
+}
+
+/* Settings: a search box with its clear button inside, the places found and the picker map. */
+.search-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-with-clear {
+  position: relative;
+  flex: 1;
+}
+
+.input-with-clear input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.clear-button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.clear-button:hover,
+.clear-button:focus-visible {
+  background: var(--tint-strong);
+  color: var(--text);
+}
+
+.place-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.place-results button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--tint);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.place-results button:hover,
+.place-results button:focus-visible {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.settings-map {
+  height: 380px;
+  border-radius: 12px;
+  overflow: hidden;
 }

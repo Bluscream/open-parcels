@@ -27,6 +27,7 @@ import { registerImageRoutes } from "./routes/images.js";
 import { registerTileRoutes } from "./routes/tiles.js";
 import { registerParcelRoutes } from "./routes/parcels.js";
 import { registerSessionRoutes } from "./routes/session.js";
+import { registerSettingsRoutes } from "./routes/settings.js";
 import { registerSignInRoutes } from "./routes/sign-in.js";
 import { registerSourceRoutes } from "./routes/sources.js";
 import { registerTokenRoutes } from "./routes/tokens.js";
@@ -165,6 +166,7 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   registerHealthRoutes(typed, services);
   registerSessionRoutes(typed, services);
   registerTokenRoutes(typed, services);
+  registerSettingsRoutes(typed, services);
   registerParcelRoutes(typed, services);
   registerSourceRoutes(typed, services);
   registerSignInRoutes(typed, services);

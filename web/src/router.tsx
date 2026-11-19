@@ -12,6 +12,7 @@ import { Shell } from "./layout/Shell";
 import { OrdersPage } from "./orders/OrdersPage";
 import { ParcelDetailPage } from "./parcels/ParcelDetailPage";
 import { ParcelsPage } from "./parcels/ParcelsPage";
+import { SettingsPage } from "./settings/SettingsPage";
 import { SourcesPage } from "./sources/SourcesPage";
 
 // Leaflet and FullCalendar are large; load them only when their tab opens.
@@ -46,6 +47,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: "/calendar", component: CalendarPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/tokens", component: TokensPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/status", component: StatusPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ]);
 
 /** `/`, or the Home Assistant ingress prefix the server wrote into `<base href>`. */

@@ -8,6 +8,7 @@ import {
   Package,
   Plug,
   Plus,
+  Settings,
   ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const NAV = [
   { to: "/sources", label: "Sources", icon: Plug },
   { to: "/tokens", label: "API tokens", icon: KeyRound },
   { to: "/status", label: "Status", icon: Activity },
+  { to: "/settings", label: "Settings", icon: Settings },
 ] as const satisfies readonly { to: string; label: string; icon: LucideIcon }[];
 
 const LIVE_LABELS: Readonly<Record<LiveState, string>> = {

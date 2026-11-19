@@ -34,6 +34,11 @@ import type { Presentation } from "./parcels/repository.js";
 import { ParcelService } from "./parcels/service.js";
 import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/http.js";
 import { TileProxy } from "./tiles/proxy.js";
+import { Geocoder } from "./geo/geocoder.js";
+
+/** How this server identifies itself to OpenStreetMap's services. */
+const USER_AGENT =
+  "open-parcels/2.0 (self-hosted parcel tracker; +https://github.com/open-parcels/open-parcels)";
 
 /**
  * One-time code that has to accompany the first owner password. It is printed to the container
@@ -77,6 +82,7 @@ export interface Services {
   readonly sources: SourceService;
   readonly images: ImageProxy;
   readonly tiles: TileProxy;
+  readonly geocoder: Geocoder;
   readonly mail: MailWatcher;
   readonly reconciler: Reconciler;
   readonly runner: SourceRunner;
@@ -197,8 +203,11 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   });
   const tiles = new TileProxy({
     cacheDir: path.join(deps.config.dataDir, "tiles"),
-    userAgent:
-      "open-parcels/2.0 (self-hosted parcel tracker; +https://github.com/open-parcels/open-parcels)",
+    userAgent: USER_AGENT,
+  });
+  const geocoder = new Geocoder({
+    userAgent: USER_AGENT,
+    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
   });
   // Filled in once the live tracker exists; reads before that see no positions.
   const presentation: Presentation = {
@@ -286,6 +295,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     sources,
     images,
     tiles,
+    geocoder,
     mail,
     reconciler,
     runner,

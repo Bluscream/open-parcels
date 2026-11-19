@@ -23,13 +23,19 @@ function prefersDark(): boolean {
 }
 
 /** Keeps the map sized to its container and fitted to the given points. */
-function MapResizer({ bounds }: { readonly bounds: readonly LatLng[] | undefined }): null {
+function MapResizer({
+  bounds,
+  maxZoom,
+}: {
+  readonly bounds: readonly LatLng[] | undefined;
+  readonly maxZoom: number;
+}): null {
   const map = useMap();
   useEffect(() => {
     const fit = (): void => {
       const valid = (bounds ?? []).filter(([lat, lng]) => !Number.isNaN(lat) && !Number.isNaN(lng));
       if (valid.length > 0) {
-        map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom: 13 });
+        map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom });
       }
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -45,12 +51,14 @@ function MapResizer({ bounds }: { readonly bounds: readonly LatLng[] | undefined
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [map, bounds]);
+  }, [map, bounds, maxZoom]);
   return null;
 }
 
 export function SharedMap(props: {
   readonly bounds?: readonly LatLng[];
+  /** How far fitting the bounds may zoom in (13 by default). */
+  readonly fitMaxZoom?: number;
   readonly center?: LatLng;
   readonly zoom?: number;
   readonly label: string;
@@ -65,10 +73,17 @@ export function SharedMap(props: {
       <MapContainer
         center={props.center ?? [51, 10]}
         zoom={props.zoom ?? 5}
+        // No further out than about one world wide; north and south stop at the tiles' edge.
+        minZoom={2}
+        maxBounds={[
+          [-85, -540],
+          [85, 540],
+        ]}
+        maxBoundsViscosity={1}
         scrollWheelZoom
         style={{ height: "100%", width: "100%", borderRadius: "12px", zIndex: 0 }}
       >
-        <MapResizer bounds={props.bounds} />
+        <MapResizer bounds={props.bounds} maxZoom={props.fitMaxZoom ?? 13} />
         <TileLayer attribution={ATTRIBUTION} url={TILE_URL} maxZoom={19} />
         {props.children}
       </MapContainer>
