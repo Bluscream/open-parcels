@@ -1,3 +1,4 @@
+import { Mail, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   useCarriers,
@@ -81,7 +82,13 @@ function SourceRow(props: {
   return (
     <li className="card source-card">
       <div className="source-head">
-        <CarrierLogo carrier={source.plugin} size={32} />
+        {source.plugin === MAIL_PLUGIN ? (
+          <span className="source-mail-icon" aria-hidden="true">
+            <Mail size={18} />
+          </span>
+        ) : (
+          <CarrierLogo carrier={source.plugin} size={32} />
+        )}
         <div className="source-title">
           <h2 title={source.label}>{source.label}</h2>
           <span className="muted">
@@ -130,30 +137,46 @@ function SourceRow(props: {
             {sync.isPending ? "Syncing…" : "Sync now"}
           </button>
         ) : null}
-        <button type="button" className="button" onClick={props.onEdit}>
-          Edit
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-pressed={!enabled}
-          onClick={() => {
-            update.mutate({ id: source.id, body: { enabled: !enabled } });
-          }}
-        >
-          {enabled ? "Disable" : "Enable"}
-        </button>
-        <button
-          type="button"
-          className="button danger"
-          onClick={() => {
-            if (window.confirm(`Remove “${source.label}” and its stored sign-in?`)) {
-              remove.mutate(source.id);
-            }
-          }}
-        >
-          Remove
-        </button>
+        <span className="source-icon-actions">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Edit"
+            title="Edit"
+            onClick={props.onEdit}
+          >
+            <Pencil size={16} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={enabled ? "Disable" : "Enable"}
+            title={enabled ? "Disable" : "Enable"}
+            aria-pressed={!enabled}
+            onClick={() => {
+              update.mutate({ id: source.id, body: { enabled: !enabled } });
+            }}
+          >
+            {enabled ? (
+              <Pause size={16} aria-hidden="true" />
+            ) : (
+              <Play size={16} aria-hidden="true" />
+            )}
+          </button>
+          <button
+            type="button"
+            className="icon-button danger"
+            aria-label="Remove"
+            title="Remove"
+            onClick={() => {
+              if (window.confirm(`Remove “${source.label}” and its stored sign-in?`)) {
+                remove.mutate(source.id);
+              }
+            }}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+          </button>
+        </span>
       </div>
     </li>
   );

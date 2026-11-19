@@ -1591,8 +1591,30 @@ tbody tr:hover {
   margin-top: auto;
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
   gap: 0.4rem;
+}
+
+.source-icon-actions {
+  display: flex;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.icon-button.danger:hover {
+  color: var(--red, #ef4444);
+}
+
+.source-mail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--accent-hover);
+  background: rgba(59, 130, 246, 0.15);
 }
 
 .nested {
