@@ -96,6 +96,11 @@ function maySetStatus(
     const order = compareTimes(snapshotAt, current.statusAt);
     return authority === "carrier" ? order >= 0 : order > 0;
   }
+  // A source without history cannot show that it is newer than a status set by a timed scan;
+  // it may lag behind (DHL NL's account, the DHL PL lookup), so only its delivered stands.
+  if (snapshotAt === null && current.statusAt !== null) {
+    return authority === "carrier" && signal === "delivered";
+  }
   return authority === "carrier";
 }
 

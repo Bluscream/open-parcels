@@ -374,12 +374,16 @@ export class Reconciler {
     }
     const before = existing === undefined ? null : rowToState(existing);
     const manual = existing === undefined ? null : asStatus(existing.manual_status);
-    const after = mergeParcel(
+    const merged = mergeParcel(
       before,
       { ...snapshot, carrier: key.carrier, barcode: key.barcode },
       authority,
       existing === undefined ? [] : await storedHistory(trx, existing.id),
     );
+    // A delivery nobody gave a time for is dated when it was first seen, so retention (which
+    // counts from delivered_at) archives it like any other.
+    const after =
+      merged.delivered && merged.deliveredAt === null ? { ...merged, deliveredAt: now } : merged;
     const parcelId = existing?.id ?? crypto.randomUUID();
     const orderId = await this.#upsertOrder(trx, snapshot, now);
 
