@@ -20,6 +20,43 @@ const SOURCE_EVENTS = ["source.state_changed", "source.run_finished", "source.re
 
 export type LiveState = "connecting" | "live" | "offline";
 
+/** Live position updates arrive every 30 s per parcel; the lists follow them at most this often. */
+export const LIVE_LIST_REFRESH_MS = 60_000;
+
+/**
+ * Runs `refresh` at once when it has not run for `intervalMs`, otherwise once at the end of that
+ * window, so a burst of requests costs at most one run per window and the last one is never lost.
+ */
+export function throttled(
+  refresh: () => void,
+  intervalMs: number,
+  now: () => number = Date.now,
+): { request: () => void; cancel: () => void } {
+  let last = Number.NEGATIVE_INFINITY;
+  let pending: ReturnType<typeof setTimeout> | undefined;
+  const run = (): void => {
+    pending = undefined;
+    last = now();
+    refresh();
+  };
+  return {
+    request: () => {
+      const wait = last + intervalMs - now();
+      if (wait <= 0) {
+        run();
+      } else {
+        pending ??= setTimeout(run, wait);
+      }
+    },
+    cancel: () => {
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        pending = undefined;
+      }
+    },
+  };
+}
+
 interface EventPayload {
   readonly id?: unknown;
   readonly parcel?: { readonly id?: unknown };
@@ -48,9 +85,18 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       return undefined;
     }
     const source = new EventSource(apiUrl("/api/v1/events"), { withCredentials: true });
-    const onParcel = (event: MessageEvent<string>): void => {
+    const refreshLists = (): void => {
       void client.invalidateQueries({ queryKey: keys.parcels });
       void client.invalidateQueries({ queryKey: ["calendar"] });
+    };
+    // A live update changes one parcel's courier position, not what the lists show.
+    const liveLists = throttled(refreshLists, LIVE_LIST_REFRESH_MS);
+    const onParcel = (event: MessageEvent<string>): void => {
+      if (event.type === "parcel.live_updated") {
+        liveLists.request();
+      } else {
+        refreshLists();
+      }
       const id = parcelIdOf(event.data);
       if (id !== undefined && event.type === "parcel.deleted") {
         client.removeQueries({ queryKey: keys.parcel(id) });
@@ -77,6 +123,7 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       source.addEventListener(type, onSource);
     }
     return () => {
+      liveLists.cancel();
       source.close();
     };
   }, [client, enabled]);
