@@ -19,7 +19,10 @@ export function renderIcs(entries: readonly CalendarEntry[], options: IcsOptions
     name: options.name,
     prodId: { company: "open-parcels", product: "open-parcels", language: "EN" },
     method: ICalCalendarMethod.PUBLISH,
-    timezone: options.timeZone,
+    // The configured zone is a display hint only. A calendar `timezone` would make the generator
+    // write each time as the server process's wall clock under a TZID with no VTIMEZONE, so the
+    // feed changed with the container's TZ; timed events are UTC instants instead.
+    x: [{ key: "X-WR-TIMEZONE", value: options.timeZone }],
     // Calendar apps re-fetch at their own pace; this asks for at most hourly.
     ttl: 60 * 60,
   });

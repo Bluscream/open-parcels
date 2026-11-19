@@ -179,7 +179,9 @@ describe("ICS feed", () => {
     const body = feed.body.replace(/\r\n /g, "");
     expect(body).toContain("DTSTART;VALUE=DATE:20261120");
     expect(body).toContain("DTEND;VALUE=DATE:20261122");
-    expect(body).toMatch(/DTSTART(;TZID=Europe\/Berlin)?:20261120T171500/);
+    // 17:15 in Berlin, written as the UTC instant whatever the server process's own zone is.
+    expect(body).toContain("DTSTART:20261120T161500Z");
+    expect(body).toContain("X-WR-TIMEZONE:Europe/Berlin");
     expect(body).toContain("@open-parcels");
   });
 
