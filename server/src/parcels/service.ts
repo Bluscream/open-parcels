@@ -2,6 +2,7 @@ import type { Kysely } from "kysely";
 import { isoNow, type Clock } from "../clock.js";
 import type { Database, ParcelUpdate } from "../db/schema.js";
 import { type Direction, type Parcel, type ParcelStatus } from "../domain/parcel.js";
+import { normaliseBarcode } from "../engine/barcode.js";
 import { deriveEvents, type EventView } from "../engine/rules.js";
 import { removeOrphanedAutoSources } from "../engine/sources.js";
 import { appendEvent, type EventBus } from "../events/bus.js";
@@ -60,7 +61,9 @@ export class ParcelService {
     this.repository = new ParcelRepository(db, presentation);
   }
 
-  async create(input: NewParcelInput): Promise<Parcel> {
+  async create(given: NewParcelInput): Promise<Parcel> {
+    // Stored in the carrier's own spelling, the one its answers come back in.
+    const input = { ...given, barcode: normaliseBarcode(given.carrier, given.barcode) };
     const existing = await this.repository.findIdByBarcode(input.carrier, input.barcode);
     if (existing !== undefined) {
       throw new DuplicateParcelError(existing);

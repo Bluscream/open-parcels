@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  asTracked,
   carrierPattern,
   defineCarrier,
   unknownReporter,
@@ -114,7 +115,8 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
       }
       const found = await lookUp(barcode);
       if (found !== null) {
-        snapshots.push(found);
+        // GLS answers with its own parcel number in some networks; the tracked code stays the key.
+        snapshots.push(asTracked(found, barcode));
       }
     }
   } finally {

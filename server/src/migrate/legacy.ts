@@ -6,6 +6,7 @@ import type { SecretBox } from "../crypto/secrets.js";
 import type { Database } from "../db/schema.js";
 import { isPlausibleOrder, shopFromDomain } from "../domain/order.js";
 import type { ParcelStatus } from "../domain/parcel.js";
+import { normaliseBarcode } from "../engine/barcode.js";
 import { BUILTIN_CARRIERS } from "../engine/builtin-carriers.js";
 import { linkUntrackedParcels, trackingSourceIn } from "../engine/linking.js";
 import { PluginRegistry } from "../engine/registry.js";
@@ -222,10 +223,11 @@ async function importParcels(
     const status = STATUS_MAP[oldStatus] ?? "unknown";
     counters.statuses[`${oldStatus} → ${status}`] =
       (counters.statuses[`${oldStatus} → ${status}`] ?? 0) + 1;
+    const stored = normaliseBarcode(carrier, barcode);
     const existing = await trx
       .selectFrom("parcels")
       .select(["id", "carrier"])
-      .where("barcode", "=", barcode)
+      .where("barcode", "in", [...new Set([barcode, stored])])
       .execute();
     if (existing.length > 0) {
       counters.skippedDuplicateParcels += 1;
@@ -245,7 +247,7 @@ async function importParcels(
       .values({
         id,
         carrier,
-        barcode,
+        barcode: stored,
         direction: "incoming",
         status,
         raw_status: text(row["last_event_description"]),

@@ -10,6 +10,7 @@ import type { AppConfig } from "./config.js";
 import type { SecretBox } from "./crypto/secrets.js";
 import type { Database } from "./db/schema.js";
 import { LiveTracker } from "./engine/live.js";
+import { repairBarcodes } from "./engine/barcode-repair.js";
 import { trackingSourceIn } from "./engine/linking.js";
 import { Reconciler } from "./engine/reconciler.js";
 import { PluginRegistry, type RegisteredPlugin } from "./engine/registry.js";
@@ -167,6 +168,14 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   const rewrittenTimes = await rewriteOffsetTimes(db);
   if (rewrittenTimes > 0) {
     logger.info({ rewritten: rewrittenTimes }, "Rewrote stored times with an offset as UTC.");
+  }
+  const barcodes = await repairBarcodes(db, clock);
+  if (barcodes.respelled > 0 || barcodes.folded > 0) {
+    await bus.notify();
+    logger.info(
+      barcodes,
+      "Stored codes in their carrier's spelling and merged case or space twins.",
+    );
   }
   const revived = await reviveTrackingRemovals(db, clock);
   if (revived > 0) {

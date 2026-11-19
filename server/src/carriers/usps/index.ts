@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  asTracked,
   carrierPattern,
   ruleStatus,
   defineCarrier,
@@ -120,7 +121,8 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     }
     const raw = await client.parcel(barcode);
     if (raw !== null) {
-      snapshots.push(uspsSnapshot(raw, barcode, report));
+      // USPS echoes its own spelling of the number; the tracked code stays the key.
+      snapshots.push(asTracked(uspsSnapshot(raw, barcode, report), barcode));
     }
   }
   return { snapshots, complete: true };

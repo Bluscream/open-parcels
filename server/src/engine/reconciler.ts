@@ -12,6 +12,8 @@ import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../plugin/sna
 import { healState, mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
 import { utcSnapshot } from "./utc.js";
+import { normaliseBarcode } from "./barcode.js";
+import { foldParcel } from "./fold.js";
 import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
 
 /** A parcel missing from every complete listing for this long, undelivered, counts as removed. */
@@ -110,6 +112,21 @@ function unmappedMail(snapshot: ParcelSnapshot): UnknownValue | null {
   }
   const key = maskIdentifiers(raw);
   return key === "" ? null : { plugin: snapshot.carrier, kind: "mail_subject", key };
+}
+
+/** The snapshot's codes in their stored spelling, so an echoed `1Z999…` finds `1z 999…`. */
+function normalisedCodes(snapshot: ParcelSnapshot): ParcelSnapshot {
+  return {
+    ...snapshot,
+    barcode: normaliseBarcode(snapshot.carrier, snapshot.barcode),
+    handoff:
+      snapshot.handoff === null
+        ? null
+        : {
+            carrier: snapshot.handoff.carrier,
+            barcode: normaliseBarcode(snapshot.handoff.carrier, snapshot.handoff.barcode),
+          },
+  };
 }
 
 /** The parcel's stored history from every source, as merge input. */
@@ -217,7 +234,7 @@ export class Reconciler {
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
       for (const reported of result.snapshots) {
-        const snapshot = utcSnapshot(reported);
+        const snapshot = normalisedCodes(utcSnapshot(reported));
         const value = source.kind === "mail" ? unmappedMail(snapshot) : null;
         if (value !== null) {
           unknown.push(value);
@@ -538,77 +555,9 @@ export class Reconciler {
       this.logger.debug({ parcelId: duplicate.id }, "Re-keyed a shop parcel under its carrier.");
       return { ...duplicate, carrier: handoff.carrier, barcode: handoff.barcode };
     }
-    // Copy history and links over, skipping what the target already has; the duplicate's own rows
-    // go away with it through the foreign-key cascade.
-    await trx
-      .insertInto("parcel_events")
-      .columns([
-        "parcel_id",
-        "source_id",
-        "at",
-        "status",
-        "raw_status",
-        "location_text",
-        "fingerprint",
-      ])
-      .expression((eb) =>
-        eb
-          .selectFrom("parcel_events")
-          .select([
-            eb.val(target.id).as("parcel_id"),
-            "source_id",
-            "at",
-            "status",
-            "raw_status",
-            "location_text",
-            "fingerprint",
-          ])
-          .where("parcel_id", "=", duplicate.id),
-      )
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-    await trx
-      .insertInto("parcel_sources")
-      .columns(["parcel_id", "source_id", "external_ref", "role", "last_seen_at", "missing_since"])
-      .expression((eb) =>
-        eb
-          .selectFrom("parcel_sources")
-          .select([
-            eb.val(target.id).as("parcel_id"),
-            "source_id",
-            "external_ref",
-            eb.val("handoff").as("role"),
-            "last_seen_at",
-            "missing_since",
-          ])
-          .where("parcel_id", "=", duplicate.id),
-      )
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-    await trx
-      .updateTable("items")
-      .set({ parcel_id: target.id })
-      .where("parcel_id", "=", duplicate.id)
-      .execute();
-    // What the user or the shop knew about the duplicate is kept where the target has nothing.
-    await trx
-      .updateTable("parcels")
-      .set({
-        order_id: target.order_id ?? duplicate.order_id,
-        label: target.label ?? duplicate.label,
-        manual_status: target.manual_status ?? duplicate.manual_status,
-      })
-      .where("id", "=", target.id)
-      .execute();
-    const gone = await new ParcelRepository(trx, this.presentation).get(duplicate.id);
-    await trx.deleteFrom("parcels").where("id", "=", duplicate.id).execute();
-    if (gone !== undefined) {
-      await appendEvent(trx, this.clock, {
-        type: "parcel.deleted",
-        parcelId: duplicate.id,
-        payload: { ...parcelEventPayload({ ...gone, history: [] }), merged_into: target.id },
-      });
-    }
+    // History, links, raw payloads and items move over; the duplicate goes, naming the target.
+    const env = { clock: this.clock, presentation: this.presentation };
+    await foldParcel(trx, env, duplicate, target, { linkRole: "handoff" });
     this.logger.debug({ parcelId: target.id }, "Folded a shop duplicate into the carrier parcel.");
     return target;
   }

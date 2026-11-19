@@ -4,6 +4,7 @@ import { z } from "zod";
 import { isoNow, type Clock } from "../../clock.js";
 import type { SecretBox } from "../../crypto/secrets.js";
 import type { Database } from "../../db/schema.js";
+import { normaliseBarcode } from "../../engine/barcode.js";
 import { BUILTIN_CARRIERS } from "../../engine/builtin-carriers.js";
 import { trackingSourceIn } from "../../engine/linking.js";
 import { PluginRegistry } from "../../engine/registry.js";
@@ -219,7 +220,8 @@ async function writeParcels(
   sourceId: string,
   counts: ParcelCounts,
 ): Promise<void> {
-  for (const parcel of plan.parcels) {
+  for (const given of plan.parcels) {
+    const parcel = { ...given, barcode: normaliseBarcode(plan.plugin, given.barcode) };
     // Removed parcels count too: the table holds one row per carrier and code, and HA still
     // tracking the code means it is not gone, so a removed one is revived.
     const found = await ctx.trx
