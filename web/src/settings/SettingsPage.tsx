@@ -16,6 +16,8 @@ import {
   type Home,
   type ParcelLabelMode,
 } from "./home";
+import { useIsAdmin } from "./server-settings";
+import { ServerSettingsCards } from "./ServerSettings";
 
 interface Place {
   readonly label: string;
@@ -221,13 +223,17 @@ function LabelSection(): ReactNode {
 }
 
 export function SettingsPage(): ReactNode {
+  const admin = useIsAdmin();
   return (
     <section aria-labelledby="settings-title" className="stack">
       <div className="page-header">
         <h1 id="settings-title">Settings</h1>
       </div>
-      <HomeSection />
-      <LabelSection />
+      <div className="settings-grid">
+        <HomeSection />
+        <LabelSection />
+        {admin ? <ServerSettingsCards /> : null}
+      </div>
     </section>
   );
 }
