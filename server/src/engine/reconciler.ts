@@ -11,6 +11,7 @@ import type { FetchResult, LiveTarget } from "../plugin/api.js";
 import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../plugin/snapshot.js";
 import { healState, mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
+import { utcSnapshot } from "./utc.js";
 import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
 
 /** A parcel missing from every complete listing for this long, undelivered, counts as removed. */
@@ -88,7 +89,9 @@ function stateColumns(state: ParcelState) {
 }
 
 /** An entry's identity: the source's own id when it has one, else time, text and place. */
-function fingerprint(event: SnapshotEvent): string {
+export function fingerprint(
+  event: Pick<SnapshotEvent, "at" | "rawStatus" | "location" | "id">,
+): string {
   const basis =
     event.id === undefined
       ? `${event.at}\u0000${event.rawStatus}\u0000${event.location ?? ""}`
@@ -213,7 +216,8 @@ export class Reconciler {
     const unknown: UnknownValue[] = [];
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
-      for (const snapshot of result.snapshots) {
+      for (const reported of result.snapshots) {
+        const snapshot = utcSnapshot(reported);
         const value = source.kind === "mail" ? unmappedMail(snapshot) : null;
         if (value !== null) {
           unknown.push(value);

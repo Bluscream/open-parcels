@@ -98,7 +98,7 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
   const timed = usable(mail)
     .map((event) => ({
       event,
-      at: isoTime(event["time"], { naive: { zone: ZONE }, keepOffset: true }),
+      at: isoTime(event["time"], { naive: { zone: ZONE } }),
     }))
     .filter((entry): entry is { event: Json; at: string } => entry.at !== null)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

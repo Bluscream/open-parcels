@@ -37,7 +37,7 @@ function timedRows(statuses: unknown): Row[] {
   return objects(statuses)
     .map((row) => ({
       row,
-      at: isoTime(row["statusDateTime"], { naive: { zone: "UTC" }, keepOffset: true }),
+      at: isoTime(row["statusDateTime"], { naive: { zone: "UTC" } }),
       code: text(row["code"]) ?? "",
     }))
     .filter((entry): entry is Row => entry.at !== null)

@@ -74,7 +74,7 @@ const code = (value: unknown): number | null =>
 function toSnapshot(raw: Json, barcode: string, report: (code: string) => void): ParcelSnapshot {
   const events: SnapshotEvent[] = [];
   for (const entry of objects(raw["Protocol"])) {
-    const at = isoTime(entry["Time"], { naive: { zone: ZONE }, keepOffset: true });
+    const at = isoTime(entry["Time"], { naive: { zone: ZONE } });
     const entryCode = code(entry["Status"]);
     const rawStatus =
       text(entry["StatusText"], STRINGS) ?? (entryCode === null ? null : String(entryCode));

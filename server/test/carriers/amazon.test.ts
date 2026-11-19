@@ -228,15 +228,15 @@ describe("Amazon account", () => {
       barcode: "DE0000000001",
       status: "out_for_delivery",
       handoff: null,
-      plannedFrom: "2026-11-18T14:00:00+01:00",
-      plannedTo: "2026-11-18T16:30:00+01:00",
+      plannedFrom: "2026-11-18T13:00:00.000Z",
+      plannedTo: "2026-11-18T15:30:00.000Z",
       order: { shop: "amazon", orderNumber: OWN_FLEET.orderId },
       externalRef: `${OWN_FLEET.orderId}/SHIPOWN1`,
     });
     expect(own?.items.map((item) => item.title)).toEqual(["Example kettle, blue"]);
     expect(own?.history.map((event) => event.at)).toEqual([
-      "2026-11-18T07:45:00+01:00",
-      "2026-11-16T08:10:00+01:00",
+      "2026-11-18T06:45:00.000Z",
+      "2026-11-16T07:10:00.000Z",
     ]);
     expect(own?.history[1]).toMatchObject({ status: "in_transit", location: "Exampletown" });
     expect(own?.live).toEqual({
@@ -251,7 +251,7 @@ describe("Amazon account", () => {
     expect(dhl).toMatchObject({
       status: "in_transit",
       handoff: { carrier: "dhl", barcode: "00340000000000000001" },
-      plannedFrom: "2026-11-20T00:00:00+01:00",
+      plannedFrom: "2026-11-19T23:00:00.000Z",
       live: null,
     });
     expect(dpd?.handoff).toEqual({ carrier: "dpd", barcode: "01234567890123" });
@@ -385,7 +385,7 @@ describe("Amazon account", () => {
     const one = await readAccount(first.context, rules);
     expect(one.snapshots[0]).toMatchObject({
       delivered: true,
-      deliveredAt: "2026-11-17T11:20:00+01:00",
+      deliveredAt: "2026-11-17T10:20:00.000Z",
     });
     const second = harness(storefront([delivered], pages), first.stored);
     const two = await readAccount(second.context, rules);

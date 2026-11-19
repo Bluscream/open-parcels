@@ -17,9 +17,9 @@ function isRealDay({ year, month, day }: Day): boolean {
   return probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
 }
 
-/** A local wall-clock time in Germany as ISO 8601 with its offset. */
+/** A local wall-clock time in Germany as ISO 8601 UTC. */
 export function localIso(day: Day, hour = 0, minute = 0, second = 0): string {
-  const iso = zonedIso({ ...day, hour, minute, second }, ZONE, { keepOffset: true });
+  const iso = zonedIso({ ...day, hour, minute, second }, ZONE);
   if (iso === null) {
     throw new UnexpectedResponseError("DPD showed a local time that does not exist.");
   }
@@ -74,7 +74,7 @@ export function dayInSentence(sentence: string, today: Day): Day | null {
   return isRealDay(day) ? day : null;
 }
 
-/** `2026-11-18T09:15:00` (local German time, no offset) as ISO 8601 with offset. */
+/** `2026-11-18T09:15:00` (local German time, no offset) as ISO 8601 UTC. */
 export function localTimestamp(text: string): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(text.trim());
   if (match === null) {

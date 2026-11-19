@@ -73,11 +73,6 @@ export function isTimeZone(value: string): boolean {
 
 const pad = (value: number): string => String(value).padStart(2, "0");
 
-function offsetText(ms: number): string {
-  const minutes = Math.round(Math.abs(ms) / 60_000);
-  return `${ms < 0 ? "-" : "+"}${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
-}
-
 function isRealWallTime(time: Required<WallTime>): boolean {
   const probe = new Date(Date.UTC(time.year, time.month - 1, time.day));
   return (
@@ -91,31 +86,18 @@ function isRealWallTime(time: Required<WallTime>): boolean {
   );
 }
 
-export interface ZonedOptions {
-  /**
-   * Return the local time with the zone's offset (`2026-11-18T14:30:00+01:00`) instead of UTC
-   * (`2026-11-18T13:30:00.000Z`). Both name the same instant.
-   */
-  readonly keepOffset?: boolean;
-}
-
-/** A wall-clock time in an IANA zone as an ISO 8601 instant; null for an impossible date or time. */
-export function zonedIso(
-  time: WallTime,
-  timeZone: string,
-  options: ZonedOptions = {},
-): string | null {
+/**
+ * A wall-clock time in an IANA zone as an ISO 8601 UTC instant; null for an impossible date or
+ * time. Always UTC: stored times are compared as text, so an offset form would sort wrongly.
+ */
+export function zonedIso(time: WallTime, timeZone: string): string | null {
   const full = { hour: 0, minute: 0, second: 0, ...time };
   if (!isRealWallTime(full)) {
     return null;
   }
   const guess = Date.UTC(full.year, full.month - 1, full.day, full.hour, full.minute, full.second);
   const instant = guess - offsetMs(guess - offsetMs(guess, timeZone), timeZone);
-  if (options.keepOffset !== true) {
-    return new Date(instant).toISOString();
-  }
-  const local = `${full.year}-${pad(full.month)}-${pad(full.day)}T${pad(full.hour)}:${pad(full.minute)}:${pad(full.second)}`;
-  return `${local}${offsetText(guess - instant)}`;
+  return new Date(instant).toISOString();
 }
 
 /** Epoch values below this are seconds, not milliseconds (it is 2001-09-09 in milliseconds). */
@@ -167,8 +149,6 @@ export interface TimeOptions {
   readonly epochStrings?: boolean;
   /** Accept `YYYY-MM-DD` without a time, as midnight. Default true. */
   readonly dateOnly?: boolean;
-  /** For zoned values, keep the local time and offset instead of converting to UTC. */
-  readonly keepOffset?: boolean;
   /**
    * Keep the milliseconds of an offset-less value (`10:00:00.250`). Default false: such values
    * are read to the whole second, as most carriers only send whole seconds.
@@ -195,8 +175,7 @@ function naiveIso(raw: string, options: TimeOptions): string | null {
     return withFraction(zonedIso(time, "UTC"), fraction);
   }
   if ("zone" in naive) {
-    const keepOffset = options.keepOffset === true;
-    return withFraction(zonedIso(time, naive.zone, { keepOffset }), fraction);
+    return withFraction(zonedIso(time, naive.zone), fraction);
   }
   if (!isRealWallTime(time)) {
     return null;
@@ -212,11 +191,7 @@ function withFraction(iso: string | null, fraction: string): string | null {
     return iso;
   }
   const ms = Number(fraction.padEnd(3, "0").slice(0, 3));
-  if (iso.endsWith("Z")) {
-    return new Date(Date.parse(iso) + ms).toISOString();
-  }
-  // Kept offset: insert the fraction before it.
-  return iso.replace(/([+-]\d{2}:\d{2})$/, `.${String(ms).padStart(3, "0")}$1`);
+  return new Date(Date.parse(iso) + ms).toISOString();
 }
 
 /**

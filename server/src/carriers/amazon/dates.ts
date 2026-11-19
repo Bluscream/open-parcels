@@ -29,10 +29,10 @@ function shift(day: Day, days: number): Day {
 
 const ordinal = (day: Day): number => Date.UTC(day.year, day.month - 1, day.day);
 
-/** ISO 8601 with the zone's offset for a wall-clock time on `day`. */
+/** ISO 8601 UTC for a wall-clock time on `day` in the page's zone. */
 export function localIso(day: Day, hour: number, minute: number, timeZone: string): string {
   return (
-    zonedIso({ ...day, hour, minute }, timeZone, { keepOffset: true }) ??
+    zonedIso({ ...day, hour, minute }, timeZone) ??
     new Date(Date.UTC(day.year, day.month - 1, day.day, hour, minute)).toISOString()
   );
 }
@@ -55,7 +55,13 @@ export function arrivalWindow(
     return null;
   }
   const window = parseArrival(rules, text, { now, timeZone });
-  return window === null ? null : { from: window.from, to: window.to };
+  return window === null ? null : { from: utc(window.from), to: utc(window.to) };
+}
+
+/** The tables give local times with their offset; stored times are always UTC. */
+function utc(iso: string): string {
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? iso : new Date(at).toISOString();
 }
 
 /**

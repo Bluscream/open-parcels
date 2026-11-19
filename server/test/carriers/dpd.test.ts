@@ -142,8 +142,8 @@ describe("DPD Germany account", () => {
       status: "out_for_delivery",
       rawStatus: "Paket in Zustellung",
       weightKg: 2.5,
-      plannedFrom: "2026-11-18T00:00:00+01:00",
-      plannedTo: "2026-11-18T23:59:59+01:00",
+      plannedFrom: "2026-11-17T23:00:00.000Z",
+      plannedTo: "2026-11-18T22:59:59.000Z",
       sender: null,
       receiver: null,
     });
@@ -268,7 +268,7 @@ describe("DPD Germany status rules", () => {
       null,
       null,
     ]);
-    expect(localIso({ year: 2026, month: 7, day: 1 })).toBe("2026-07-01T00:00:00+02:00");
+    expect(localIso({ year: 2026, month: 7, day: 1 })).toBe("2026-06-30T22:00:00.000Z");
   });
 });
 
@@ -305,7 +305,7 @@ describe("DPD Germany public tracking", () => {
       barcode: BARCODE_IN,
       status: "delivered",
       delivered: true,
-      deliveredAt: "2026-11-18T10:30:00+01:00",
+      deliveredAt: "2026-11-18T09:30:00.000Z",
       url: `https://tracking.dpd.de/status/de_DE/parcel/${BARCODE_IN}`,
     });
     expect(result.snapshots[0]?.history.map((event) => event.status)).toEqual([

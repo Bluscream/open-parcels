@@ -44,8 +44,8 @@ describe("Poste Italiane tracking", () => {
       barcode: CODE,
       status: "out_for_delivery",
       delivered: false,
-      plannedFrom: "2026-11-20T00:00:00+01:00",
-      plannedTo: "2026-11-20T23:59:59+01:00",
+      plannedFrom: "2026-11-19T23:00:00.000Z",
+      plannedTo: "2026-11-20T22:59:59.000Z",
       pickupPoint: null,
     });
     expect(parcel?.history.map((e) => e.status)).toEqual([

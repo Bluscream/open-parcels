@@ -51,9 +51,9 @@ describe("Poczta Polska tracking", () => {
       delivered: false,
     });
     expect(parcel?.history.map((e) => [e.at, e.status])).toEqual([
-      ["2026-11-18T08:30:00+01:00", "at_pickup_point"],
-      ["2026-11-17T09:00:00+01:00", "in_transit"],
-      ["2026-11-16T10:00:00+01:00", "in_transit"],
+      ["2026-11-18T07:30:00.000Z", "at_pickup_point"],
+      ["2026-11-17T08:00:00.000Z", "in_transit"],
+      ["2026-11-16T09:00:00.000Z", "in_transit"],
     ]);
     expect(world.calls[1]?.headers.get("api_key")).toBe(KEY);
   });
@@ -67,7 +67,7 @@ describe("Poczta Polska tracking", () => {
     expect(parcel).toMatchObject({
       status: "delivered",
       delivered: true,
-      deliveredAt: "2026-11-18T08:30:00+01:00",
+      deliveredAt: "2026-11-18T07:30:00.000Z",
     });
   });
 

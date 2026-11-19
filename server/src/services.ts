@@ -20,6 +20,7 @@ import { repairOrderShops } from "./engine/order-repair.js";
 import { mergeDuplicateTrackingSources } from "./engine/source-dedup.js";
 import { SourceService } from "./engine/sources.js";
 import { reviveTrackingRemovals } from "./engine/tracking-removal-repair.js";
+import { rewriteOffsetTimes } from "./engine/utc-repair.js";
 import { EventBus } from "./events/bus.js";
 import { ImageProxy } from "./images/proxy.js";
 import { loadRules } from "open-parcels-rules";
@@ -162,6 +163,10 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   const repairedOrders = await repairOrderShops(db, clock);
   if (repairedOrders > 0) {
     logger.info({ repaired: repairedOrders }, "Moved orders filed under the wrong shop.");
+  }
+  const rewrittenTimes = await rewriteOffsetTimes(db);
+  if (rewrittenTimes > 0) {
+    logger.info({ rewritten: rewrittenTimes }, "Rewrote stored times with an offset as UTC.");
   }
   const revived = await reviveTrackingRemovals(db, clock);
   if (revived > 0) {

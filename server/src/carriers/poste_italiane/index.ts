@@ -110,10 +110,8 @@ function toSnapshot(raw: Json, barcode: string, report: (text: string) => void):
     deliveredAt: delivered
       ? (history.find((entry) => entry.status === "delivered")?.at ?? null)
       : null,
-    plannedFrom:
-      day === null ? null : isoTime(`${day}T00:00:00`, { naive: { zone: ZONE }, keepOffset: true }),
-    plannedTo:
-      day === null ? null : isoTime(`${day}T23:59:59`, { naive: { zone: ZONE }, keepOffset: true }),
+    plannedFrom: day === null ? null : isoTime(`${day}T00:00:00`, { naive: { zone: ZONE } }),
+    plannedTo: day === null ? null : isoTime(`${day}T23:59:59`, { naive: { zone: ZONE } }),
     pickup: status === "at_pickup_point",
     pickupPoint: pickupPoint(events.map((entry) => entry.event)),
     url: `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`,
