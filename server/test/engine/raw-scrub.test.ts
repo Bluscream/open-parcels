@@ -19,6 +19,24 @@ describe("a stored raw payload", () => {
     expect(scrubRaw(PERSONAL)).toEqual(KEPT);
   });
 
+  // The shapes the audit found stored whole: senders and receivers by name, postcodes, phone
+  // numbers, and the InPost Italy inbox's locker codes nested under its pick-up.
+  it.each([
+    ["InPost Italy", { pickUp: { qrCode: "QR-1", openCode: "123456" }, status: "READY" }],
+    [
+      "sender and consignor",
+      { sender: { representativeName: "A" }, consignor: "B", status: "READY" },
+    ],
+    ["contact details", { customer: { telephone: "0", postalCode: "0000" }, status: "READY" }],
+    ["PostNL-like", { shipFrom: { name: "A" }, receiver: { name: "B" }, status: "READY" }],
+  ])("drops the personal data and codes of %s", (_name, payload) => {
+    const scrubbed = JSON.stringify(scrubRaw(payload));
+    for (const leaked of ["QR-1", "123456", "representativeName", "consignor", "telephone"]) {
+      expect(scrubbed).not.toContain(leaked);
+    }
+    expect(scrubbed).toContain("READY");
+  });
+
   describe("in the database", () => {
     let context: TestContext;
     let post: FakeWorld;

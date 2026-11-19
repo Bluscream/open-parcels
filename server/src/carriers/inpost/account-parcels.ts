@@ -27,10 +27,29 @@ function firstText(object: Json, keys: readonly string[]): string | null {
 }
 
 /** The locker's open code and QR code open the locker; they never leave the plug-in. */
-const LOCKER_CODES: ReadonlySet<string> = new Set(["openCode", "qrCode"]);
+const LOCKER_CODES: ReadonlySet<string> = new Set([
+  "openCode",
+  "qrCode",
+  "pickupCode",
+  "unlockCode",
+]);
 
+/** The payload without locker codes, at any depth (the Italian inbox nests them under `pickUp`). */
 function withoutCodes(raw: Json): Json {
-  return Object.fromEntries(Object.entries(raw).filter(([key]) => !LOCKER_CODES.has(key)));
+  const strip = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(strip);
+    }
+    if (typeof value !== "object" || value === null) {
+      return value;
+    }
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => !LOCKER_CODES.has(key))
+        .map(([key, inner]) => [key, strip(inner)]),
+    );
+  };
+  return strip(raw) as Json;
 }
 
 function inboxHistory(raw: Json, report: Report): SnapshotEvent[] {
@@ -125,6 +144,7 @@ export function itSnapshot(raw: Json, report: Report): ParcelSnapshot | null {
     sender: text(asObject(raw["sender"])["representativeName"]),
     receiver: text(asObject(raw["receiver"])["representativeName"]),
     history: sorted,
-    raw,
+    // The same as the Polish inbox: locker codes never leave the plug-in.
+    raw: withoutCodes(raw),
   });
 }
