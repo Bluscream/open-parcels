@@ -83,7 +83,7 @@ export function carrierId(courier: unknown): string {
 }
 
 /** The best plug-in for a code by the shared tracking-number detection, as the mail watcher does. */
-function detectCarrier(barcode: string, hint: string | null): string | undefined {
+export function detectCarrier(barcode: string, hint: string | null): string | undefined {
   const normalised = barcode.replace(/\s+/g, "").toUpperCase();
   const candidates = detectTrackingNumbers(
     loadRules(),

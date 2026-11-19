@@ -46,6 +46,11 @@ const carrierSchema = z.object({
     )
     .describe("Every sign-in flow of the plug-in. Interactive ones run as sign-in attempts."),
   config_schema: z.unknown().describe("JSON Schema of the source configuration form."),
+  secret_schema: z
+    .unknown()
+    .describe(
+      "JSON Schema of the sign-in data for credentials and api_key flows: field names only, never values.",
+    ),
   browser_user_agent_reason: z.string().nullable(),
 });
 
@@ -95,6 +100,7 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
         sign_in: plugin.info.signIn,
         sign_in_flows: plugin.info.signInFlows.map((flow) => ({ ...flow, kinds: [...flow.kinds] })),
         config_schema: z.toJSONSchema(plugin.info.configSchema, { unrepresentable: "any" }),
+        secret_schema: z.toJSONSchema(plugin.info.secretSchema, { unrepresentable: "any" }),
         browser_user_agent_reason: plugin.info.browserUserAgentReason,
       })),
   );

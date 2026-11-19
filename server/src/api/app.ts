@@ -28,6 +28,7 @@ import { registerSessionRoutes } from "./routes/session.js";
 import { registerSignInRoutes } from "./routes/sign-in.js";
 import { registerSourceRoutes } from "./routes/sources.js";
 import { registerTokenRoutes } from "./routes/tokens.js";
+import { registerWebUi } from "./web-ui.js";
 
 export type App = FastifyInstance;
 export type TypedApp = FastifyInstance<
@@ -41,6 +42,8 @@ export type TypedApp = FastifyInstance<
 export interface BuildAppOptions {
   /** Set on the Home Assistant ingress listener only. */
   readonly trustedIngressAddress?: string;
+  /** Folder with the built web UI; unset or missing serves the API only. */
+  readonly webDir?: string;
 }
 
 function handleError(
@@ -125,6 +128,12 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   registerEventRoutes(typed, services);
 
   app.get("/api/v1/openapi.json", { schema: { hide: true } }, () => app.swagger());
+  if (options.webDir !== undefined) {
+    await registerWebUi(app, {
+      root: options.webDir,
+      trustIngressPath: options.trustedIngressAddress !== undefined,
+    });
+  }
   await app.ready();
   return app;
 }

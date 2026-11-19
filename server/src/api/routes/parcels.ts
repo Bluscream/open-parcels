@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DIRECTIONS, parcelSchema, parcelStatusSchema } from "../../domain/parcel.js";
+import { detectCarrier } from "../../migrate/legacy-carrier.js";
 import { DuplicateParcelError } from "../../parcels/service.js";
 import type { Services } from "../../services.js";
 import type { TypedApp } from "../app.js";
@@ -75,19 +76,27 @@ export function registerParcelRoutes(app: TypedApp, services: Services): void {
       preHandler: write,
       schema: {
         tags: ["parcels"],
-        summary: "Start tracking a code.",
+        summary: "Start tracking a code. Without a carrier it is detected from the code.",
         body: z.object({
-          carrier: z.string().min(1).max(64),
+          carrier: z.string().min(1).max(64).optional(),
           barcode: z.string().trim().min(4).max(64),
           direction: z.enum(DIRECTIONS).default("incoming"),
           label: z.string().max(120).nullable().default(null),
         }),
-        response: { 201: parcelSchema, 409: errorBodySchema },
+        response: { 201: parcelSchema, 400: errorBodySchema, 409: errorBodySchema },
       },
     },
     async (request, reply) => {
+      const carrier = request.body.carrier ?? detectCarrier(request.body.barcode, null);
+      if (carrier === undefined) {
+        throw new ApiError(
+          400,
+          "carrier_not_detected",
+          "The carrier could not be detected from this code. Choose one.",
+        );
+      }
       try {
-        const parcel = await services.parcels.create(request.body);
+        const parcel = await services.parcels.create({ ...request.body, carrier });
         return await reply.code(201).send(parcel);
       } catch (error) {
         if (error instanceof DuplicateParcelError) {

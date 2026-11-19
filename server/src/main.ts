@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { buildApp, type App } from "./api/app.js";
 import { HA_INGRESS_ADDRESS } from "./api/auth-plugin.js";
 import { systemClock } from "./clock.js";
@@ -52,10 +53,15 @@ async function main(): Promise<void> {
     );
   }
 
-  const servers: App[] = [await buildApp(services)];
+  // server/dist/main.js → web/dist at the repository (or image) root.
+  const webDir = config.webDir ?? fileURLToPath(new URL("../../web/dist", import.meta.url));
+  const servers: App[] = [await buildApp(services, { webDir })];
   await servers[0]?.listen({ host: config.host, port: config.port });
   if (config.ingressPort !== undefined) {
-    const ingress = await buildApp(services, { trustedIngressAddress: HA_INGRESS_ADDRESS });
+    const ingress = await buildApp(services, {
+      trustedIngressAddress: HA_INGRESS_ADDRESS,
+      webDir,
+    });
     await ingress.listen({ host: config.host, port: config.ingressPort });
     servers.push(ingress);
   }

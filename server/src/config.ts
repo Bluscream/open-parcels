@@ -38,6 +38,8 @@ const envSchema = z.object({
     .optional(),
   /** Pause carrier polling 00:00–06:00 local time, for every carrier. Set to false to poll all night. */
   OPENPARCELS_QUIET_WINDOW: booleanFlag.default(true),
+  /** Folder with the built web UI. Defaults to `web/dist` next to the server; missing means API only. */
+  OPENPARCELS_WEB_DIR: z.string().min(1).optional(),
 });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -54,6 +56,7 @@ export interface AppConfig {
   readonly secureCookies: boolean;
   readonly timeZone: string;
   readonly quietWindow: boolean;
+  readonly webDir: string | undefined;
   readonly retention: {
     readonly archiveAfterDays: number;
     readonly deleteAfterDays: number;
@@ -92,6 +95,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     secureCookies: values.OPENPARCELS_SECURE_COOKIES,
     timeZone: values.OPENPARCELS_TIMEZONE ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     quietWindow: values.OPENPARCELS_QUIET_WINDOW,
+    webDir:
+      values.OPENPARCELS_WEB_DIR === undefined
+        ? undefined
+        : path.resolve(values.OPENPARCELS_WEB_DIR),
     retention: {
       archiveAfterDays: values.OPENPARCELS_ARCHIVE_DAYS,
       deleteAfterDays: values.OPENPARCELS_DELETE_DAYS,
