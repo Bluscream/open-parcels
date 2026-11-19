@@ -25,6 +25,9 @@ const SOURCE_EVENTS = [
   "source.removed",
 ] as const;
 
+/** An order renamed, (un)archived by hand, or deleted. */
+const ORDER_EVENTS = ["order.updated", "order.deleted"] as const;
+
 export type LiveState = "connecting" | "live" | "offline";
 
 /** Live position updates arrive every 30 s per parcel; the lists follow them at most this often. */
@@ -69,7 +72,7 @@ interface EventPayload {
   readonly parcel?: { readonly id?: unknown };
 }
 
-function parcelIdOf(data: string): string | undefined {
+function subjectIdOf(data: string): string | undefined {
   try {
     const payload = JSON.parse(data) as EventPayload;
     const id = payload.parcel?.id ?? payload.id;
@@ -95,6 +98,8 @@ export function useLiveUpdates(enabled: boolean): LiveState {
     const refreshLists = (): void => {
       void client.invalidateQueries({ queryKey: keys.parcels });
       void client.invalidateQueries({ queryKey: ["calendar"] });
+      // An order's status and archiving follow its parcels.
+      void client.invalidateQueries({ queryKey: keys.orders });
     };
     // A live update changes one parcel's courier position, not what the lists show.
     const liveLists = throttled(refreshLists, LIVE_LIST_REFRESH_MS);
@@ -104,7 +109,7 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       } else {
         refreshLists();
       }
-      const id = parcelIdOf(event.data);
+      const id = subjectIdOf(event.data);
       if (id !== undefined && event.type === "parcel.deleted") {
         client.removeQueries({ queryKey: keys.parcel(id) });
       } else if (id !== undefined) {
@@ -134,6 +139,18 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       void client.invalidateQueries({ queryKey: settingsKey });
       void client.invalidateQueries({ queryKey: keys.parcels });
     });
+    const onOrder = (event: MessageEvent<string>): void => {
+      const id = subjectIdOf(event.data);
+      if (id !== undefined && event.type === "order.deleted") {
+        client.removeQueries({ queryKey: keys.order(id) });
+      }
+      // Orders and the parcels that name them.
+      void client.invalidateQueries({ queryKey: keys.orders });
+      void client.invalidateQueries({ queryKey: keys.parcels });
+    };
+    for (const type of ORDER_EVENTS) {
+      source.addEventListener(type, onOrder);
+    }
     // The server could not replay what was missed (too old, or a reset database): reload all.
     const onResync = (): void => {
       void client.invalidateQueries();

@@ -4,13 +4,15 @@ import { throttled } from "./events";
 import { invalidateParcelViews } from "./queries";
 
 describe("refreshing after a parcel edit", () => {
-  it("refreshes the calendar too, not only the lists", async () => {
+  it("refreshes the calendar and the orders too, not only the lists", async () => {
     const client = new QueryClient();
     const spy = vi.spyOn(client, "invalidateQueries");
     await invalidateParcelViews(client);
+    // Orders follow their parcels' status and archiving.
     expect(spy.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
       ["parcels"],
       ["calendar"],
+      ["orders"],
     ]);
   });
 });

@@ -9,6 +9,7 @@ import { StatusPage } from "./admin/StatusPage";
 import { TokensPage } from "./admin/TokensPage";
 import { NotFoundPage } from "./layout/NotFoundPage";
 import { Shell } from "./layout/Shell";
+import { OrderDetailPage } from "./orders/OrderDetailPage";
 import { OrdersPage } from "./orders/OrdersPage";
 import { ParcelDetailPage } from "./parcels/ParcelDetailPage";
 import { ParcelsPage } from "./parcels/ParcelsPage";
@@ -38,9 +39,26 @@ function ParcelRoute(): ReactNode {
   return <ParcelDetailPage parcelId={parcelId} />;
 }
 
+const orderRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/orders/$orderId",
+  component: OrderRoute,
+});
+
+function OrderRoute(): ReactNode {
+  // Read as unknown and narrowed, for the same circular-type reason as ParcelRoute.
+  const params: unknown = orderRoute.useParams();
+  const orderId =
+    typeof params === "object" && params !== null && "orderId" in params
+      ? String(params.orderId)
+      : "";
+  return <OrderDetailPage orderId={orderId} />;
+}
+
 const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: "/", component: ParcelsPage }),
   parcelRoute,
+  orderRoute,
   createRoute({ getParentRoute: () => rootRoute, path: "/sources", component: SourcesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/map", component: MapPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/orders", component: OrdersPage }),

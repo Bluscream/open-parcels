@@ -11,6 +11,7 @@ import { createAppRouter } from "../router";
 export interface Recorded {
   readonly method: string;
   readonly path: string;
+  readonly query: URLSearchParams;
   readonly headers: Headers;
   readonly body: unknown;
 }
@@ -29,6 +30,7 @@ export function mockApi(routes: Record<string, Handler>): Recorded[] {
       const request: Recorded = {
         method,
         path: url.pathname,
+        query: url.searchParams,
         headers: new Headers(init.headers),
         body: typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : null,
       };

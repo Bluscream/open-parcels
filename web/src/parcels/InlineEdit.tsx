@@ -28,17 +28,30 @@ function PencilButton(props: { readonly label: string; readonly onClick: () => v
   );
 }
 
-/** The parcel's name (label, else the tracking code), renamed in place: Enter or leaving saves. */
-export function EditableTitle({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
+interface InlineTitleProps {
+  /** The page heading's id, for `aria-labelledby`. */
+  readonly titleId: string;
+  /** What the heading shows. */
+  readonly shown: string;
+  /** The own label, null when there is none. */
+  readonly label: string | null;
+  /** Shown in the empty field: the name used without a label. */
+  readonly placeholder: string;
+  readonly error: unknown;
+  /** Called with the new label (null clears it) when it changed. */
+  readonly onSave: (label: string | null) => void;
+}
+
+/** A page heading renamed in place: Enter or leaving saves, Escape cancels. */
+export function InlineTitle(props: InlineTitleProps): ReactNode {
   const canEdit = useCanEdit();
-  const update = useUpdateParcel(parcel.id);
   const [draft, setDraft] = useState<string | null>(null);
 
   const finish = (save: boolean): void => {
     if (draft === null) return;
     const next = draft.trim() === "" ? null : draft.trim();
     setDraft(null);
-    if (save && next !== parcel.label) update.mutate({ label: next });
+    if (save && next !== props.label) props.onSave(next);
   };
   const onKey = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === "Enter") finish(true);
@@ -54,7 +67,7 @@ export function EditableTitle({ parcel }: { readonly parcel: ParcelDetail }): Re
           autoFocus
           maxLength={120}
           value={draft}
-          placeholder={parcel.barcode}
+          placeholder={props.placeholder}
           onChange={(e) => {
             setDraft(e.target.value);
           }}
@@ -91,17 +104,34 @@ export function EditableTitle({ parcel }: { readonly parcel: ParcelDetail }): Re
   }
   return (
     <div className="inline-edit">
-      <h1 id="parcel-title">{parcel.display_name}</h1>
+      <h1 id={props.titleId}>{props.shown}</h1>
       {canEdit ? (
         <PencilButton
           label="Rename"
           onClick={() => {
-            setDraft(parcel.label ?? "");
+            setDraft(props.label ?? "");
           }}
         />
       ) : null}
-      <ErrorNotice error={update.error} />
+      <ErrorNotice error={props.error} />
     </div>
+  );
+}
+
+/** The parcel's name (label, else the tracking code), renamed in place. */
+export function EditableTitle({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
+  const update = useUpdateParcel(parcel.id);
+  return (
+    <InlineTitle
+      titleId="parcel-title"
+      shown={parcel.display_name}
+      label={parcel.label}
+      placeholder={parcel.barcode}
+      error={update.error}
+      onSave={(label) => {
+        update.mutate({ label });
+      }}
+    />
   );
 }
 

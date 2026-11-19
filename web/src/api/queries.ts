@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
+  deleteApiV1OrdersId,
   deleteApiV1ParcelsId,
   deleteApiV1SourcesId,
   deleteApiV1TokensId,
@@ -18,28 +19,35 @@ import {
   getApiV1Carriers,
   getApiV1Diagnostics,
   getApiV1HealthReady,
+  getApiV1Orders,
+  getApiV1OrdersId,
   getApiV1Parcels,
   getApiV1ParcelsId,
   getApiV1Sources,
   getApiV1Tokens,
+  patchApiV1OrdersId,
   patchApiV1ParcelsId,
   patchApiV1SourcesId,
   postApiV1Parcels,
   postApiV1Sources,
   postApiV1SourcesIdSync,
   postApiV1Tokens,
+  type PatchApiV1OrdersIdBody,
   type PatchApiV1ParcelsIdBody,
   type PatchApiV1SourcesIdBody,
   type PostApiV1ParcelsBody,
   type PostApiV1SourcesBody,
   type PostApiV1TokensBody,
 } from "./generated";
-import type { ParcelDetail } from "./types";
+import type { OrderView, ParcelDetail } from "./types";
 
 export const keys = {
   parcels: ["parcels"] as const,
   parcelList: (archived: boolean) => ["parcels", "list", { archived }] as const,
   parcel: (id: string) => ["parcels", "one", id] as const,
+  orders: ["orders"] as const,
+  orderList: (view: OrderView) => ["orders", "list", { view }] as const,
+  order: (id: string) => ["orders", "one", id] as const,
   sources: ["sources"] as const,
   carriers: ["carriers"] as const,
   tokens: ["tokens"] as const,
@@ -148,6 +156,8 @@ export async function invalidateParcelViews(
       predicate: (query) => skipped === null || JSON.stringify(query.queryKey) !== skipped,
     }),
     client.invalidateQueries({ queryKey: ["calendar"] }),
+    // An order's status and archiving follow its parcels.
+    client.invalidateQueries({ queryKey: keys.orders }),
   ]);
 }
 
@@ -205,6 +215,53 @@ export function useDeleteParcel() {
       // its page is still open would only get a 404. It is dropped once nothing shows it.
       await client.cancelQueries({ queryKey: keys.parcel(id), exact: true });
       await invalidateParcelViews(client, keys.parcel(id));
+    },
+  });
+}
+
+export function useOrders(view: OrderView) {
+  return useQuery({
+    queryKey: keys.orderList(view),
+    queryFn: ({ signal }) => getApiV1Orders({ view, limit: 500 }, { signal }),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useOrder(id: string) {
+  return useQuery({
+    queryKey: keys.order(id),
+    queryFn: ({ signal }) => getApiV1OrdersId(id, { signal }),
+  });
+}
+
+export function useUpdateOrder(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PatchApiV1OrdersIdBody) => patchApiV1OrdersId(id, body),
+    onSuccess: (order) => {
+      client.setQueryData(keys.order(id), order);
+      // Parcels show the order's name.
+      return Promise.all([
+        client.invalidateQueries({ queryKey: keys.orders }),
+        client.invalidateQueries({ queryKey: keys.parcels }),
+      ]);
+    },
+  });
+}
+
+export function useDeleteOrder() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteApiV1OrdersId(id),
+    onSuccess: async (_result, id) => {
+      await client.cancelQueries({ queryKey: keys.order(id), exact: true });
+      await Promise.all([
+        client.invalidateQueries({
+          queryKey: keys.orders,
+          predicate: (query) => JSON.stringify(query.queryKey) !== JSON.stringify(keys.order(id)),
+        }),
+        client.invalidateQueries({ queryKey: keys.parcels }),
+      ]);
     },
   });
 }

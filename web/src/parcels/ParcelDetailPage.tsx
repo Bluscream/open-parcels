@@ -37,7 +37,16 @@ function Facts({ parcel }: { readonly parcel: ParcelDetail }): ReactNode {
     ["Pickup point", parcel.pickup_point ?? (parcel.pickup ? "Yes" : "—")],
     ["Sender", parcel.sender ?? "—"],
     ["Direction", parcel.direction === "incoming" ? "Incoming" : "Outgoing"],
-    ["Order", parcel.order === null ? "—" : `${parcel.order.shop} ${parcel.order.order_number}`],
+    [
+      "Order",
+      parcel.order === null ? (
+        "—"
+      ) : (
+        <Link to="/orders/$orderId" params={{ orderId: parcel.order.id }}>
+          {parcel.order.shop} {parcel.order.order_number}
+        </Link>
+      ),
+    ],
     ["Last update", formatDateTime(parcel.updated_at)],
   ];
   return (

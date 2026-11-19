@@ -107,6 +107,7 @@ export function displayName(
 type OrderItemRow = Selectable<OrderItemTable>;
 
 interface OrderInfo {
+  readonly id: string;
   readonly shop: string;
   readonly order_number: string;
   readonly items: OrderItem[];
@@ -152,6 +153,7 @@ function buildOrders(
     orders.map((order) => [
       order.id,
       {
+        id: order.id,
         shop: order.shop,
         order_number: order.order_number,
         parcels: counts.get(order.id) ?? 0,
@@ -249,6 +251,23 @@ export class ParcelRepository {
     }
     const related = await this.#loadRelated([row], true);
     return this.#toParcel(row, related);
+  }
+
+  /** Every parcel of these orders, archived ones included, without history. */
+  async byOrders(orderIds: readonly string[]): Promise<{ orderId: string; parcel: Parcel }[]> {
+    if (orderIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("parcels")
+      .selectAll()
+      .where("order_id", "in", orderIds)
+      .orderBy("first_seen_at")
+      .orderBy("id")
+      .execute();
+    const related = await this.#loadRelated(rows, false);
+    return rows.map((row) => ({
+      orderId: row.order_id ?? "",
+      parcel: this.#toParcel(row, related),
+    }));
   }
 
   async findIdByBarcode(carrier: string, barcode: string): Promise<string | undefined> {
@@ -488,7 +507,12 @@ export class ParcelRepository {
       order:
         order === undefined
           ? null
-          : { shop: order.shop, order_number: order.order_number, items: order.items },
+          : {
+              shop: order.shop,
+              order_number: order.order_number,
+              items: order.items,
+              id: order.id,
+            },
       sources: related.sources.get(row.id) ?? [],
       // Another source of the same carrier (an account) listing the parcel means the carrier
       // found it, whatever its public tracking answered. It has been found since the app first

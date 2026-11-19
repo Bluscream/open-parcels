@@ -1,101 +1,57 @@
-/**
- * Orders, as the original UI had them. The API has no order resource yet, so orders are grouped
- * from the `order` each parcel carries (shop plus order number).
- */
+/** Orders from shop sources and mails, sorted into open, delivered and archived. */
+import { Link } from "@tanstack/react-router";
 import { ShoppingBag } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
-import { useParcels } from "../api/queries";
-import type { Parcel } from "../api/types";
+import { useState, type ReactNode } from "react";
+import { useOrders } from "../api/queries";
+import type { Order, OrderView } from "../api/types";
 import { ErrorNotice, Spinner } from "../components/ui";
-import { ItemList } from "../parcels/ItemList";
-import { ParcelCard, parcelName } from "../parcels/ParcelCard";
-
-interface Order {
-  readonly key: string;
-  readonly shop: string;
-  readonly number: string;
-  readonly parcels: Parcel[];
-  /** What was ordered, with the parcel carrying each line when known. */
-  readonly items: NonNullable<Parcel["order"]>["items"];
-}
-
-export function groupOrders(parcels: readonly Parcel[]): Order[] {
-  const orders = new Map<string, Order>();
-  for (const parcel of parcels) {
-    if (parcel.order === null) {
-      continue;
-    }
-    const key = `${parcel.order.shop}\u0000${parcel.order.order_number}`;
-    const order = orders.get(key) ?? {
-      key,
-      shop: parcel.order.shop,
-      number: parcel.order.order_number,
-      parcels: [],
-      items: parcel.order.items,
-    };
-    order.parcels.push(parcel);
-    orders.set(key, order);
-  }
-  const newest = (order: Order): string =>
-    order.parcels.reduce((max, p) => (p.updated_at > max ? p.updated_at : max), "");
-  return [...orders.values()].sort((a, b) => newest(b).localeCompare(newest(a)));
-}
+import {
+  OrderBadges,
+  OrderParcels,
+  OrderProgress,
+  orderSummary,
+  ORDER_VIEW_TABS,
+  PictureGrid,
+} from "./parts";
 
 function OrderCard({ order }: { readonly order: Order }): ReactNode {
-  const delivered = order.parcels.filter((parcel) => parcel.delivered).length;
-  const titleId = `order-${order.key.replace(/\W/g, "-")}`;
+  const titleId = `order-${order.id}`;
+  const summary = orderSummary(order);
   return (
     <section className="glass-panel order-card" aria-labelledby={titleId}>
       <div className="order-head">
         <ShoppingBag size={20} className="page-icon" aria-hidden="true" />
-        <h2 id={titleId}>
-          {order.shop} <span className="mono muted">{order.number}</span>
-        </h2>
+        <div className="order-head-text">
+          <h2 id={titleId}>
+            <Link to="/orders/$orderId" params={{ orderId: order.id }}>
+              {order.label ?? order.shop}
+            </Link>
+          </h2>
+          <span className="mono muted">
+            {order.label === null ? order.order_number : `${order.shop} ${order.order_number}`}
+          </span>
+        </div>
+        <OrderBadges order={order} />
       </div>
-      <div>
-        <div className="eta-label">
-          {delivered} of {order.parcels.length} parcels delivered
-        </div>
-        <div
-          className="order-progress"
-          role="progressbar"
-          aria-label="Delivered parcels"
-          aria-valuemin={0}
-          aria-valuemax={order.parcels.length}
-          aria-valuenow={delivered}
-        >
-          <span style={{ width: `${(delivered / order.parcels.length) * 100}%` }} />
-        </div>
-      </div>
-      {order.items.length === 0 ? null : (
-        <div>
-          <h3 className="items-subtitle">Items</h3>
-          <ItemList
-            items={order.items}
-            note={(_item, index) => {
-              const parcelId = order.items[index]?.parcel_id ?? null;
-              if (parcelId === null) return "Parcel not known yet";
-              const carrying = order.parcels.find((parcel) => parcel.id === parcelId);
-              return carrying === undefined ? null : `In ${parcelName(carrying)}`;
-            }}
-          />
-        </div>
-      )}
-      <ul className="parcel-list">
-        {order.parcels.map((parcel) => (
-          <li key={parcel.id}>
-            <ParcelCard parcel={parcel} />
-          </li>
-        ))}
-      </ul>
+      {summary === "" ? null : <div className="muted">{summary}</div>}
+      <PictureGrid order={order} limit={6} />
+      <OrderProgress order={order} />
+      <OrderParcels order={order} />
     </section>
   );
 }
 
+const EMPTY: Readonly<Record<OrderView, string>> = {
+  open: "No open orders. Orders found through a shop source or an order mail show up here.",
+  delivered: "No delivered orders that are not archived yet.",
+  archived: "Nothing archived yet.",
+  all: "No orders yet.",
+};
+
 export function OrdersPage(): ReactNode {
-  const [archived, setArchived] = useState(false);
-  const parcels = useParcels(archived);
-  const orders = useMemo(() => groupOrders(parcels.data ?? []), [parcels.data]);
+  const [view, setView] = useState<OrderView>("open");
+  const orders = useOrders(view);
+  const tab = ORDER_VIEW_TABS.find((entry) => entry.view === view);
 
   return (
     <section aria-labelledby="orders-title" className="stack">
@@ -103,31 +59,41 @@ export function OrdersPage(): ReactNode {
         <div className="page-title-row">
           <ShoppingBag size={22} className="page-icon" aria-hidden="true" />
           <h1 id="orders-title">Orders</h1>
-          <span className="page-count">{orders.length}</span>
+          <span className="page-count">{orders.data?.length ?? 0}</span>
         </div>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={archived}
-            onChange={(e) => {
-              setArchived(e.target.checked);
-            }}
-          />
-          Include archived
-        </label>
+        <fieldset className="segmented">
+          <legend className="visually-hidden">Show</legend>
+          {ORDER_VIEW_TABS.map((entry) => (
+            <label key={entry.view} className={view === entry.view ? "selected" : undefined}>
+              <input
+                type="radio"
+                name="order-view"
+                value={entry.view}
+                checked={view === entry.view}
+                onChange={() => {
+                  setView(entry.view);
+                }}
+              />
+              {entry.label}
+            </label>
+          ))}
+        </fieldset>
       </div>
-      <ErrorNotice error={parcels.error} />
-      {parcels.data === undefined ? (
-        <Spinner />
-      ) : orders.length === 0 ? (
+      {tab === undefined ? null : <p className="muted order-view-help">{tab.help}</p>}
+      <ErrorNotice error={orders.error} />
+      {orders.data === undefined ? (
+        orders.isPending ? (
+          <Spinner />
+        ) : null
+      ) : orders.data.length === 0 ? (
         <div className="glass-panel empty-state">
           <ShoppingBag size={32} aria-hidden="true" />
-          <p>No orders yet. Parcels found through a shop source are grouped here by order.</p>
+          <p>{EMPTY[view]}</p>
         </div>
       ) : (
         <div className="order-grid">
-          {orders.map((order) => (
-            <OrderCard key={order.key} order={order} />
+          {orders.data.map((order) => (
+            <OrderCard key={order.id} order={order} />
           ))}
         </div>
       )}

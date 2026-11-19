@@ -688,10 +688,14 @@ export class Reconciler {
     }
     const existing = await trx
       .selectFrom("orders")
-      .select("id")
+      .select(["id", "deleted_at"])
       .where("shop", "=", snapshot.order.shop)
       .where("order_number", "=", snapshot.order.orderNumber)
       .executeTakeFirst();
+    // The owner deleted the order: its parcels stay tracked, without it.
+    if (existing !== undefined && existing.deleted_at !== null) {
+      return null;
+    }
     if (existing !== undefined) {
       await trx
         .updateTable("orders")

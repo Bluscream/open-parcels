@@ -706,6 +706,8 @@ export type GetApiV1Parcels200ItemOrder = {
   shop: string;
   order_number: string;
   items: GetApiV1Parcels200ItemOrderItemsItem[];
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
 } | null;
 
 export type GetApiV1Parcels200ItemSourcesItemKind =
@@ -1129,6 +1131,8 @@ export type PostApiV1Parcels201Order = {
   shop: string;
   order_number: string;
   items: PostApiV1Parcels201OrderItemsItem[];
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
 } | null;
 
 export type PostApiV1Parcels201SourcesItemKind =
@@ -1539,6 +1543,8 @@ export type GetApiV1ParcelsId200Order = {
   shop: string;
   order_number: string;
   items: GetApiV1ParcelsId200OrderItemsItem[];
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
 } | null;
 
 export type GetApiV1ParcelsId200SourcesItemKind =
@@ -1972,6 +1978,8 @@ export type PatchApiV1ParcelsId200Order = {
   shop: string;
   order_number: string;
   items: PatchApiV1ParcelsId200OrderItemsItem[];
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
 } | null;
 
 export type PatchApiV1ParcelsId200SourcesItemKind =
@@ -2098,6 +2106,618 @@ export type PatchApiV1ParcelsId404 = {
 };
 
 export type DeleteApiV1ParcelsId404 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type GetApiV1OrdersParams = {
+  view?: GetApiV1OrdersView;
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
+};
+
+export type GetApiV1OrdersView = (typeof GetApiV1OrdersView)[keyof typeof GetApiV1OrdersView];
+
+export const GetApiV1OrdersView = {
+  open: "open",
+  delivered: "delivered",
+  archived: "archived",
+  all: "all",
+} as const;
+
+export type GetApiV1Orders200ItemStatus =
+  (typeof GetApiV1Orders200ItemStatus)[keyof typeof GetApiV1Orders200ItemStatus];
+
+export const GetApiV1Orders200ItemStatus = {
+  ordered: "ordered",
+  partly_shipped: "partly_shipped",
+  shipped: "shipped",
+  partly_delivered: "partly_delivered",
+  delivered: "delivered",
+  problem: "problem",
+} as const;
+
+export type GetApiV1Orders200ItemArchiveMode =
+  (typeof GetApiV1Orders200ItemArchiveMode)[keyof typeof GetApiV1Orders200ItemArchiveMode];
+
+export const GetApiV1Orders200ItemArchiveMode = {
+  automatic: "automatic",
+  archived: "archived",
+  kept: "kept",
+} as const;
+
+/**
+ * @nullable
+ */
+export type GetApiV1Orders200ItemTotal = {
+  amount: number;
+  currency: string;
+} | null;
+
+export type GetApiV1Orders200ItemItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
+export type GetApiV1Orders200ItemParcelsItemDirection =
+  (typeof GetApiV1Orders200ItemParcelsItemDirection)[keyof typeof GetApiV1Orders200ItemParcelsItemDirection];
+
+export const GetApiV1Orders200ItemParcelsItemDirection = {
+  incoming: "incoming",
+  outgoing: "outgoing",
+} as const;
+
+export type GetApiV1Orders200ItemParcelsItemStatus =
+  (typeof GetApiV1Orders200ItemParcelsItemStatus)[keyof typeof GetApiV1Orders200ItemParcelsItemStatus];
+
+export const GetApiV1Orders200ItemParcelsItemStatus = {
+  registered: "registered",
+  in_transit: "in_transit",
+  out_for_delivery: "out_for_delivery",
+  at_pickup_point: "at_pickup_point",
+  delivered: "delivered",
+  returning: "returning",
+  problem: "problem",
+  unknown: "unknown",
+} as const;
+
+export type GetApiV1Orders200ItemParcelsItemLocationSource =
+  (typeof GetApiV1Orders200ItemParcelsItemLocationSource)[keyof typeof GetApiV1Orders200ItemParcelsItemLocationSource];
+
+export const GetApiV1Orders200ItemParcelsItemLocationSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type GetApiV1Orders200ItemParcelsItemLocationPrecision =
+  (typeof GetApiV1Orders200ItemParcelsItemLocationPrecision)[keyof typeof GetApiV1Orders200ItemParcelsItemLocationPrecision];
+
+export const GetApiV1Orders200ItemParcelsItemLocationPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type GetApiV1Orders200ItemParcelsItemLocation = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: GetApiV1Orders200ItemParcelsItemLocationSource;
+  precision: GetApiV1Orders200ItemParcelsItemLocationPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
+export type GetApiV1Orders200ItemParcelsItem = {
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
+  carrier: string;
+  barcode: string;
+  direction: GetApiV1Orders200ItemParcelsItemDirection;
+  display_name: string;
+  status: GetApiV1Orders200ItemParcelsItemStatus;
+  delivered: boolean;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  delivered_at: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  planned_from: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  planned_to: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  archived_at: string | null;
+  /** @nullable */
+  location: GetApiV1Orders200ItemParcelsItemLocation;
+  /** @nullable */
+  url: string | null;
+};
+
+export type GetApiV1Orders200Item = {
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
+  shop: string;
+  order_number: string;
+  /** @nullable */
+  label: string | null;
+  display_name: string;
+  /** @nullable */
+  placed_at: string | null;
+  status: GetApiV1Orders200ItemStatus;
+  archived: boolean;
+  /** @nullable */
+  archived_at: string | null;
+  archive_mode: GetApiV1Orders200ItemArchiveMode;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  parcel_count: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  delivered_count: number;
+  /** @nullable */
+  total: GetApiV1Orders200ItemTotal;
+  items: GetApiV1Orders200ItemItemsItem[];
+  parcels: GetApiV1Orders200ItemParcelsItem[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type GetApiV1OrdersId200Status =
+  (typeof GetApiV1OrdersId200Status)[keyof typeof GetApiV1OrdersId200Status];
+
+export const GetApiV1OrdersId200Status = {
+  ordered: "ordered",
+  partly_shipped: "partly_shipped",
+  shipped: "shipped",
+  partly_delivered: "partly_delivered",
+  delivered: "delivered",
+  problem: "problem",
+} as const;
+
+export type GetApiV1OrdersId200ArchiveMode =
+  (typeof GetApiV1OrdersId200ArchiveMode)[keyof typeof GetApiV1OrdersId200ArchiveMode];
+
+export const GetApiV1OrdersId200ArchiveMode = {
+  automatic: "automatic",
+  archived: "archived",
+  kept: "kept",
+} as const;
+
+/**
+ * @nullable
+ */
+export type GetApiV1OrdersId200Total = {
+  amount: number;
+  currency: string;
+} | null;
+
+export type GetApiV1OrdersId200ItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
+export type GetApiV1OrdersId200ParcelsItemDirection =
+  (typeof GetApiV1OrdersId200ParcelsItemDirection)[keyof typeof GetApiV1OrdersId200ParcelsItemDirection];
+
+export const GetApiV1OrdersId200ParcelsItemDirection = {
+  incoming: "incoming",
+  outgoing: "outgoing",
+} as const;
+
+export type GetApiV1OrdersId200ParcelsItemStatus =
+  (typeof GetApiV1OrdersId200ParcelsItemStatus)[keyof typeof GetApiV1OrdersId200ParcelsItemStatus];
+
+export const GetApiV1OrdersId200ParcelsItemStatus = {
+  registered: "registered",
+  in_transit: "in_transit",
+  out_for_delivery: "out_for_delivery",
+  at_pickup_point: "at_pickup_point",
+  delivered: "delivered",
+  returning: "returning",
+  problem: "problem",
+  unknown: "unknown",
+} as const;
+
+export type GetApiV1OrdersId200ParcelsItemLocationSource =
+  (typeof GetApiV1OrdersId200ParcelsItemLocationSource)[keyof typeof GetApiV1OrdersId200ParcelsItemLocationSource];
+
+export const GetApiV1OrdersId200ParcelsItemLocationSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type GetApiV1OrdersId200ParcelsItemLocationPrecision =
+  (typeof GetApiV1OrdersId200ParcelsItemLocationPrecision)[keyof typeof GetApiV1OrdersId200ParcelsItemLocationPrecision];
+
+export const GetApiV1OrdersId200ParcelsItemLocationPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type GetApiV1OrdersId200ParcelsItemLocation = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: GetApiV1OrdersId200ParcelsItemLocationSource;
+  precision: GetApiV1OrdersId200ParcelsItemLocationPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
+export type GetApiV1OrdersId200ParcelsItem = {
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
+  carrier: string;
+  barcode: string;
+  direction: GetApiV1OrdersId200ParcelsItemDirection;
+  display_name: string;
+  status: GetApiV1OrdersId200ParcelsItemStatus;
+  delivered: boolean;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  delivered_at: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  planned_from: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  planned_to: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  archived_at: string | null;
+  /** @nullable */
+  location: GetApiV1OrdersId200ParcelsItemLocation;
+  /** @nullable */
+  url: string | null;
+};
+
+export type GetApiV1OrdersId200 = {
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
+  shop: string;
+  order_number: string;
+  /** @nullable */
+  label: string | null;
+  display_name: string;
+  /** @nullable */
+  placed_at: string | null;
+  status: GetApiV1OrdersId200Status;
+  archived: boolean;
+  /** @nullable */
+  archived_at: string | null;
+  archive_mode: GetApiV1OrdersId200ArchiveMode;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  parcel_count: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  delivered_count: number;
+  /** @nullable */
+  total: GetApiV1OrdersId200Total;
+  items: GetApiV1OrdersId200ItemsItem[];
+  parcels: GetApiV1OrdersId200ParcelsItem[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type GetApiV1OrdersId404 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type PatchApiV1OrdersIdBody = {
+  /**
+   * @maxLength 120
+   * @nullable
+   */
+  label?: string | null;
+  /** @nullable */
+  archived?: boolean | null;
+};
+
+export type PatchApiV1OrdersId200Status =
+  (typeof PatchApiV1OrdersId200Status)[keyof typeof PatchApiV1OrdersId200Status];
+
+export const PatchApiV1OrdersId200Status = {
+  ordered: "ordered",
+  partly_shipped: "partly_shipped",
+  shipped: "shipped",
+  partly_delivered: "partly_delivered",
+  delivered: "delivered",
+  problem: "problem",
+} as const;
+
+export type PatchApiV1OrdersId200ArchiveMode =
+  (typeof PatchApiV1OrdersId200ArchiveMode)[keyof typeof PatchApiV1OrdersId200ArchiveMode];
+
+export const PatchApiV1OrdersId200ArchiveMode = {
+  automatic: "automatic",
+  archived: "archived",
+  kept: "kept",
+} as const;
+
+/**
+ * @nullable
+ */
+export type PatchApiV1OrdersId200Total = {
+  amount: number;
+  currency: string;
+} | null;
+
+export type PatchApiV1OrdersId200ItemsItem = {
+  title: string;
+  /** @nullable */
+  image_url: string | null;
+  /** @nullable */
+  url: string | null;
+  /**
+   * @maximum 9007199254740991
+   * @exclusiveMinimum 0
+   * @nullable
+   */
+  quantity: number | null;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  currency: string | null;
+  /**
+   * @nullable
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  parcel_id: string | null;
+};
+
+export type PatchApiV1OrdersId200ParcelsItemDirection =
+  (typeof PatchApiV1OrdersId200ParcelsItemDirection)[keyof typeof PatchApiV1OrdersId200ParcelsItemDirection];
+
+export const PatchApiV1OrdersId200ParcelsItemDirection = {
+  incoming: "incoming",
+  outgoing: "outgoing",
+} as const;
+
+export type PatchApiV1OrdersId200ParcelsItemStatus =
+  (typeof PatchApiV1OrdersId200ParcelsItemStatus)[keyof typeof PatchApiV1OrdersId200ParcelsItemStatus];
+
+export const PatchApiV1OrdersId200ParcelsItemStatus = {
+  registered: "registered",
+  in_transit: "in_transit",
+  out_for_delivery: "out_for_delivery",
+  at_pickup_point: "at_pickup_point",
+  delivered: "delivered",
+  returning: "returning",
+  problem: "problem",
+  unknown: "unknown",
+} as const;
+
+export type PatchApiV1OrdersId200ParcelsItemLocationSource =
+  (typeof PatchApiV1OrdersId200ParcelsItemLocationSource)[keyof typeof PatchApiV1OrdersId200ParcelsItemLocationSource];
+
+export const PatchApiV1OrdersId200ParcelsItemLocationSource = {
+  courier: "courier",
+  event: "event",
+} as const;
+
+export type PatchApiV1OrdersId200ParcelsItemLocationPrecision =
+  (typeof PatchApiV1OrdersId200ParcelsItemLocationPrecision)[keyof typeof PatchApiV1OrdersId200ParcelsItemLocationPrecision];
+
+export const PatchApiV1OrdersId200ParcelsItemLocationPrecision = {
+  exact: "exact",
+  street: "street",
+  area: "area",
+} as const;
+
+/**
+ * @nullable
+ */
+export type PatchApiV1OrdersId200ParcelsItemLocation = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  source: PatchApiV1OrdersId200ParcelsItemLocationSource;
+  precision: PatchApiV1OrdersId200ParcelsItemLocationPrecision;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  address: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  at: string | null;
+} | null;
+
+export type PatchApiV1OrdersId200ParcelsItem = {
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
+  carrier: string;
+  barcode: string;
+  direction: PatchApiV1OrdersId200ParcelsItemDirection;
+  display_name: string;
+  status: PatchApiV1OrdersId200ParcelsItemStatus;
+  delivered: boolean;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  delivered_at: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  planned_from: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  planned_to: string | null;
+  /**
+   * @nullable
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+   */
+  archived_at: string | null;
+  /** @nullable */
+  location: PatchApiV1OrdersId200ParcelsItemLocation;
+  /** @nullable */
+  url: string | null;
+};
+
+export type PatchApiV1OrdersId200 = {
+  /** @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$ */
+  id: string;
+  shop: string;
+  order_number: string;
+  /** @nullable */
+  label: string | null;
+  display_name: string;
+  /** @nullable */
+  placed_at: string | null;
+  status: PatchApiV1OrdersId200Status;
+  archived: boolean;
+  /** @nullable */
+  archived_at: string | null;
+  archive_mode: PatchApiV1OrdersId200ArchiveMode;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  parcel_count: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  delivered_count: number;
+  /** @nullable */
+  total: PatchApiV1OrdersId200Total;
+  items: PatchApiV1OrdersId200ItemsItem[];
+  parcels: PatchApiV1OrdersId200ParcelsItem[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type PatchApiV1OrdersId404 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type DeleteApiV1OrdersId404 = {
   /** Stable machine-readable error code. */
   error: string;
   /** Human-readable explanation. */
@@ -3225,6 +3845,91 @@ export const deleteApiV1ParcelsId = async (
   options?: Parameters<typeof apiFetch>[1],
 ): Promise<null> => {
   return apiFetch<null>(getDeleteApiV1ParcelsIdUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getGetApiV1OrdersUrl = (params?: GetApiV1OrdersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/orders?${stringifiedParams}` : `/api/v1/orders`;
+};
+
+/**
+ * An order's `status` is derived from its parcels: `ordered` (nothing shipped yet), `partly_shipped`, `shipped`, `partly_delivered`, `delivered`, or `problem` (a parcel not yet delivered reports a problem or is returning). Archiving is automatic (`archive_mode: automatic`): an order is archived once all its parcels are archived, and parcels archive themselves after the retention window (`archiveAfterDays`) once delivered. The owner can archive by hand (`archived`) or keep an order out of the archive (`kept`). `view`: `open` (default; not delivered, not archived), `delivered` (all parcels delivered, not archived), `archived`, or `all`. Pages of `limit` orders (default 100) from `offset`; when another page follows, the response carries the `X-Next-Offset` header.
+ * @summary List orders with their items and parcels, newest first.
+ */
+export const getApiV1Orders = async (
+  params?: GetApiV1OrdersParams,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<GetApiV1Orders200Item[]> => {
+  return apiFetch<GetApiV1Orders200Item[]>(getGetApiV1OrdersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetApiV1OrdersIdUrl = (id: string) => {
+  return `/api/v1/orders/${id}`;
+};
+
+/**
+ * An order's `status` is derived from its parcels: `ordered` (nothing shipped yet), `partly_shipped`, `shipped`, `partly_delivered`, `delivered`, or `problem` (a parcel not yet delivered reports a problem or is returning). Archiving is automatic (`archive_mode: automatic`): an order is archived once all its parcels are archived, and parcels archive themselves after the retention window (`archiveAfterDays`) once delivered. The owner can archive by hand (`archived`) or keep an order out of the archive (`kept`).
+ * @summary One order with its items and parcels (status and location).
+ */
+export const getApiV1OrdersId = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<GetApiV1OrdersId200> => {
+  return apiFetch<GetApiV1OrdersId200>(getGetApiV1OrdersIdUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getPatchApiV1OrdersIdUrl = (id: string) => {
+  return `/api/v1/orders/${id}`;
+};
+
+/**
+ * `label`: the order's own name, null for the shop's. `archived`: true archives it, false keeps it out of the archive even when all its parcels are archived, null returns it to automatic archiving. Parcels are not changed. Fires `order.updated`.
+ * @summary Rename an order, or archive it by hand.
+ */
+export const patchApiV1OrdersId = async (
+  id: string,
+  patchApiV1OrdersIdBody: PatchApiV1OrdersIdBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<PatchApiV1OrdersId200> => {
+  return apiFetch<PatchApiV1OrdersId200>(getPatchApiV1OrdersIdUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
+    body: JSON.stringify(patchApiV1OrdersIdBody),
+  });
+};
+
+export const getDeleteApiV1OrdersIdUrl = (id: string) => {
+  return `/api/v1/orders/${id}`;
+};
+
+/**
+ * The order's lines go and its parcels stay tracked without it. The shop and order number are remembered, so a shop source listing the order again does not re-create it. Fires `order.deleted`.
+ * @summary Delete an order; its parcels are kept and unlinked.
+ */
+export const deleteApiV1OrdersId = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<null> => {
+  return apiFetch<null>(getDeleteApiV1OrdersIdUrl(id), {
     ...options,
     method: "DELETE",
   });

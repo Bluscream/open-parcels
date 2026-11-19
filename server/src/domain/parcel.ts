@@ -150,8 +150,14 @@ export const parcelSchema = z.object({
   location: locationSchema.nullable(),
   /** The newest scan that came with coordinates, also while a courier is shown. */
   last_scan: locationSchema.nullable(),
+  /** The order the parcel belongs to; `id` addresses it under /api/v1/orders. */
   order: z
-    .object({ shop: z.string(), order_number: z.string(), items: z.array(orderItemSchema) })
+    .object({
+      shop: z.string(),
+      order_number: z.string(),
+      items: z.array(orderItemSchema),
+      id: z.uuid(),
+    })
     .nullable(),
   sources: z.array(parcelSourceRefSchema),
   lookup: lookupSchema,
