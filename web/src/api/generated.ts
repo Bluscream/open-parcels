@@ -3639,6 +3639,37 @@ export type PostApiV1CalendarFeed201 = {
   url: string | null;
 };
 
+export type GetApiV1MapLayers200LayersItemKind =
+  (typeof GetApiV1MapLayers200LayersItemKind)[keyof typeof GetApiV1MapLayers200LayersItemKind];
+
+export const GetApiV1MapLayers200LayersItemKind = {
+  base: "base",
+  overlay: "overlay",
+} as const;
+
+export type GetApiV1MapLayers200LayersItem = {
+  id: string;
+  label: string;
+  kind: GetApiV1MapLayers200LayersItemKind;
+  /**
+   * @minimum -9007199254740991
+   * @maximum 9007199254740991
+   */
+  max_zoom: number;
+  /** HTML for the map's attribution control. */
+  attribution: string;
+  /** Photographic imagery: no dark-mode filter. */
+  satellite: boolean;
+};
+
+export type GetApiV1MapLayers200 = {
+  layers: GetApiV1MapLayers200LayersItem[];
+  /** Base layer shown until the user picks one. */
+  default_base: string;
+  /** @nullable */
+  default_overlay: string | null;
+};
+
 export type GetApiV1EventsParams = {
   /**
    * @minimum 0
@@ -4545,12 +4576,48 @@ export const getImgFile = async (
   });
 };
 
+export const getGetApiV1MapLayersUrl = () => {
+  return `/api/v1/map/layers`;
+};
+
+/**
+ * @summary The map styles this server proxies, without their upstream addresses or keys.
+ */
+export const getApiV1MapLayers = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<GetApiV1MapLayers200> => {
+  return apiFetch<GetApiV1MapLayers200>(getGetApiV1MapLayersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTilesLayerZXYUrl = (layer: string, z: number, x: number, y: number) => {
+  return `/tiles/${layer}/${z}/${x}/${y}`;
+};
+
+/**
+ * @summary A map tile of one of the listed layers, fetched and cached by this server.
+ */
+export const getTilesLayerZXY = async (
+  layer: string,
+  z: number,
+  x: number,
+  y: number,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getGetTilesLayerZXYUrl(layer, z, x, y), {
+    ...options,
+    method: "GET",
+  });
+};
+
 export const getGetTilesZXYPngUrl = (z: number, x: number, y: number) => {
   return `/tiles/${z}/${x}/${y}.png`;
 };
 
 /**
- * @summary An OpenStreetMap tile, fetched and cached by this server.
+ * @summary An OpenStreetMap tile (older clients; same as layer osm).
  */
 export const getTilesZXYPng = async (
   z: number,

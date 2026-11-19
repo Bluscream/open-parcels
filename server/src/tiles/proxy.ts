@@ -1,17 +1,20 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { BUILTIN_LAYERS, tileUrl, type TileLayerDef } from "./layers.js";
 
 /**
- * Map tiles fetched through this server, following OpenStreetMap's tile usage policy: an
- * identifying User-Agent, at most two upstream connections, and a disk cache honoured for a week.
- * Browsers that strip the Referer (LibreWolf, privacy add-ons) are refused by the tile servers
- * when they ask directly, so the web UI always goes through here.
+ * Map tiles fetched through this server, following OpenStreetMap's tile usage policy (applied to
+ * every provider): an identifying User-Agent, at most two upstream connections, and a disk cache
+ * honoured for a week. Browsers that strip the Referer (LibreWolf, privacy add-ons) are refused by
+ * the tile servers when they ask directly, and the providers never see the user's browser, so the
+ * web UI always goes through here. Each layer has its own cache folder.
  */
-export const TILE_UPSTREAM = "https://tile.openstreetmap.org";
 export const TILE_MAX_ZOOM = 19;
+/** No provider serves deeper than this; the route refuses anything beyond it up front. */
+export const TILE_MAX_ZOOM_ANY = 22;
 const FRESH_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_UPSTREAM = 2;
-const MAX_TILE_BYTES = 512 * 1024;
+const MAX_TILE_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 15_000;
 
 export class TileError extends Error {
@@ -27,12 +30,14 @@ export class TileError extends Error {
 export interface Tile {
   readonly body: Buffer;
   readonly cached: boolean;
+  readonly contentType: string;
 }
 
 export interface TileProxyOptions {
   readonly cacheDir: string;
   readonly userAgent: string;
-  readonly upstream?: string;
+  /** The layers that may be fetched, read on every request so setting changes apply at once. */
+  readonly layers?: () => readonly TileLayerDef[];
   readonly fetchImpl?: typeof fetch;
   readonly now?: () => number;
   /** Tiles not refreshed for this long are deleted by `prune()`. */
@@ -42,10 +47,11 @@ export interface TileProxyOptions {
 
 const DEFAULT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_BYTES = 200 * 1024 * 1024;
+const CONTENT_TYPES = { png: "image/png", jpg: "image/jpeg" } as const;
 
 /** Valid slippy-map coordinates only; anything else never reaches the network or the disk. */
-export function validTile(z: number, x: number, y: number): boolean {
-  if (![z, x, y].every(Number.isInteger) || z < 0 || z > TILE_MAX_ZOOM) {
+export function validTile(z: number, x: number, y: number, maxZoom = TILE_MAX_ZOOM): boolean {
+  if (![z, x, y].every(Number.isInteger) || z < 0 || z > maxZoom) {
     return false;
   }
   const size = 2 ** z;
@@ -62,50 +68,65 @@ export class TileProxy {
     this.#options = options;
   }
 
-  async get(z: number, x: number, y: number): Promise<Tile> {
-    if (!validTile(z, x, y)) {
+  /** The allowlist: the built-in layers plus a configured custom provider. */
+  layers(): readonly TileLayerDef[] {
+    return this.#options.layers?.() ?? BUILTIN_LAYERS;
+  }
+
+  /** Unknown layers are refused before anything is fetched or read. */
+  async get(layerId: string, z: number, x: number, y: number): Promise<Tile> {
+    const layer = this.layers().find((candidate) => candidate.id === layerId);
+    if (layer === undefined) {
+      throw new TileError(404, "There is no such map layer.");
+    }
+    if (!validTile(z, x, y, layer.maxZoom)) {
       throw new TileError(400, "Not a map tile.");
     }
-    const key = `${String(z)}/${String(x)}/${String(y)}`;
+    const key = `${layer.cacheKey}/${String(z)}/${String(x)}/${String(y)}`;
     const pending = this.#inflight.get(key);
     if (pending !== undefined) {
       return pending;
     }
-    const work = this.#load(z, x, y).finally(() => this.#inflight.delete(key));
+    const work = this.#load(layer, z, x, y).finally(() => this.#inflight.delete(key));
     this.#inflight.set(key, work);
     return work;
   }
 
-  async #load(z: number, x: number, y: number): Promise<Tile> {
-    const file = path.join(this.#options.cacheDir, String(z), String(x), `${String(y)}.png`);
+  async #load(layer: TileLayerDef, z: number, x: number, y: number): Promise<Tile> {
+    const contentType = CONTENT_TYPES[layer.format];
+    const file = path.join(
+      this.#options.cacheDir,
+      layer.cacheKey,
+      String(z),
+      String(x),
+      `${String(y)}.${layer.format}`,
+    );
     const now = this.#options.now?.() ?? Date.now();
     const cached = await readCached(file);
     if (cached !== null && now - cached.mtimeMs < FRESH_MS) {
-      return { body: cached.body, cached: true };
+      return { body: cached.body, cached: true, contentType };
     }
     try {
-      const body = await this.#fetchUpstream(z, x, y);
+      const body = await this.#fetchUpstream(layer, z, x, y);
       await mkdir(path.dirname(file), { recursive: true });
       const temporary = `${file}.${String(process.pid)}.tmp`;
       await writeFile(temporary, body);
       await rename(temporary, file);
-      return { body, cached: false };
+      return { body, cached: false, contentType };
     } catch (error) {
       // A stale tile beats a broken map while the tile server is unreachable or refusing.
       if (cached !== null) {
-        return { body: cached.body, cached: true };
+        return { body: cached.body, cached: true, contentType };
       }
       throw error;
     }
   }
 
-  async #fetchUpstream(z: number, x: number, y: number): Promise<Buffer> {
+  async #fetchUpstream(layer: TileLayerDef, z: number, x: number, y: number): Promise<Buffer> {
     await this.#acquire();
     try {
-      const upstream = this.#options.upstream ?? TILE_UPSTREAM;
-      const url = `${upstream}/${String(z)}/${String(x)}/${String(y)}.png`;
-      const response = await (this.#options.fetchImpl ?? fetch)(url, {
-        headers: { "user-agent": this.#options.userAgent, accept: "image/png" },
+      const response = await (this.#options.fetchImpl ?? fetch)(tileUrl(layer, z, x, y), {
+        headers: { "user-agent": this.#options.userAgent, accept: "image/*" },
         signal: AbortSignal.timeout(TIMEOUT_MS),
         redirect: "error",
       });
@@ -181,7 +202,7 @@ async function listTiles(root: string): Promise<{ path: string; size: number; mt
   }
   const tiles = await Promise.all(
     entries
-      .filter((entry) => entry.endsWith(".png"))
+      .filter((entry) => entry.endsWith(".png") || entry.endsWith(".jpg"))
       .map(async (entry) => {
         const file = path.join(root, entry);
         const info = await stat(file);
