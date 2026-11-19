@@ -52,12 +52,15 @@ function MapResizer({
       zoomButtons?.removeEventListener("click", moved);
     };
   }, [map]);
+  // Callers often build a new array on every render; only a change in the points refits.
+  const key = JSON.stringify(bounds ?? []);
   useEffect(() => {
+    const points = JSON.parse(key) as LatLng[];
     const fit = (): void => {
       if (userMoved.current) return;
-      const valid = (bounds ?? []).filter(([lat, lng]) => !Number.isNaN(lat) && !Number.isNaN(lng));
+      const valid = points.filter(([lat, lng]) => !Number.isNaN(lat) && !Number.isNaN(lng));
       if (valid.length > 0) {
-        map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom });
+        map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom, animate: false });
       }
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -79,7 +82,7 @@ function MapResizer({
       clearTimeout(settled);
       observer.disconnect();
     };
-  }, [map, bounds, maxZoom]);
+  }, [map, key, maxZoom]);
   return null;
 }
 
