@@ -90,7 +90,7 @@ describe("a run the plug-in skips on purpose", () => {
 
     const source = await context.services.sources.get(sourceId);
     expect(source).toMatchObject({
-      state: "ok",
+      state: "idle",
       stateDetail: "Public tracking off: nothing to look up.",
       lastOkAt: null,
     });
@@ -100,15 +100,19 @@ describe("a run the plug-in skips on purpose", () => {
     const [finished] = await outbox("source.run_finished");
     expect(finished).toMatchObject({
       ok: true,
-      state: "ok",
+      state: "idle",
       detail: "Public tracking off: nothing to look up.",
     });
 
-    // Once it does something again, the detail clears and the success counts.
+    // An idle source stays scheduled; once it does something again it is OK, the detail clears
+    // and the success counts.
     post.idle = undefined;
     await context.services.sources.requestRun(sourceId);
-    await context.services.scheduler.runDue();
-    expect(await context.services.sources.get(sourceId)).toMatchObject({ stateDetail: null });
+    expect(await context.services.scheduler.runDue()).toBe(1);
+    expect(await context.services.sources.get(sourceId)).toMatchObject({
+      state: "ok",
+      stateDetail: null,
+    });
     expect((await context.services.sources.get(sourceId))?.lastOkAt).not.toBeNull();
   });
 });

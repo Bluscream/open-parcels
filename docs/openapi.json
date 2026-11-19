@@ -3889,6 +3889,7 @@
                         "type": "string",
                         "enum": [
                           "ok",
+                          "idle",
                           "needs_sign_in",
                           "error",
                           "disabled"
@@ -4017,6 +4018,7 @@
                       "type": "string",
                       "enum": [
                         "ok",
+                        "idle",
                         "needs_sign_in",
                         "error",
                         "disabled"
@@ -4161,6 +4163,7 @@
                       "type": "string",
                       "enum": [
                         "ok",
+                        "idle",
                         "needs_sign_in",
                         "error",
                         "disabled"

@@ -35,15 +35,14 @@ describe("parcel list", () => {
 });
 
 describe("a source that ran but had nothing to do", () => {
-  it("shows Idle and its reason instead of OK", () => {
-    render(
-      <SourceStateBadge
-        state="ok"
-        lastOkAt={null}
-        detail="Public tracking off: nothing to look up."
-      />,
-    );
+  it("shows Idle from the server's idle state", () => {
+    render(<SourceStateBadge state="idle" lastOkAt={null} />);
     expect(screen.getByText("Idle", { selector: ".badge" })).toBeInTheDocument();
+  });
+
+  it("does not guess Idle from the detail text of an OK source", () => {
+    render(<SourceStateBadge state="ok" lastOkAt="2026-11-01T10:00:00.000Z" />);
+    expect(screen.getByText("OK", { selector: ".badge" })).toBeInTheDocument();
   });
 });
 

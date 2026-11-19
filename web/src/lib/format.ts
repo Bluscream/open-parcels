@@ -20,6 +20,7 @@ export const LOOKUP_LABELS: Readonly<Record<LookupState, string>> = {
 
 export const SOURCE_STATE_LABELS: Readonly<Record<SourceState, string>> = {
   ok: "OK",
+  idle: "Idle",
   needs_sign_in: "Needs sign-in",
   error: "Error",
   disabled: "Disabled",

@@ -16,6 +16,8 @@ import type { SourceService } from "./sources.js";
 /** Upper bound on the timer, so removals are judged and clock changes picked up regularly. */
 const MAX_SLEEP_MS = 5 * 60_000;
 const DEFAULT_CONCURRENCY = 3;
+/** An idle source keeps running: the reason it had nothing to do may go away (a setting changed). */
+const RUNNABLE_STATES: readonly SourceRow["state"][] = ["ok", "idle", "error"];
 
 export interface SchedulerDeps {
   readonly db: Kysely<Database>;
@@ -98,7 +100,7 @@ export class Scheduler {
     const next = await this.deps.db
       .selectFrom("sources")
       .select((eb) => eb.fn.min("next_run_at").as("next"))
-      .where("state", "in", ["ok", "error"])
+      .where("state", "in", RUNNABLE_STATES)
       .where("kind", "!=", "mail")
       .where("next_run_at", "is not", null)
       .executeTakeFirst();
@@ -116,7 +118,7 @@ export class Scheduler {
     const due = await this.deps.db
       .selectFrom("sources")
       .selectAll()
-      .where("state", "in", ["ok", "error"])
+      .where("state", "in", RUNNABLE_STATES)
       .where("kind", "!=", "mail")
       .where("next_run_at", "<=", isoNow(this.deps.clock))
       .orderBy("next_run_at")
@@ -170,9 +172,10 @@ export class Scheduler {
         })
         .where("id", "=", source.id)
         .execute();
+      const state = outcome.idle === undefined ? "ok" : "idle";
       const detail = outcome.idle ?? null;
-      if (source.state !== "ok" || source.state_detail !== detail) {
-        await this.deps.sources.setState(source.id, "ok", detail);
+      if (source.state !== state || source.state_detail !== detail) {
+        await this.deps.sources.setState(source.id, state, detail);
       }
       return;
     }

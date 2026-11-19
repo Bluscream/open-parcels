@@ -55,7 +55,8 @@ export interface SourceTable {
   config: string;
   secret_blob: Buffer | null;
   session_blob: Buffer | null;
-  state: "ok" | "needs_sign_in" | "error" | "disabled";
+  /** `idle`: the last run deliberately did nothing; `state_detail` says why. */
+  state: "ok" | "idle" | "needs_sign_in" | "error" | "disabled";
   state_detail: string | null;
   consecutive_failures: Generated<number>;
   backoff_until: Timestamp | null;
