@@ -8,6 +8,7 @@ import { lazy, type ReactNode } from "react";
 import { StatusPage } from "./admin/StatusPage";
 import { TokensPage } from "./admin/TokensPage";
 import { Shell } from "./layout/Shell";
+import { OrdersPage } from "./orders/OrdersPage";
 import { ParcelDetailPage } from "./parcels/ParcelDetailPage";
 import { ParcelsPage } from "./parcels/ParcelsPage";
 import { SourcesPage } from "./sources/SourcesPage";
@@ -40,6 +41,7 @@ const routeTree = rootRoute.addChildren([
   parcelRoute,
   createRoute({ getParentRoute: () => rootRoute, path: "/sources", component: SourcesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/map", component: MapPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/orders", component: OrdersPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/calendar", component: CalendarPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/tokens", component: TokensPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/status", component: StatusPage }),

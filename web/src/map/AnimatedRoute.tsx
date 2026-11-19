@@ -5,8 +5,8 @@ import { useMap } from "react-leaflet";
 import type { LatLng } from "./mapIcons";
 
 /**
- * An animated "marching ants" line between points. Kept for the planned route view; the live
- * map shows only current positions, never a trail of past ones.
+ * An animated "marching ants" line between points: the maps draw it from the carrier's last scan
+ * to the courier's live position. No trail of past courier positions is ever drawn.
  */
 export function AnimatedRoute(props: {
   readonly positions: readonly LatLng[];

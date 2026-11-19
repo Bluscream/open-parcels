@@ -39,7 +39,7 @@ export function ParcelEditor({ parcel }: { readonly parcel: ParcelDetail }): Rea
   };
 
   return (
-    <section className="card" aria-labelledby="edit-title">
+    <section className="detail-section" aria-labelledby="edit-title">
       <h2 id="edit-title">Edit</h2>
       <form onSubmit={save} className="stack">
         <Field label="Label">
