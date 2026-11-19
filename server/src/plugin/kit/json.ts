@@ -135,6 +135,44 @@ export function requiredList(payload: Json, key: string, carrier: string): reado
   return value as unknown[];
 }
 
+const NEXT_KEYS = ["next", "nextPage", "nextPageToken", "nextCursor", "pagingState", "cursor"];
+const MORE_FLAGS = ["hasMore", "hasNext", "hasNextPage", "more", "moreResults"];
+const TOTAL_KEYS = ["total", "totalCount", "totalItems", "totalElements", "totalResults", "count"];
+const PAGE_KEYS = ["totalPages", "pageCount", "pages"];
+
+/**
+ * Whether a list envelope says it holds more than the `listed` entries it sent: a next link or
+ * cursor, a "more" flag, a total above what was sent, or more than one page. Accounts whose
+ * paging is not documented use it to answer "not complete" instead of losing the later pages'
+ * parcels to the removal check. The envelope and its `paging`/`pagination`/`meta` parts are read.
+ */
+export function mayHaveMorePages(envelope: unknown, listed: number): boolean {
+  const parts = [
+    envelope,
+    ...["paging", "pagination", "page", "meta", "links"].map((key) => dig(envelope, key)),
+  ].filter(isObject);
+  return parts.some(
+    (part) =>
+      NEXT_KEYS.some((key) => {
+        const value = part[key];
+        return (
+          (typeof value === "string" && value !== "") ||
+          (isObject(value) &&
+            Object.values(value).some((inner) => typeof inner === "string" && inner !== ""))
+        );
+      }) ||
+      MORE_FLAGS.some((key) => part[key] === true) ||
+      TOTAL_KEYS.some((key) => {
+        const total = num(part[key]);
+        return total !== null && total > listed;
+      }) ||
+      PAGE_KEYS.some((key) => {
+        const pages = num(part[key]);
+        return pages !== null && pages > 1;
+      }),
+  );
+}
+
 /** OAuth `error` values that mean the grant or client was refused, so signing in again is needed. */
 const OAUTH_REFUSALS = new Set([
   "invalid_grant",

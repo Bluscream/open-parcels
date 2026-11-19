@@ -307,6 +307,15 @@ describe("DHL Germany account", () => {
     );
   });
 
+  it("leaves archived parcels out even when nothing else is left, so they never flip back", async () => {
+    const world = new World();
+    discovery(world);
+    tokens(world, [tokenResponse("first")]);
+    inbox(world, [json({ sendungen: [element(CODE, { info: { sendungsliste: "ARCHIVIERT" } })] })]);
+    const result = await fetchAccount(world.context({ refreshToken: REFRESH }));
+    expect(result.snapshots).toEqual([]);
+  });
+
   it("looks bare inbox entries up by number", async () => {
     const world = new World();
     discovery(world);

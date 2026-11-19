@@ -91,8 +91,11 @@ async function fetchAccount(context: PluginContext<Config, Secret>) {
     context.session.load(),
   );
   const snapshots: ParcelSnapshot[] = [];
+  let complete: boolean;
   try {
-    for (const row of await account.inbox()) {
+    const inbox = await account.inbox();
+    complete = inbox.complete;
+    for (const row of inbox.rows) {
       const awb = awbOf(row) ?? "";
       const summary = SUMMARY_KEYS.map((key) => text(row[key])).find((value) => value !== null);
       // The inbox only lists the AWBs; status and history come from the same trace as tracking.
@@ -109,7 +112,7 @@ async function fetchAccount(context: PluginContext<Config, Secret>) {
   } finally {
     await account.save(context.session);
   }
-  return { snapshots, complete: true };
+  return { snapshots, complete };
 }
 
 /** Cargus (Romania): the anonymous trace and the MyCargus account. */

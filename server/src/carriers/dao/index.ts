@@ -9,6 +9,7 @@ import {
   type PluginContext,
   asObject,
   isObject,
+  mayHaveMorePages,
   readJson,
   text,
   unknownReporter,
@@ -40,17 +41,24 @@ function unwrap(payload: unknown, keys: readonly string[]): unknown {
   return key === undefined ? payload : payload[key];
 }
 
-async function list(session: DaoSession, language: string): Promise<Json[]> {
+async function list(
+  session: DaoSession,
+  language: string,
+): Promise<{ parcels: Json[]; complete: boolean }> {
   const parcels: Json[] = [];
+  let complete = true;
   for (const bound of ["IN", "OUT"]) {
     const response = await session.get(TRACKING, { bound, archived: "FALSE", lang: language });
-    const items = unwrap(readJson(response, "DAO's parcel list"), ["items", "data"]);
+    const envelope = readJson(response, "DAO's parcel list");
+    const items = unwrap(envelope, ["items", "data"]);
     if (!Array.isArray(items)) {
       throw new UnexpectedResponseError("DAO's parcel list is not a list.");
     }
+    // Paging is not documented: a list that says it holds more is not everything.
+    complete &&= !mayHaveMorePages(envelope, items.length);
     parcels.push(...items.filter(isObject).map((item) => ({ bound, ...item })));
   }
-  return parcels;
+  return { parcels, complete };
 }
 
 async function object(session: DaoSession, path: string, query: Record<string, string>) {
@@ -118,7 +126,7 @@ async function enrich(
 
 async function fetchAccount(context: PluginContext<Config, Secret>): Promise<FetchResult> {
   const session = new DaoSession(context, context.secret.refreshToken);
-  const parcels = await list(session, context.config.language);
+  const { parcels, complete } = await list(session, context.config.language);
   const extras = await enrich(context, session, parcels);
   const reports = {
     type: unknownReporter(context, "status_type"),
@@ -129,7 +137,8 @@ async function fetchAccount(context: PluginContext<Config, Secret>): Promise<Fet
       toSnapshot(raw, extras.get(raw) ?? { events: null, pickupPointName: null }, reports),
     )
     .filter((parcel): parcel is ParcelSnapshot => parcel !== null);
-  return { snapshots, complete: true };
+  // A parcel that could not be read is left out, so the list is no longer everything.
+  return { snapshots, complete: complete && snapshots.length === parcels.length };
 }
 
 /** DAO (Denmark): the consumer account, signed in through DAO's own login page. */

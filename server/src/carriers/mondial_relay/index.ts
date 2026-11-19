@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   carrierKey,
   defineCarrier,
+  InvalidConfigError,
   SignInRejectedError,
   type ParcelSnapshot,
   type PluginContext,
@@ -35,8 +36,12 @@ type Secret = AccountSecret | null;
 async function track(context: PluginContext<Config, Secret>, barcodes: readonly string[]) {
   const wanted = barcodes.filter(isPlausibleBarcode);
   const postcode = context.config.postcode;
-  if (wanted.length === 0 || postcode === undefined || !isPlausiblePostcode(postcode)) {
-    return { snapshots: [], complete: true };
+  if (wanted.length === 0) {
+    return { snapshots: [], complete: false };
+  }
+  // Without a usable postcode no code can be looked up: a settings problem, never "not found".
+  if (postcode === undefined || !isPlausiblePostcode(postcode)) {
+    throw new InvalidConfigError("Mondial Relay's tracking needs the recipient's postcode.");
   }
   const report: Reporter = {
     step: (key) => {

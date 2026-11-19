@@ -168,6 +168,7 @@ const fingerprint = (value: string): string =>
  */
 class Backend {
   #stored: Stored;
+  #renewed = false;
 
   constructor(
     private readonly context: PluginContext<unknown, unknown>,
@@ -182,6 +183,10 @@ class Backend {
   }
 
   async #renew(): Promise<string> {
+    if (this.#renewed) {
+      throw new SignInRejectedError("Mondial Relay refused a freshly renewed session.");
+    }
+    this.#renewed = true;
     const tokens = await postToken(this.context.http, {
       grant_type: "refresh_token",
       refresh_token: this.#stored.refreshToken,
@@ -215,11 +220,12 @@ class Backend {
     const fresh =
       accessToken !== null && this.context.clock.now().getTime() < expiresAt - MARGIN_MS;
     let response = await send(fresh ? accessToken : await this.#renew());
-    if (response.status === 401) {
+    // At most one renewal per run, however many pages or lists follow.
+    if (response.status === 401 && !this.#renewed) {
       response = await send(await this.#renew());
-      if (response.status === 401) {
-        throw new SignInRejectedError("Mondial Relay refused a freshly renewed session.");
-      }
+    }
+    if (response.status === 401) {
+      throw new SignInRejectedError("Mondial Relay refused a freshly renewed session.");
     }
     if (response.status === 403) {
       throw new TransientError("Mondial Relay refused the request signature.");
@@ -304,6 +310,7 @@ export async function fetchAccountParcels(
   const backend = new Backend(context, secret);
   const report = unknownReporter(context, "step");
   const snapshots: ParcelSnapshot[] = [];
+  let complete = true;
   for (const [path, direction] of [
     ["parcels-list-received", "incoming"],
     ["parcels-list-shipped", "outgoing"],
@@ -318,10 +325,13 @@ export async function fetchAccountParcels(
         seen.add(uid);
       }
       const parcel = accountSnapshot(item, direction, report);
-      if (parcel !== null) {
+      if (parcel === null) {
+        // A parcel without a number is left out, so the list is not everything.
+        complete = false;
+      } else {
         snapshots.push(parcel);
       }
     }
   }
-  return { snapshots, complete: true };
+  return { snapshots, complete };
 }

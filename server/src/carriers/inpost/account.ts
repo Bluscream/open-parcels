@@ -1,6 +1,7 @@
 import {
   asObject,
   isObject,
+  mayHaveMorePages,
   readObject,
   SignInRejectedError,
   TransientError,
@@ -61,10 +62,10 @@ export async function readInbox(
   market: Market,
 ): Promise<Inbox> {
   if (market === "PL") {
-    return {
-      parcels: parcelsOf(await authedGet(http, session, new URL(PL_INBOX_URL))),
-      complete: true,
-    };
+    const payload = await authedGet(http, session, new URL(PL_INBOX_URL));
+    const parcels = parcelsOf(payload);
+    // The Polish inbox's paging is not documented: one that says it holds more is not everything.
+    return { parcels, complete: !mayHaveMorePages(payload, parcels.length) };
   }
   const parcels: Json[] = [];
   let cursor: string | null = null;

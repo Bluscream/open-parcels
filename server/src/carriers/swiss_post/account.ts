@@ -1,12 +1,12 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
-  asArray as asList,
   asObject,
   carrierKey,
   isOAuthRefusal,
   isObject,
   isoTime,
+  mayHaveMorePages,
   num,
   parseJsonBody,
   pastedRedirect,
@@ -227,23 +227,6 @@ export function accountSnapshot(raw: Json, report: (key: string) => void): Parce
   });
 }
 
-/**
- * Whether the overview says it holds more than it sent. Its paging is not documented, so any
- * paging marker (a next link, a more flag, a total above what was sent) counts.
- */
-function hasMorePages(payload: Json): boolean {
-  const sent = ["inProgress", "completed"].reduce(
-    (sum, key) => sum + asList(payload[key]).length,
-    0,
-  );
-  const total = num(payload["totalCount"] ?? payload["total"]);
-  return (
-    payload["hasMore"] === true ||
-    text(payload["next"] ?? payload["nextPage"]) !== null ||
-    (total !== null && total > sent)
-  );
-}
-
 export async function fetchSwissPostAccount(
   context: PluginContext<unknown, unknown>,
   secret: AccountSecret,
@@ -270,5 +253,6 @@ export async function fetchSwissPostAccount(
       complete = false;
     }
   }
-  return { snapshots, complete: complete && !hasMorePages(payload) };
+  // The overview's paging is not documented: one that says it holds more is not everything.
+  return { snapshots, complete: complete && !mayHaveMorePages(payload, entries.length) };
 }

@@ -63,12 +63,14 @@ export async function fetchEnvelope(
 
 const ARCHIVED = "ARCHIVIERT";
 
-/** Drops archived entries, unless that would drop all of them. */
+/**
+ * Drops archived entries, always. Keeping them only when nothing else is left made a parcel flip
+ * between gone and present as other parcels came and went.
+ */
 export function activeElements(elements: readonly Json[]): Json[] {
-  const active = elements.filter(
+  return elements.filter(
     (e) => asString(asObject(e["sendungsinfo"])?.["sendungsliste"])?.toUpperCase() !== ARCHIVED,
   );
-  return active.length > 0 ? active : [...elements];
 }
 
 /** A bare inbox entry that only a lookup by number fills in. */

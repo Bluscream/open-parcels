@@ -119,6 +119,16 @@ describe("DHL Netherlands account", () => {
     expect(world.calls.filter((call) => call.key === LOGIN)).toHaveLength(1);
   });
 
+  it("is not complete when the sent list is full, as it is cut at 250", async () => {
+    const full = Array.from({ length: 250 }, (_, index) => ({
+      barcode: `3SDEV${String(index).padStart(8, "0")}`,
+      type: "incoming",
+    }));
+    const world = new World(dhl, [on(PARCELS, json({ parcels: [] })), on(SENT, json(full))]);
+    world.stored = null;
+    expect((await world.fetchAccount(NL, { nl: CREDENTIALS })).complete).toBe(false);
+  });
+
   it("needs the Dutch sign-in data", async () => {
     const world = new World(dhl);
     await expect(world.fetchAccount(NL, { refreshToken: "x" })).rejects.toBeInstanceOf(

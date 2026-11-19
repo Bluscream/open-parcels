@@ -6,6 +6,7 @@ import {
   carrierPattern,
   defineCarrier,
   isObject,
+  mayHaveMorePages,
   isoTime,
   newestFirst,
   num,
@@ -212,23 +213,28 @@ async function fetchAccount(context: PluginContext<Config, Secret | null>) {
   const account = new PplAccount({ ...context, secret });
   const report = unknownReporter(context, "status_code");
   try {
-    const items = readObject(
+    const envelope = readObject(
       await account.get("/api/v2/me/shipments?shipment_type=ALL"),
       "PPL shipments",
-    )["items"];
+    );
+    const items = envelope["items"];
     if (!Array.isArray(items)) {
       throw new UnexpectedResponseError("PPL's shipment list has no items.");
     }
+    // Paging is not documented: a list that says it holds more is not everything.
+    let complete = !mayHaveMorePages(envelope, items.length);
     const snapshots: ParcelSnapshot[] = [];
     for (const raw of items.filter(isObject)) {
       const id = text(raw["id"]);
       const timeline = id === null ? [] : await events(account, id);
       const parcel = accountSnapshot(raw, timeline, report);
-      if (parcel !== null) {
+      if (parcel === null) {
+        complete = false;
+      } else {
         snapshots.push(parcel);
       }
     }
-    return { snapshots, complete: true };
+    return { snapshots, complete };
   } finally {
     await account.save();
   }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { verificationToken } from "../../src/carriers/vinted_go/account.js";
 import { vintedGo } from "../../src/carriers/vinted_go/index.js";
@@ -12,6 +13,8 @@ const CONFIRM = `POST ${HOST}/registrations/confirm`;
 const REFRESH = `POST ${HOST}/sessions/refresh`;
 const SHIPMENTS = `GET ${HOST}/shipments`;
 const RT = madeUp("vinted", "refresh");
+const fingerprint = (value: string): string =>
+  createHash("sha256").update(value).digest("hex").slice(0, 16);
 const pair = (tag: string) =>
   json({ session_token: `st-${tag}`, refresh_token: madeUp("vinted", tag) });
 
@@ -67,7 +70,7 @@ describe("Vinted Go account", () => {
 
   it("lists sent and received shipments, renewing a refused session once", async () => {
     const world = new World(vintedGo, [
-      on(REFRESH, pair("a"), pair("b")),
+      on(REFRESH, pair("b")),
       on(
         SHIPMENTS,
         json({}, 401),
@@ -91,7 +94,10 @@ describe("Vinted Go account", () => {
         json({ tracking_events: [{ group: "shipped", timestamp: 1763470800000 }] }),
       ),
     ]);
+    // A session from an earlier run, which Vinted Go has since refused.
+    world.stored = { base: fingerprint(RT), refresh: RT, session: "st-old" };
     const result = await world.fetchAccount({}, { refreshToken: RT });
+    expect(result.complete).toBe(false);
     expect(result.snapshots.map((s) => [s.barcode, s.direction, s.status])).toEqual([
       ["VG00000001", "incoming", "at_pickup_point"],
       ["VG00000002", "outgoing", "in_transit"],
@@ -103,6 +109,17 @@ describe("Vinted Go account", () => {
     // The completed shipment needed no timeline call; the rotated refresh token was kept.
     expect(world.requests().filter((key) => key.includes("tracking_events"))).toHaveLength(2);
     expect(world.stored).toMatchObject({ refresh: madeUp("vinted", "b"), session: "st-b" });
+  });
+
+  it("does not renew a session it minted this run again after a 401", async () => {
+    const world = new World(vintedGo, [
+      on(REFRESH, pair("a"), pair("b")),
+      on(SHIPMENTS, json({}, 401)),
+    ]);
+    await expect(world.fetchAccount({}, { refreshToken: RT })).rejects.toBeInstanceOf(
+      SignInRejectedError,
+    );
+    expect(world.requests().filter((key) => key === REFRESH)).toHaveLength(1);
   });
 
   it("asks for a new sign-in only when the refresh token is refused", async () => {

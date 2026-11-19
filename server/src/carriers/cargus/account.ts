@@ -6,6 +6,7 @@ import {
   carrierKey,
   CookieJar,
   isObject,
+  mayHaveMorePages,
   parseJsonBody,
   SignInRejectedError,
   TransientError,
@@ -315,22 +316,26 @@ export class CargusAccount {
   }
 
   /** Every inbox row, one per AWB, across the list types. Any list failing fails the read. */
-  async inbox(): Promise<Json[]> {
+  async inbox(): Promise<{ rows: Json[]; complete: boolean }> {
     const rows = new Map<string, Json>();
+    let complete = true;
     for (const type of SHIPMENT_TYPES) {
-      const found = rowsOf(
-        await this.get("Awbs/AwbList", { shipmentType: String(type), lang: "EN" }),
-      );
+      const envelope = await this.get("Awbs/AwbList", { shipmentType: String(type), lang: "EN" });
+      const found = rowsOf(envelope);
       if (found === null) {
         throw new UnexpectedResponseError("The MyCargus inbox has an unexpected shape.");
       }
+      // Paging is not documented: a list that says it holds more is not everything.
+      complete &&= !mayHaveMorePages(envelope, found.length);
       for (const row of found) {
         const awb = awbOf(row);
-        if (awb !== null && !rows.has(awb)) {
+        if (awb === null) {
+          complete = false;
+        } else if (!rows.has(awb)) {
           rows.set(awb, row);
         }
       }
     }
-    return [...rows.values()];
+    return { rows: [...rows.values()], complete };
   }
 }

@@ -23,7 +23,9 @@ import { mapEvent } from "../gateway.js";
 export const NL_HOST = "my.dhlecommerce.nl";
 const LOGIN_URL = `https://${NL_HOST}/api/user/login`;
 const PARCELS_URL = `https://${NL_HOST}/receiver-parcel-api/parcels`;
-const SENT_URL = `https://${NL_HOST}/api/orders/sentShipments?max=250`;
+/** The most sent shipments the account answers with in one list. */
+const SENT_LIMIT = 250;
+const SENT_URL = `https://${NL_HOST}/api/orders/sentShipments?max=${String(SENT_LIMIT)}`;
 const XSRF_COOKIE = "XSRF-TOKEN";
 const UTC = { naive: "utc" } as const;
 
@@ -193,5 +195,6 @@ export async function fetchNlAccount(deps: Deps, credentials: NlCredentials): Pr
       .filter((shipment) => text(shipment["type"]) === "outgoing")
       .map((shipment) => normalizeNl(deps, shipment, true)),
   ].filter((parcel) => parcel !== null);
-  return { snapshots, complete: true };
+  // The sent list is cut at SENT_LIMIT; a full one may hold more, so nothing missing is gone.
+  return { snapshots, complete: sent.length < SENT_LIMIT };
 }

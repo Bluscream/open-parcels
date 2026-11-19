@@ -20,11 +20,13 @@ async function fetchAccount(context: PluginContext<Config, Secret>) {
   const report = (code: string): void => {
     context.reportUnknown("status_code", code);
   };
-  const snapshots = [
+  const read = [
     ...lists.incoming.map((raw) => shipmentSnapshot(raw, "incoming", report)),
     ...lists.outgoing.map((raw) => shipmentSnapshot(raw, "outgoing", report)),
-  ].filter((parcel) => parcel !== null);
-  return { snapshots, complete: true };
+  ];
+  const snapshots = read.filter((parcel) => parcel !== null);
+  // A shipment that could not be read is left out, so the list is no longer everything.
+  return { snapshots, complete: lists.complete && snapshots.length === read.length };
 }
 
 export const seur = defineCarrier<Config, Secret>({

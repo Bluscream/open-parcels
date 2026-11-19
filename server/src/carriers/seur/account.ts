@@ -1,6 +1,7 @@
 import {
   asObject,
   carrierKey,
+  mayHaveMorePages,
   readObject,
   SignInRejectedError,
   text,
@@ -119,6 +120,8 @@ async function inbox(http: PluginHttp, session: Session): Promise<HttpResponse> 
 export interface Inbox {
   readonly incoming: readonly Json[];
   readonly outgoing: readonly Json[];
+  /** False when the list says it holds more than it sent. */
+  readonly complete: boolean;
 }
 
 /**
@@ -157,5 +160,10 @@ export async function readInbox(
   }
   const objects = (list: unknown[]): Json[] =>
     list.filter((item): item is Json => typeof item === "object" && item !== null);
-  return { incoming: objects(received), outgoing: objects(sent) };
+  return {
+    incoming: objects(received),
+    outgoing: objects(sent),
+    // Paging is not documented: a list that says it holds more is not everything.
+    complete: !mayHaveMorePages(body, received.length + sent.length),
+  };
 }

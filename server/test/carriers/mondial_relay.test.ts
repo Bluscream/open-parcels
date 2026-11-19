@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mondialRelay } from "../../src/carriers/mondial_relay/index.js";
-import { register } from "../../src/engine/registry.js";
+import { InvalidSourceConfigError, register } from "../../src/engine/registry.js";
 import { TransientError, UnexpectedResponseError } from "../../src/plugin/errors.js";
 import type { FetchLike } from "../../src/plugin/http.js";
 import { fakeContext, fakeNetwork, raw } from "./harness.js";
@@ -144,6 +144,17 @@ describe("Mondial Relay tracking", () => {
     const result = await plugin.track(base, config, null, [CODE, "../x"]);
     expect(result.snapshots).toEqual([]);
     expect(calls).toHaveLength(2);
+  });
+
+  it("reports a missing or invalid postcode as invalid settings, not every code not found", async () => {
+    const { fetchImpl, calls } = fakeSite([]);
+    const { base } = context(fetchImpl);
+    for (const settings of [{}, { postcode: "!!!" }]) {
+      await expect(plugin.track(base, settings, null, [CODE])).rejects.toBeInstanceOf(
+        InvalidSourceConfigError,
+      );
+    }
+    expect(calls).toHaveLength(0);
   });
 
   it("reports an unknown step and falls back to the highest mapped one", async () => {

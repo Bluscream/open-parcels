@@ -138,8 +138,12 @@ class Session {
     return this.#stored.session ?? this.refresh();
   }
 
+  /** Whether this run has minted a session token already. */
+  renewed = false;
+
   /** Mints a new session token. Only an outright refusal is a sign-in problem. */
   async refresh(): Promise<string> {
+    this.renewed = true;
     const response = await post(this.deps.http, "sessions/refresh", {
       refresh_token: this.#stored.refresh,
     });
@@ -162,7 +166,8 @@ async function shipments(deps: Deps, session: Session): Promise<Json[]> {
     const response = await deps.http.request(new URL(`${MEMBERS}/shipments`), {
       headers: { accept: "application/json", authorization: `Bearer ${token}` },
     });
-    if (response.status === 401 && !retry) {
+    // At most one renewal per run: a token minted just now is not renewed again after a 401.
+    if (response.status === 401 && !retry && !session.renewed) {
       continue;
     }
     if (response.status === 401) {
@@ -196,6 +201,7 @@ export async function fetchVintedAccount(
   const report = (group: string): void => {
     deps.reportUnknown("group", group);
   };
+  let complete = true;
   for (const shipment of await shipments(deps, session)) {
     const code = text(shipment["tracking_code"]);
     const contact = text(shipment["contact_type"]) ?? "";
@@ -204,6 +210,8 @@ export async function fetchVintedAccount(
       if (code !== null) {
         deps.reportUnknown("contact_type", contact);
       }
+      // A shipment left out means the list is not everything: none may count as gone.
+      complete = false;
       continue;
     }
     const finished = text(shipment["status_group"]) === "completed";
@@ -226,5 +234,5 @@ export async function fetchVintedAccount(
       raw: { ...shipment, resolved_pick_up_code: undefined, tracking_events: events ?? [] },
     });
   }
-  return { snapshots, complete: true };
+  return { snapshots, complete };
 }
