@@ -14,6 +14,7 @@ import {
   type Json,
   type ParcelStatus,
   type PluginHttp,
+  echoRef,
 } from "../../plugin/api.js";
 
 export const CARRIER_ID = "matkahuolto";
@@ -113,7 +114,8 @@ export function trackingSnapshot(raw: Json, barcode: string, report: Report): Pa
   const pickup = status === "at_pickup_point";
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["parcelNumber"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["parcelNumber"]), barcode),
     status,
     rawStatus: latest?.label ?? null,
     delivered,

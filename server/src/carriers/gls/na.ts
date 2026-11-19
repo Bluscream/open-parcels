@@ -14,6 +14,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import { CARRIER_ID, compactPostcode, latestHistory, mapGls, publicUrl, text } from "./shared.js";
 
@@ -142,7 +143,8 @@ export function usSnapshot(
   const delivered = status === "delivered";
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(shipment["trackingNumber"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(shipment["trackingNumber"]), barcode),
     status,
     rawStatus,
     delivered,
@@ -234,7 +236,8 @@ export function caSnapshot(
   const number = text(shipment["trackingNumber"]) ?? barcode;
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: number,
+    barcode,
+    externalRef: echoRef(number, barcode),
     status,
     rawStatus,
     delivered,

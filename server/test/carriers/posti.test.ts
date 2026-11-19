@@ -99,6 +99,29 @@ describe("Posti tracking", () => {
     expect((await world.track([CODE, "../x"])).snapshots).toEqual([]);
   });
 
+  it("takes only the hit that is the code asked for, never the first of several", async () => {
+    const hits = (ids: string[]) =>
+      json({
+        data: {
+          consumerSearchShipments: {
+            totalHits: ids.length,
+            hits: ids.map((displayId) => ({
+              displayId,
+              status: { main: "DELIVERED" },
+              events: [],
+            })),
+          },
+        },
+      });
+    const others = new World(posti, [
+      onPrefix(MINT, token(1)),
+      onPrefix(SEARCH, hits(["A1", "A2"])),
+    ]);
+    expect((await others.track([CODE])).snapshots).toEqual([]);
+    const ours = new World(posti, [onPrefix(MINT, token(1)), onPrefix(SEARCH, hits(["A1", CODE]))]);
+    expect((await ours.track([CODE])).snapshots).toHaveLength(1);
+  });
+
   it("reports new event wording", async () => {
     const world = new World(posti, [
       onPrefix(MINT, token(1)),

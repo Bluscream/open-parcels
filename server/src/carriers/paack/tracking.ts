@@ -1,5 +1,6 @@
 import {
   carrierPattern,
+  echoRef,
   snapshot,
   TransientError,
   type ParcelSnapshot,
@@ -95,7 +96,8 @@ export function trackingSnapshot(
   const ownCode = text(track["external_id"]) ?? barcode;
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: ownCode,
+    barcode,
+    externalRef: echoRef(ownCode, barcode),
     status,
     rawStatus: code ?? text(raw["statusText"]),
     delivered,

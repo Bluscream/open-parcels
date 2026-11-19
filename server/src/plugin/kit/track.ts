@@ -75,6 +75,14 @@ export function asTracked(found: ParcelSnapshot, tracked: string): ParcelSnapsho
 }
 
 /**
+ * The carrier's own number for a tracked parcel, as the external reference: null when it is
+ * missing or the same as the code tracked. The barcode stays the code tracked.
+ */
+export function echoRef(echo: string | null, tracked: string): string | null {
+  return echo === null || echo === tracked ? null : echo;
+}
+
+/**
  * Looks codes up one at a time, so the host limiter paces them and the first error stops the run
  * before more requests go out. `lookUp` gets the code as sent and as tracked. A null answer means
  * "not found" and leaves the code out.

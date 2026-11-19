@@ -1,5 +1,6 @@
 import {
   asArray as asList,
+  echoRef,
   isObject,
   parseJsonBody,
   snapshot,
@@ -66,7 +67,8 @@ export function plSnapshot(
   const number = text(raw["parcelNumber"]) ?? barcode;
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: number,
+    barcode,
+    externalRef: echoRef(number, barcode),
     status,
     rawStatus: events[0]?.rawStatus ?? text(raw["progressBar"]) ?? ident,
     delivered,

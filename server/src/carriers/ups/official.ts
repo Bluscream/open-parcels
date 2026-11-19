@@ -142,7 +142,16 @@ export class OfficialSession {
     const shipment = objects(
       asObject(asObject(readJson(response, "UPS's Tracking API"))["trackResponse"])["shipment"],
     )[0];
-    // An unknown number may also come back as a shipment carrying only warnings.
-    return objects(shipment?.["package"])[0] ?? null;
+    // An unknown number may also come back as a shipment carrying only warnings. A shipment of
+    // several packages answers with the one asked for, never simply the first.
+    const packages = objects(shipment?.["package"]);
+    const asked = packages.find((pkg) => text(pkg["trackingNumber"])?.toUpperCase() === code);
+    if (asked !== undefined) {
+      return asked;
+    }
+    if (packages.length > 1) {
+      throw new UnexpectedResponseError("UPS answered with packages that are not the one asked.");
+    }
+    return packages[0] ?? null;
   }
 }

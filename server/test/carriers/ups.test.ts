@@ -104,6 +104,13 @@ describe("UPS public tracking", () => {
     expect(w.unknown).toEqual([]);
   });
 
+  it("files a pasted code under its own spelling, the normalised one kept as reference", async () => {
+    const pasted = "1z999aa1 0000000001";
+    const w = world([on(BOOT, seeded()), on(LOOKUP, json(detail()))]);
+    const [parcel] = (await w.track([pasted])).snapshots;
+    expect(parcel).toMatchObject({ barcode: pasted, externalRef: CODE });
+  });
+
   it("treats error code 504 as not found", async () => {
     const notFound = { trackDetails: [{ errorCode: "504", errorText: "not found" }] };
     const w = world([on(BOOT, seeded()), on(LOOKUP, json(notFound))]);
@@ -253,6 +260,27 @@ describe("UPS official Tracking API", () => {
       "Official D",
     ]);
     expect(Object.keys(merged?.raw as object).sort()).toEqual(["official", "public"]);
+  });
+
+  it("takes the package asked for from a multi-package shipment, never simply the first", async () => {
+    const answer = officialPackage("I", "2026111810:30:00");
+    const [shipment] = answer.trackResponse.shipment;
+    const [asked] = shipment?.package ?? [];
+    if (shipment === undefined || asked === undefined) {
+      throw new Error("fixture");
+    }
+    shipment.package = [
+      { ...asked, trackingNumber: OTHER, currentStatus: { description: "x", code: "D" } },
+      asked,
+    ];
+    const w = world([
+      on(TOKEN, token("t1")),
+      on(OFFICIAL(CODE), json(answer)),
+      on(BOOT, seeded()),
+      on(LOOKUP, hang()),
+    ]);
+    const [parcel] = (await w.track([CODE], {}, SECRET)).snapshots;
+    expect(parcel?.status).toBe("in_transit");
   });
 
   it("keeps the official answers when the public tracking fails", async () => {

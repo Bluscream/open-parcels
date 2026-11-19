@@ -125,7 +125,7 @@ export function pageSnapshot(
   const delivered = status === "delivered";
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: barcode.toUpperCase(),
+    barcode,
     status,
     rawStatus: packageStatus === "" ? null : normalise(packageStatus),
     deliveredAt: delivered

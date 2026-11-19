@@ -1,4 +1,5 @@
 import {
+  asTracked,
   RateLimitedError,
   restoreJar,
   serializeJar,
@@ -173,7 +174,9 @@ export async function trackCodes(
   for (const [code, list] of answers) {
     const merged = mergeAnswers(list);
     if (merged !== null) {
-      snapshots.push(merged);
+      // Filed under each code as tracked; the normalised spelling sent is only a reference.
+      const tracked = new Set(barcodes.filter((barcode) => normalizeCode(barcode) === code));
+      snapshots.push(...[...tracked].map((barcode) => asTracked(merged, barcode)));
       const seen = state.codes[code];
       if (seen !== undefined) {
         seen.status = merged.status;

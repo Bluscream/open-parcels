@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { PluginHttp } from "../../plugin/api.js";
 import {
   carrierPattern,
+  echoRef,
   defineCarrier,
   snapshot,
   TransientError,
@@ -111,7 +112,8 @@ export function uniuniSnapshot(
   const delivered = status === "delivered";
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["tno"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["tno"]), barcode),
     status,
     rawStatus: code,
     delivered,

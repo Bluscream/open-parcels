@@ -1,5 +1,4 @@
 import {
-  asArray,
   asObject,
   cleanText,
   isObject,
@@ -33,7 +32,7 @@ const INSTANT = { naive: "utc", epoch: "ms" } as const;
  * so they can never end up in the stored raw payload.
  */
 const QUERY = `query ConsumerSearchShipments($code: String!) {
-  consumerSearchShipments(page: 1, pageSize: 1, type: PUBLIC_SHIPMENTS, searchTerms: [$code], locale: "en") {
+  consumerSearchShipments(page: 1, pageSize: 5, type: PUBLIC_SHIPMENTS, searchTerms: [$code], locale: "en") {
     totalHits
     hits {
       shipmentId
@@ -123,9 +122,21 @@ async function search(
   if (!isObject(result)) {
     throw new UnexpectedResponseError("Posti tracking answered without search results.");
   }
-  const hit: unknown = asArray(result["hits"])[0];
-  return num(result["totalHits"], DECIMAL) === 0 || !isObject(hit) ? null : hit;
+  const hits = objects(result["hits"]);
+  // A free-text search: only a hit that is the code asked for is taken. A single hit is the
+  // code's own shipment (an item id finds its shipment); among several, none is guessed.
+  const asked = hits.find((hit) =>
+    [hit["displayId"], hit["shipmentId"]].some(
+      (id) => compact(text(id, STRINGS) ?? "") === compact(code),
+    ),
+  );
+  if (asked !== undefined) {
+    return asked;
+  }
+  return num(result["totalHits"], DECIMAL) === 1 && hits.length === 1 ? (hits[0] ?? null) : null;
 }
+
+const compact = (code: string): string => code.replace(/\s+/gu, "").toUpperCase();
 
 /** Looks codes up with one token pair, minting a new one once if Posti refuses it. */
 export class PostiTracking {

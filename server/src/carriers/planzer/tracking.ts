@@ -6,6 +6,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import {
   asObject,
@@ -171,7 +172,8 @@ export function trackingSnapshot(
   const newest = events.at(-1);
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["shipmentNumber"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["shipmentNumber"]), barcode),
     status,
     rawStatus:
       localized(asObject(raw["overallStatus"])["text"], "english") ??

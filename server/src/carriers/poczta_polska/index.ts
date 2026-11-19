@@ -18,6 +18,7 @@ import {
   type PluginContext,
   type PluginHttp,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import { codeStatus } from "./status.js";
 
@@ -122,7 +123,8 @@ function toSnapshot(raw: Json, barcode: string, report: (code: string) => void):
   const office = asObject(latestEvent?.["postOffice"]);
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["number"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["number"]), barcode),
     status,
     rawStatus: latest?.rawStatus ?? null,
     delivered,

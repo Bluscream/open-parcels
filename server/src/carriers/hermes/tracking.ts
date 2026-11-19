@@ -12,6 +12,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import { CARRIER_ID, isoTime, mapCode, publicUrl, text, TRACKING_HOST } from "./shared.js";
 
@@ -41,14 +42,22 @@ export async function lookUp(http: PluginHttp, barcode: string): Promise<Json | 
   if (!Array.isArray(payload)) {
     throw new UnexpectedResponseError("Hermes tracking did not answer with a list.");
   }
-  const first: unknown = payload[0];
-  if (first === undefined) {
+  if (payload.length === 0) {
     return null;
   }
-  if (!isObject(first)) {
+  if (!payload.every(isObject)) {
     throw new UnexpectedResponseError("Hermes tracking listed something that is not a shipment.");
   }
-  return first;
+  // The shipment that is the code asked for; a single answer is the code's own shipment.
+  const compact = (code: unknown): string => String(code).replace(/\s+/gu, "").toUpperCase();
+  const asked = payload.find((entry) => compact(entry["barcode"]) === compact(barcode));
+  if (asked !== undefined) {
+    return asked;
+  }
+  if (payload.length > 1) {
+    throw new UnexpectedResponseError("Hermes tracking answered with shipments not asked for.");
+  }
+  return payload[0] ?? null;
 }
 
 export interface Forecast {
@@ -110,7 +119,8 @@ export function trackingSnapshot(
   const forecast = readForecast(raw);
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["barcode"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["barcode"]), barcode),
     status,
     rawStatus: text(latest["historyText"]) ?? code,
     delivered,

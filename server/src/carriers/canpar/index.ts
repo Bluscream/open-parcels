@@ -5,6 +5,7 @@ import {
   asObject,
   dayWindow,
   defineCarrier,
+  echoRef,
   isObject,
   joinParts,
   newestFirst,
@@ -113,7 +114,8 @@ export function toSnapshot(raw: Json, code: string, report: (c: string) => void)
       : dayWindow(text(raw["estimated_delivery_date"]), ZONE);
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["barcode"]) ?? code,
+    barcode: code,
+    externalRef: echoRef(text(raw["barcode"]), code),
     status,
     rawStatus:
       text(newest["code_description_en"]) ?? eventCode ?? text(raw["status_description_en"]),

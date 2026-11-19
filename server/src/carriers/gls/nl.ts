@@ -1,6 +1,7 @@
 import {
   asArray as asList,
   asObject,
+  echoRef,
   expectStatus,
   isObject,
   readJson,
@@ -101,7 +102,8 @@ export function nlSnapshot(
   const parcelNo = text(raw["parcelNo"]) ?? barcode;
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: parcelNo,
+    barcode,
+    externalRef: echoRef(parcelNo, barcode),
     status: delivered ? "delivered" : status,
     rawStatus: text(asObject(asList(raw["parcels"])[0])["lastStatus"]) ?? code,
     delivered,

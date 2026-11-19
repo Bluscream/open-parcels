@@ -6,6 +6,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import {
   asObject,
@@ -126,7 +127,8 @@ export function trackingSnapshot(
   const delivered = status === "delivered";
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["Tracking"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["Tracking"]), barcode),
     status,
     rawStatus: latest?.rawStatus ?? null,
     delivered,

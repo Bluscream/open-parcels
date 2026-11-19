@@ -6,6 +6,7 @@ import {
   type ParcelSnapshot,
   type PluginHttp,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import {
   asObject,
@@ -122,7 +123,8 @@ export function trackingSnapshot(
     status === "at_pickup_point" || (site.seen && status !== "delivered" && status !== "returning");
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["orderNo"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["orderNo"]), barcode),
     status,
     rawStatus:
       current === null

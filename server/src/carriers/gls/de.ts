@@ -4,6 +4,7 @@ import {
   asArray as asList,
   asObject,
   CaptchaError,
+  echoRef,
   isObject,
   isoTime as kitIsoTime,
   parseJsonBody,
@@ -259,7 +260,8 @@ export function deSnapshot(
   const number = text(raw["parcelNumber"]) ?? reference;
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["trackingReference"]) ?? reference,
+    barcode: reference,
+    externalRef: echoRef(text(raw["trackingReference"]), reference),
     status,
     rawStatus,
     delivered: deliveredAt !== null,

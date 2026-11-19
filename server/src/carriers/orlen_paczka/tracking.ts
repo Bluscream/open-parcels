@@ -1,5 +1,6 @@
 import {
   carrierPattern,
+  echoRef,
   snapshot,
   TransientError,
   UnexpectedResponseError,
@@ -118,7 +119,8 @@ export function trackingSnapshot(
   const safe = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "historyHtml"));
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["truckNo"]) ?? text(raw["number"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["truckNo"]) ?? text(raw["number"]), barcode),
     status,
     rawStatus: label ?? text(raw["label"]) ?? latestCode,
     delivered,

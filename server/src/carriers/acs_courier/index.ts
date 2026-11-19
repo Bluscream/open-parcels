@@ -16,6 +16,7 @@ import {
   type ParcelStatus,
   type PluginContext,
   type SnapshotEvent,
+  echoRef,
 } from "../../plugin/api.js";
 import { API_HOST, lookUp, SITE_HOST, TRACKING_PAGE } from "./lookup.js";
 
@@ -94,7 +95,8 @@ export function acsSnapshot(
   });
   return snapshot({
     carrier: CARRIER_ID,
-    barcode: text(raw["trackingNumber"]) ?? barcode,
+    barcode,
+    externalRef: echoRef(text(raw["trackingNumber"]), barcode),
     status,
     rawStatus:
       (stamping === undefined ? null : label(stamping.event)) ??
