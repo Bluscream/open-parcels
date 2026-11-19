@@ -332,6 +332,20 @@ describe("DPD Germany public tracking", () => {
     expect(result).toEqual({ snapshots: [], complete: false });
   });
 
+  it("keeps the public lookup off unless a source switches it on", () => {
+    expect(dpd.configSchema.parse({})).toEqual({ publicTracking: false });
+  });
+
+  it("names DPD's bot protection when the lookup's connection is reset", async () => {
+    const reset = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
+    });
+    const fake = new FakeDpd().on(TRACK(BARCODE_IN), reset);
+    await expect(track(context(fake).ctx, [BARCODE_IN])).rejects.toThrow(
+      /blocked by DPD's bot protection/u,
+    );
+  });
+
   it("treats an unexpected shape as a transient failure", async () => {
     const fake = new FakeDpd().on(TRACK(BARCODE_IN), json({ something: "else" }));
     await expect(track(context(fake).ctx, [BARCODE_IN])).rejects.toBeInstanceOf(TransientError);

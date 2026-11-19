@@ -101,7 +101,7 @@ Versions are pinned and checked at install time.
 | Web framework | Fastify 5 with `fastify-type-provider-zod`, `@fastify/swagger` | Route types and OpenAPI come from one schema |
 | Validation | zod 4 | API schemas and parsing of messy carrier payloads use the same tool |
 | Database | SQLite (WAL) through better-sqlite3 + Kysely | Typed queries; migrations are code; no ORM magic. Drizzle was dropped because of its 0.x→1.0 migration churn and the memory measured during research |
-| HTTP to carriers | undici (built-in `fetch`) by default; `impit` only for carriers that check the browser's TLS fingerprint | Each plug-in chooses its transport |
+| HTTP to carriers | undici (built-in `fetch`) by default; `impit` only for carriers that check the browser's TLS fingerprint | Each plug-in chooses its transport. Not added yet: DPD's public tracking, the first candidate, was tried with `impit` 0.14 (Chrome and Firefox fingerprints, Node 26) in November 2026. The fingerprint passed (its HTML pages answered), but the lookup endpoint still reset every request, so DPD's public lookup is off by default instead |
 | HTML parsing | cheerio | |
 | Scheduler | Our own: a heap of next-run times, token buckets, backoff | The polling rules don't fit cron; testable with fake timers |
 | IMAP | imapflow (IDLE) + mailparser | |

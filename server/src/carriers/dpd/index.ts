@@ -5,10 +5,13 @@ import { TRACKING_HOST, trackDe } from "./tracking.js";
 
 const configSchema = z.object({
   /**
-   * Look tracked codes up on the public tracking page. DPD's robots.txt asks crawlers to stay
-   * away from it, so a user can switch it off per source.
+   * Look tracked codes up on the public tracking endpoint. Off by default: since late 2026 DPD's
+   * bot protection resets every connection to its lookup endpoint from a non-browser client (a
+   * plain TLS client is reset before the request; a browser-fingerprinted client gets the HTML
+   * page but its lookup request is still reset). Its robots.txt also asks crawlers to stay away.
+   * Switch it on only if the endpoint answers again; the myDPD account works regardless.
    */
-  publicTracking: z.boolean().default(true),
+  publicTracking: z.boolean().default(false),
 });
 
 const secretSchema = z

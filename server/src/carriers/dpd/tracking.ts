@@ -150,9 +150,23 @@ export async function trackDe(
   };
   const snapshots: ParcelSnapshot[] = [];
   for (const barcode of barcodes.filter((code) => BARCODE.test(code))) {
-    const response = await context.http.request(trackingApiUrl(barcode), {
-      headers: { accept: "application/json", "accept-language": "de-DE,de;q=0.9" },
-    });
+    const response = await context.http
+      .request(trackingApiUrl(barcode), {
+        headers: { accept: "application/json", "accept-language": "de-DE,de;q=0.9" },
+      })
+      .catch((error: unknown) => {
+        // A reset connection is DPD's bot protection, not an outage; say so in the source.
+        if (
+          error instanceof TransientError &&
+          /\((ECONNRESET|UND_ERR_SOCKET|EPIPE)\)/u.test(error.message)
+        ) {
+          throw new TransientError(
+            "DPD's public tracking is blocked by DPD's bot protection (the connection was reset). " +
+              "Switch public tracking off for this source, or follow the parcels with a myDPD account.",
+          );
+        }
+        throw error;
+      });
     if (response.status === 404) {
       continue;
     }
