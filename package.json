@@ -4,7 +4,8 @@
   "description": "Self-hosted parcel and order tracking: one backend for every carrier, shop and mailbox.",
   "type": "module",
   "workspaces": [
-    "server"
+    "server",
+    "web"
   ],
   "engines": {
     "node": ">=26"
@@ -25,6 +26,8 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "eslint": "10.15.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
     "prettier": "3.10.1",
     "typescript-eslint": "8.73.0"
   }

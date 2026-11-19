@@ -242,6 +242,29 @@ describe("Home Assistant ingress", () => {
 });
 
 describe("parcels", () => {
+  it("detects the carrier when none is given, and says so when it cannot", async () => {
+    const session = await signIn(context, app);
+    const headers = { cookie: session.cookie, "x-csrf-token": session.csrf };
+    // A made-up code in UPS's documented sample format.
+    const detected = await app.inject({
+      method: "POST",
+      url: "/api/v1/parcels",
+      headers,
+      payload: { barcode: "1Z999AA10123456784" },
+    });
+    expect(detected.statusCode).toBe(201);
+    expect(detected.json<{ carrier: string }>().carrier).toBe("ups");
+
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/v1/parcels",
+      headers,
+      payload: { barcode: "NOFORMAT0001" },
+    });
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json<{ error: string }>().error).toBe("carrier_not_detected");
+  });
+
   it("creates, reads, overrides and deletes, writing the canonical events", async () => {
     const session = await signIn(context, app);
     const headers = { cookie: session.cookie, "x-csrf-token": session.csrf };

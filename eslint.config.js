@@ -1,5 +1,7 @@
 // @ts-check
 import js from "@eslint/js";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -8,8 +10,8 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "**/coverage/**",
-      // Rebuilt in phase 6; until then it is reference material, not part of the gate.
-      "web/**",
+      // Generated from the OpenAPI document by orval.
+      "web/src/api/generated.ts",
       ".references/**",
       ".scratch/**",
     ],
@@ -70,7 +72,17 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.test.ts", "server/test/**/*.ts"],
+    files: ["web/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    languageOptions: { globals: { ...globals.browser } },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // Hooks and components return types TanStack and JSX infer exactly; spelling them out adds noise.
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+    },
+  },
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx", "server/test/**/*.ts"],
     rules: {
       // A describe() block holds many tests; the function limit is meant for production code.
       "max-lines-per-function": "off",

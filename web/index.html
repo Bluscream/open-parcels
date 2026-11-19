@@ -2,9 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- The server fills in the base path: "/" directly, the ingress prefix under Home Assistant. -->
+    <base href="%OPENPARCELS_BASE%" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="color-scheme" content="dark light" />
+    <title>open-parcels</title>
   </head>
   <body>
     <div id="root"></div>

@@ -15,11 +15,15 @@ RUN apt-get update \
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY server/package.json server/
+COPY web/package.json web/
 # The shared rules ship as a vendored, integrity-pinned tarball (no install scripts).
 COPY server/vendor/ server/vendor/
-RUN npm ci --workspace server --include-workspace-root
+RUN npm ci --workspace server --workspace web --include-workspace-root
 COPY server/ server/
 RUN npm run build --workspace server
+# The web UI: a static build the server serves at / (the API client is generated and committed).
+COPY web/ web/
+RUN npm run build --workspace web
 
 # --- Production dependencies only -----------------------------------------------------------------
 FROM build AS deps
@@ -37,6 +41,7 @@ WORKDIR /app
 COPY --from=deps --chown=root:root /app/node_modules ./node_modules
 COPY --from=build --chown=root:root /app/server/package.json ./server/package.json
 COPY --from=build --chown=root:root /app/server/dist ./server/dist
+COPY --from=build --chown=root:root /app/web/dist ./web/dist
 
 ENV NODE_ENV=production \
     OPENPARCELS_DATA_DIR=/data \
