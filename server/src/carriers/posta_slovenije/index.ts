@@ -88,7 +88,11 @@ export const postaSlovenije = defineCarrier<Config, Secret>({
   sourceKinds: ["account", "tracking"],
   configSchema,
   secretSchema,
-  signIn: { type: "credentials" },
+  signIn: [
+    { type: "credentials", kinds: ["account"] },
+    // Public tracking needs no sign-in.
+    { type: "none", kinds: ["tracking"] },
+  ],
   http: {
     limits: {
       [API_HOST]: { intervalMs: 4_000, burst: 2 },
