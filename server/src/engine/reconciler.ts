@@ -395,7 +395,14 @@ export class Reconciler {
         .where("id", "=", parcelId)
         .execute();
     }
-    await this.#writeRelated(trx, { parcelId, sourceId: source.id, role, snapshot, now });
+    await this.#writeRelated(trx, {
+      parcelId,
+      sourceId: source.id,
+      sourceKind: source.kind,
+      role,
+      snapshot,
+      now,
+    });
 
     const derived = deriveEvents(
       before === null ? null : eventView(before, manual),
@@ -601,12 +608,13 @@ export class Reconciler {
     input: {
       parcelId: string;
       sourceId: string;
+      sourceKind: SourceRow["kind"];
       role: "primary" | "handoff" | "mail";
       snapshot: ParcelSnapshot;
       now: string;
     },
   ): Promise<void> {
-    const { parcelId, sourceId, role, snapshot, now } = input;
+    const { parcelId, sourceId, sourceKind, role, snapshot, now } = input;
     await trx
       .insertInto("parcel_sources")
       .values({
@@ -641,7 +649,7 @@ export class Reconciler {
         .onConflict((oc) => oc.columns(["parcel_id", "fingerprint"]).doNothing())
         .execute();
     }
-    if (snapshot.items.length > 0) {
+    if (snapshot.items.length > 0 && (await this.#mayWriteItems(trx, parcelId, sourceKind))) {
       await trx.deleteFrom("items").where("parcel_id", "=", parcelId).execute();
       await trx
         .insertInto("items")
@@ -676,6 +684,23 @@ export class Reconciler {
         )
         .execute();
     }
+  }
+
+  /**
+   * Items have one writer, so two sources never take turns replacing each other's list: a shop
+   * (who sold the items, with images and prices) always writes them; anyone else (a mail's plain
+   * titles, a carrier) only fills a parcel that has none.
+   */
+  async #mayWriteItems(trx: Trx, parcelId: string, kind: SourceRow["kind"]): Promise<boolean> {
+    if (kind === "shop") {
+      return true;
+    }
+    const stored = await trx
+      .selectFrom("items")
+      .select("id")
+      .where("parcel_id", "=", parcelId)
+      .executeTakeFirst();
+    return stored === undefined;
   }
 
   /** Marks the asked parcels found or not found; `since` moves only when the state changes. */
