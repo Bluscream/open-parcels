@@ -52,6 +52,19 @@ export const GetApiV1Session200Method = {
   ingress: "ingress",
   token: "token",
   session: "session",
+  anonymous: "anonymous",
+} as const;
+
+/**
+ * What the caller may do; reader when reading is open. Null: must sign in first.
+ * @nullable
+ */
+export type GetApiV1Session200Role =
+  (typeof GetApiV1Session200Role)[keyof typeof GetApiV1Session200Role] | null;
+
+export const GetApiV1Session200Role = {
+  reader: "reader",
+  admin: "admin",
 } as const;
 
 export type GetApiV1Session200ScopesItem =
@@ -64,12 +77,20 @@ export const GetApiV1Session200ScopesItem = {
 } as const;
 
 export type GetApiV1Session200 = {
+  /** Signed in, or a token or Home Assistant ingress. */
   authenticated: boolean;
   /** @nullable */
   method: GetApiV1Session200Method;
+  /**
+   * What the caller may do; reader when reading is open. Null: must sign in first.
+   * @nullable
+   */
+  role: GetApiV1Session200Role;
   scopes: GetApiV1Session200ScopesItem[];
   /** @nullable */
   csrf_token: string | null;
+  /** OPENPARCELS_PASSWORD is set: reading needs a sign-in. */
+  reader_required: boolean;
   setup_required: boolean;
 };
 
@@ -78,8 +99,17 @@ export type PostApiV1SessionBody = {
   password: string;
 };
 
+export type PostApiV1Session200Role =
+  (typeof PostApiV1Session200Role)[keyof typeof PostApiV1Session200Role];
+
+export const PostApiV1Session200Role = {
+  reader: "reader",
+  admin: "admin",
+} as const;
+
 export type PostApiV1Session200 = {
   csrf_token: string;
+  role: PostApiV1Session200Role;
 };
 
 export type PostApiV1Session401 = {
@@ -106,8 +136,17 @@ export type PostApiV1SetupBody = {
   password: string;
 };
 
+export type PostApiV1Setup200Role =
+  (typeof PostApiV1Setup200Role)[keyof typeof PostApiV1Setup200Role];
+
+export const PostApiV1Setup200Role = {
+  reader: "reader",
+  admin: "admin",
+} as const;
+
 export type PostApiV1Setup200 = {
   csrf_token: string;
+  role: PostApiV1Setup200Role;
 };
 
 export type PostApiV1Setup403 = {
@@ -118,6 +157,41 @@ export type PostApiV1Setup403 = {
 };
 
 export type PostApiV1Setup409 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type PostApiV1Setup429 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type PutApiV1AdminPasswordBody = {
+  /**
+   * The current admin password; may be null only through Home Assistant.
+   * @maxLength 256
+   * @nullable
+   */
+  current: string | null;
+  /**
+   * @minLength 10
+   * @maxLength 256
+   */
+  next: string;
+};
+
+export type PutApiV1AdminPassword400 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
+export type DeleteApiV1AdminPassword409 = {
   /** Stable machine-readable error code. */
   error: string;
   /** Human-readable explanation. */
@@ -3744,7 +3818,7 @@ export const getGetApiV1SessionUrl = () => {
 };
 
 /**
- * @summary Who is calling, and whether first-start setup is pending.
+ * @summary Who is calling, what they may do, and whether first-start setup is pending.
  */
 export const getApiV1Session = async (
   options?: Parameters<typeof apiFetch>[1],
@@ -3760,7 +3834,7 @@ export const getPostApiV1SessionUrl = () => {
 };
 
 /**
- * @summary Sign in with the owner password.
+ * @summary Sign in with the admin password (may change anything) or OPENPARCELS_PASSWORD (may read).
  */
 export const postApiV1Session = async (
   postApiV1SessionBody: PostApiV1SessionBody,
@@ -3795,7 +3869,7 @@ export const getPostApiV1SetupUrl = () => {
 };
 
 /**
- * @summary Set the owner password on first start. Needs the setup code from the container log.
+ * @summary Set the admin password on first start. Needs the setup code from the container log.
  */
 export const postApiV1Setup = async (
   postApiV1SetupBody: PostApiV1SetupBody,
@@ -3806,6 +3880,41 @@ export const postApiV1Setup = async (
     method: "POST",
     headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
     body: JSON.stringify(postApiV1SetupBody),
+  });
+};
+
+export const getPutApiV1AdminPasswordUrl = () => {
+  return `/api/v1/admin-password`;
+};
+
+/**
+ * @summary Change the admin password. Saved hashed, it wins over OPENPARCELS_ADMIN_PASSWORD until reset. Signs every session out.
+ */
+export const putApiV1AdminPassword = async (
+  putApiV1AdminPasswordBody: PutApiV1AdminPasswordBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<null> => {
+  return apiFetch<null>(getPutApiV1AdminPasswordUrl(), {
+    ...options,
+    method: "PUT",
+    headers: getHeaders({ "Content-Type": "application/json" }, options?.headers),
+    body: JSON.stringify(putApiV1AdminPasswordBody),
+  });
+};
+
+export const getDeleteApiV1AdminPasswordUrl = () => {
+  return `/api/v1/admin-password`;
+};
+
+/**
+ * @summary Forget the admin password changed in the UI, so OPENPARCELS_ADMIN_PASSWORD applies again. Signs every session out.
+ */
+export const deleteApiV1AdminPassword = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<null> => {
+  return apiFetch<null>(getDeleteApiV1AdminPasswordUrl(), {
+    ...options,
+    method: "DELETE",
   });
 };
 

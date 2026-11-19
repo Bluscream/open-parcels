@@ -6,6 +6,26 @@ import { hashPassword, randomSecret, sha256Hex, verifyPassword } from "./crypto.
 export const SCOPES = ["read", "write", "admin"] as const;
 export type Scope = (typeof SCOPES)[number];
 
+/** `admin` may change anything; `reader` may only read. */
+export const ROLES = ["reader", "admin"] as const;
+export type Role = (typeof ROLES)[number];
+
+/** What each role may do, as API-token scopes, so routes check one thing for every caller. */
+export const ROLE_SCOPES: Readonly<Record<Role, readonly Scope[]>> = {
+  reader: ["read"],
+  admin: SCOPES,
+};
+
+/** A token that may write or administer counts as admin; a read-only one as reader. */
+export function roleOfScopes(scopes: readonly Scope[]): Role {
+  return scopes.includes("write") || scopes.includes("admin") ? "admin" : "reader";
+}
+
+function parseRole(value: string): Role {
+  // Anything unexpected is the lesser role.
+  return value === "admin" ? "admin" : "reader";
+}
+
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Sliding expiry is only written back once per hour to avoid a write on every request. */
 const SESSION_TOUCH_MS = 60 * 60 * 1000;
@@ -13,6 +33,7 @@ const TOKEN_PREFIX = "opk_";
 
 export interface SessionInfo {
   readonly csrfToken: string;
+  readonly role: Role;
   readonly expiresAt: string;
 }
 
@@ -62,12 +83,18 @@ export class AuthStore {
       .execute();
   }
 
+  /** False when no admin password was ever saved here (the environment's then applies). */
   async verifyOwnerPassword(password: string): Promise<boolean> {
     const row = await this.db.selectFrom("owner").select("password_hash").executeTakeFirst();
     return row !== undefined && (await verifyPassword(password, row.password_hash));
   }
 
-  async createSession(userAgent: string | null): Promise<CreatedSession> {
+  /** Forgets the saved admin password, so the environment's applies again. */
+  async clearOwnerPassword(): Promise<void> {
+    await this.db.deleteFrom("owner").execute();
+  }
+
+  async createSession(userAgent: string | null, role: Role): Promise<CreatedSession> {
     const now = this.clock.now();
     const cookieValue = randomSecret();
     const csrfToken = randomSecret(24);
@@ -81,9 +108,10 @@ export class AuthStore {
         expires_at: expiresAt,
         last_seen_at: now.toISOString(),
         user_agent: userAgent?.slice(0, 200) ?? null,
+        role,
       })
       .execute();
-    return { cookieValue, csrfToken, expiresAt };
+    return { cookieValue, csrfToken, role, expiresAt };
   }
 
   /** Returns the session for a cookie value, extending its expiry; undefined when unknown or expired. */
@@ -92,14 +120,15 @@ export class AuthStore {
     const idHash = sha256Hex(cookieValue);
     const row = await this.db
       .selectFrom("sessions")
-      .select(["csrf_token", "expires_at", "last_seen_at"])
+      .select(["csrf_token", "expires_at", "last_seen_at", "role"])
       .where("id_hash", "=", idHash)
       .executeTakeFirst();
     if (row === undefined || Date.parse(row.expires_at) <= now.getTime()) {
       return undefined;
     }
+    const role = parseRole(row.role);
     if (now.getTime() - Date.parse(row.last_seen_at) < SESSION_TOUCH_MS) {
-      return { csrfToken: row.csrf_token, expiresAt: row.expires_at };
+      return { csrfToken: row.csrf_token, role, expiresAt: row.expires_at };
     }
     const expiresAt = addMs(now, SESSION_TTL_MS).toISOString();
     await this.db
@@ -107,7 +136,7 @@ export class AuthStore {
       .set({ last_seen_at: now.toISOString(), expires_at: expiresAt })
       .where("id_hash", "=", idHash)
       .execute();
-    return { csrfToken: row.csrf_token, expiresAt };
+    return { csrfToken: row.csrf_token, role, expiresAt };
   }
 
   /** Whether a session is still signed in, without extending it (an open stream is not use). */
@@ -126,6 +155,10 @@ export class AuthStore {
 
   async deleteAllSessions(): Promise<void> {
     await this.db.deleteFrom("sessions").execute();
+  }
+
+  async deleteSessionsWithRole(role: Role): Promise<void> {
+    await this.db.deleteFrom("sessions").where("role", "=", role).execute();
   }
 
   async pruneExpiredSessions(): Promise<number> {

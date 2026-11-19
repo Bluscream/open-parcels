@@ -59,6 +59,13 @@ function settingInfos(services: Services): z.infer<typeof settingInfoSchema>[] {
   }));
 }
 
+async function afterConfigChange(services: Services, changed: readonly string[]): Promise<void> {
+  if (changed.length === 0) return;
+  // Readers signed in with the old password sign in again with the new one.
+  if (changed.includes("OPENPARCELS_PASSWORD")) await services.access.readerPasswordChanged();
+  await announce(services, changed.join(","));
+}
+
 /** The OPENPARCELS_* settings: the environment, with values saved here on top. Admin only. */
 function registerConfigRoutes(app: TypedApp, services: Services): void {
   app.get(
@@ -88,7 +95,7 @@ function registerConfigRoutes(app: TypedApp, services: Services): void {
     async (request) => {
       const result = await services.configSettings.patch(request.body);
       if (!result.ok) throw new ApiError(400, "invalid_setting", result.error);
-      if (result.changed.length > 0) await announce(services, result.changed.join(","));
+      await afterConfigChange(services, result.changed);
       return settingInfos(services);
     },
   );
@@ -107,7 +114,7 @@ function registerConfigRoutes(app: TypedApp, services: Services): void {
     async (request) => {
       const result = await services.configSettings.reset(request.params.key);
       if (!result.ok) throw new ApiError(404, "not_found", result.error);
-      if (result.changed.length > 0) await announce(services, request.params.key);
+      await afterConfigChange(services, result.changed);
       return settingInfos(services);
     },
   );

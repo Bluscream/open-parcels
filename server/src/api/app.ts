@@ -163,7 +163,11 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
     },
     transform: jsonSchemaTransform,
   });
-  registerAuth(app, { store: services.auth, trustedIngressAddress: options.trustedIngressAddress });
+  registerAuth(app, {
+    store: services.auth,
+    access: services.access,
+    trustedIngressAddress: options.trustedIngressAddress,
+  });
 
   const typed = app.withTypeProvider<ZodTypeProvider>();
   registerHealthRoutes(typed, services);

@@ -39,8 +39,17 @@ interface SettingDef<S extends z.ZodType<SettingValue | undefined>> {
   readonly kind: SettingKind;
   /** The value never leaves the server. */
   readonly secret?: boolean;
+  /**
+   * Changed in the UI through its own form, never the generic settings editor: the admin password
+   * needs the current one and is saved hashed.
+   */
+  readonly ownForm?: boolean;
   readonly choices?: readonly string[];
 }
+
+/** Shortest admin password accepted, from the environment or the UI. */
+export const MIN_ADMIN_PASSWORD = 10;
+const MAX_PASSWORD = 256;
 
 function setting<S extends z.ZodType<SettingValue | undefined>>(def: SettingDef<S>): SettingDef<S> {
   return def;
@@ -129,6 +138,27 @@ export const SETTINGS = {
     default: false,
     apply: "env",
     kind: "boolean",
+  }),
+  OPENPARCELS_ADMIN_PASSWORD: setting({
+    group: "Security",
+    description:
+      "Password to change anything: sources, parcels, orders, settings, tokens. A password changed on the Settings page replaces it until reset. Unset and never changed there: the first start asks for a setup code from the log.",
+    schema: z.string().min(MIN_ADMIN_PASSWORD).max(MAX_PASSWORD).optional(),
+    default: undefined,
+    apply: "env",
+    kind: "string",
+    secret: true,
+    ownForm: true,
+  }),
+  OPENPARCELS_PASSWORD: setting({
+    group: "Security",
+    description:
+      "Password to read: the web UI, the API, live updates, maps and images. Empty lets anyone who can reach the server read everything; changes always need the admin password.",
+    schema: z.string().max(MAX_PASSWORD),
+    default: "",
+    apply: "live",
+    kind: "string",
+    secret: true,
   }),
   OPENPARCELS_PUBLIC_URL: setting({
     group: "Server",
@@ -343,6 +373,10 @@ export interface AppConfig {
   readonly publicUrl: URL | undefined;
   readonly ingressPort: number | undefined;
   readonly secureCookies: boolean;
+  /** From the environment; a password saved in the UI (hashed, in `owner`) wins over it. */
+  readonly adminPassword: string | undefined;
+  /** Empty: reading needs no sign-in. */
+  readonly readerPassword: string;
   readonly timeZone: string;
   readonly quietWindow: boolean;
   readonly webDir: string | undefined;
@@ -382,6 +416,8 @@ export function toConfig(values: Readonly<SettingValues>, env: ParsedEnv): AppCo
         : new URL(values.OPENPARCELS_PUBLIC_URL),
     ingressPort: values.OPENPARCELS_INGRESS_PORT,
     secureCookies: values.OPENPARCELS_SECURE_COOKIES,
+    adminPassword: values.OPENPARCELS_ADMIN_PASSWORD,
+    readerPassword: values.OPENPARCELS_PASSWORD,
     timeZone: values.OPENPARCELS_TIMEZONE ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     quietWindow: values.OPENPARCELS_QUIET_WINDOW,
     webDir:

@@ -50,9 +50,9 @@ async function main(): Promise<void> {
     clock: systemClock,
     secrets: new SecretBox(key),
   });
-  if (services.setup.code !== undefined) {
+  if (services.access.setupCode !== undefined) {
     logger.warn(
-      `First start: open the web UI and enter the setup code ${services.setup.code} to set the owner password.`,
+      `First start: open the web UI and enter the setup code ${services.access.setupCode} to set the admin password (or set OPENPARCELS_ADMIN_PASSWORD).`,
     );
   }
 

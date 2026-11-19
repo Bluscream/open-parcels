@@ -113,7 +113,7 @@
     },
     "/api/v1/session": {
       "get": {
-        "summary": "Who is calling, and whether first-start setup is pending.",
+        "summary": "Who is calling, what they may do, and whether first-start setup is pending.",
         "tags": [
           "session"
         ],
@@ -127,7 +127,8 @@
                   "type": "object",
                   "properties": {
                     "authenticated": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Signed in, or a token or Home Assistant ingress."
                     },
                     "method": {
                       "nullable": true,
@@ -135,7 +136,17 @@
                       "enum": [
                         "ingress",
                         "token",
-                        "session"
+                        "session",
+                        "anonymous"
+                      ]
+                    },
+                    "role": {
+                      "nullable": true,
+                      "description": "What the caller may do; reader when reading is open. Null: must sign in first.",
+                      "type": "string",
+                      "enum": [
+                        "reader",
+                        "admin"
                       ]
                     },
                     "scopes": {
@@ -153,6 +164,10 @@
                       "nullable": true,
                       "type": "string"
                     },
+                    "reader_required": {
+                      "type": "boolean",
+                      "description": "OPENPARCELS_PASSWORD is set: reading needs a sign-in."
+                    },
                     "setup_required": {
                       "type": "boolean"
                     }
@@ -160,8 +175,10 @@
                   "required": [
                     "authenticated",
                     "method",
+                    "role",
                     "scopes",
                     "csrf_token",
+                    "reader_required",
                     "setup_required"
                   ],
                   "additionalProperties": false
@@ -172,7 +189,7 @@
         }
       },
       "post": {
-        "summary": "Sign in with the owner password.",
+        "summary": "Sign in with the admin password (may change anything) or OPENPARCELS_PASSWORD (may read).",
         "tags": [
           "session"
         ],
@@ -206,10 +223,18 @@
                   "properties": {
                     "csrf_token": {
                       "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "reader",
+                        "admin"
+                      ]
                     }
                   },
                   "required": [
-                    "csrf_token"
+                    "csrf_token",
+                    "role"
                   ],
                   "additionalProperties": false
                 }
@@ -273,6 +298,7 @@
         "tags": [
           "session"
         ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Default Response",
@@ -293,7 +319,7 @@
     },
     "/api/v1/setup": {
       "post": {
-        "summary": "Set the owner password on first start. Needs the setup code from the container log.",
+        "summary": "Set the admin password on first start. Needs the setup code from the container log.",
         "tags": [
           "session"
         ],
@@ -333,10 +359,18 @@
                   "properties": {
                     "csrf_token": {
                       "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "reader",
+                        "admin"
+                      ]
                     }
                   },
                   "required": [
-                    "csrf_token"
+                    "csrf_token",
+                    "role"
                   ],
                   "additionalProperties": false
                 }
@@ -364,6 +398,154 @@
                     "message"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin-password": {
+      "put": {
+        "summary": "Change the admin password. Saved hashed, it wins over OPENPARCELS_ADMIN_PASSWORD until reset. Signs every session out.",
+        "tags": [
+          "session"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "current": {
+                    "nullable": true,
+                    "description": "The current admin password; may be null only through Home Assistant.",
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "next": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "current",
+                  "next"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Forget the admin password changed in the UI, so OPENPARCELS_ADMIN_PASSWORD applies again. Signs every session out.",
+        "tags": [
+          "session"
+        ],
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
                 }
               }
             }

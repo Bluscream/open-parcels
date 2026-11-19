@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
-import { humanCode } from "./auth/crypto.js";
+import { AccessControl } from "./auth/access.js";
 import { AuthStore } from "./auth/store.js";
 import { CalendarService } from "./calendar/service.js";
 import { BUILTIN_CARRIERS } from "./engine/builtin-carriers.js";
@@ -45,35 +45,6 @@ import { CollageMaker } from "./images/collage.js";
 const USER_AGENT =
   "open-parcels/2.0 (self-hosted parcel tracker; +https://github.com/open-parcels/open-parcels)";
 
-/**
- * One-time code that has to accompany the first owner password. It is printed to the container
- * log only, so whoever first reaches the setup page over the network cannot claim the instance.
- */
-export class SetupGate {
-  #code: string | undefined;
-
-  constructor(code: string | undefined) {
-    this.#code = code;
-  }
-
-  get pending(): boolean {
-    return this.#code !== undefined;
-  }
-
-  get code(): string | undefined {
-    return this.#code;
-  }
-
-  matches(candidate: string): boolean {
-    const normalise = (value: string): string => value.toUpperCase().replace(/[^A-Z]/g, "");
-    return this.#code !== undefined && normalise(candidate) === normalise(this.#code);
-  }
-
-  complete(): void {
-    this.#code = undefined;
-  }
-}
-
 export interface Services {
   readonly config: AppConfig;
   readonly db: Kysely<Database>;
@@ -100,7 +71,7 @@ export interface Services {
   readonly signIn: SignInService;
   readonly parcels: ParcelService;
   readonly orders: OrderService;
-  readonly setup: SetupGate;
+  readonly access: AccessControl;
 }
 
 export interface ServiceDeps {
@@ -308,7 +279,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
       }
     },
   });
-  const setup = new SetupGate((await auth.hasOwner()) ? undefined : humanCode());
+  const access = await AccessControl.create(auth, deps.config, configSettings, logger);
   return {
     ...deps,
     installId,
@@ -340,6 +311,6 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     }),
     parcels,
     orders: new OrderService(db, bus, clock, presentation),
-    setup,
+    access,
   };
 }

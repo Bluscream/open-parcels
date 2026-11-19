@@ -164,6 +164,7 @@ describe("migrations", () => {
         "0009-idle-source-state",
         "0010-order-lifecycle",
         "0011-setting-overrides",
+        "0012-session-roles",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
     } finally {

@@ -45,10 +45,12 @@ export interface TestOptions {
   readonly mailInterpreter?: MailInterpreter;
   /** Extra OPENPARCELS_* environment variables. */
   readonly env?: Readonly<Record<string, string>>;
+  /** An existing data folder, e.g. one holding an older database; removed on close. */
+  readonly dataDir?: string;
 }
 
 export async function createTestContext(options: TestOptions = {}): Promise<TestContext> {
-  const dataDir = mkdtempSync(path.join(tmpdir(), "open-parcels-test-"));
+  const dataDir = options.dataDir ?? mkdtempSync(path.join(tmpdir(), "open-parcels-test-"));
   const config = loadConfig({
     OPENPARCELS_DATA_DIR: dataDir,
     OPENPARCELS_TIMEZONE: "Europe/Berlin",
@@ -101,6 +103,8 @@ const fakePassword = (...words: string[]): string => words.join(" ");
 export const OWNER_PASSWORD = fakePassword("correct", "horse", "battery");
 export const WRONG_PASSWORD = fakePassword("wrong", "guess", "here");
 export const SHORT_PASSWORD = fakePassword("too", "short").slice(0, 5);
+/** OPENPARCELS_PASSWORD in tests that need reading behind a sign-in. */
+export const READER_PASSWORD = fakePassword("just", "looking", "around");
 
 /** Completes first-start setup and returns the cookie header and CSRF token of the new session. */
 export async function signIn(
@@ -110,7 +114,7 @@ export async function signIn(
   const response = await app.inject({
     method: "POST",
     url: "/api/v1/setup",
-    payload: { setup_code: context.services.setup.code ?? "", password: OWNER_PASSWORD },
+    payload: { setup_code: context.services.access.setupCode ?? "", password: OWNER_PASSWORD },
   });
   if (response.statusCode !== 200) {
     throw new Error(`Setup failed with ${response.statusCode}: ${response.body}`);
