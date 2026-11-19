@@ -28,6 +28,25 @@ describe("carriers and sources API", () => {
     expect(carriers[0]?.config_schema).toMatchObject({ type: "object" });
   });
 
+  it("accepts body-less calls whatever Content-Type the client sends", async () => {
+    const missing = "00000000-0000-4000-8000-000000000000";
+    for (const type of ["application/octet-stream", "application/json", undefined]) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/v1/sources/${missing}/sync`,
+        headers: type === undefined ? headers : { ...headers, "content-type": type },
+      });
+      expect(response.statusCode).toBe(404);
+    }
+    const junk = await app.inject({
+      method: "POST",
+      url: `/api/v1/sources/${missing}/sync`,
+      headers: { ...headers, "content-type": "application/octet-stream" },
+      payload: Buffer.from("x"),
+    });
+    expect(junk.statusCode).toBe(415);
+  });
+
   it("creates a source without ever returning its sign-in data", async () => {
     const created = await app.inject({
       method: "POST",

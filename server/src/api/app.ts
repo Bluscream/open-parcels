@@ -74,6 +74,41 @@ function handleError(
   };
 }
 
+/**
+ * Body-less calls (sync, delete, sign-out) arrive from many HTTP clients with a stray
+ * Content-Type: aiohttp sends `application/octet-stream`, others `application/json` with no body.
+ * An empty body is accepted whatever its type; a non-empty body of an unknown type is still a 415.
+ */
+function acceptEmptyBodies(app: FastifyInstance): void {
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (_request, body: string, done) => {
+      if (body.trim() === "") {
+        done(null, undefined);
+        return;
+      }
+      try {
+        done(null, JSON.parse(body) as unknown);
+      } catch {
+        const error = new Error("The request body is not valid JSON.") as FastifyError;
+        Object.assign(error, { statusCode: 400, code: "FST_ERR_CTP_INVALID_JSON_BODY" });
+        done(error, undefined);
+      }
+    },
+  );
+  app.addContentTypeParser("*", { parseAs: "buffer" }, (_request, body: Buffer, done) => {
+    if (body.length === 0) {
+      done(null, undefined);
+      return;
+    }
+    const error = new Error("Unsupported Media Type.") as FastifyError;
+    Object.assign(error, { statusCode: 415, code: "FST_ERR_CTP_INVALID_MEDIA_TYPE" });
+    done(error, undefined);
+  });
+}
+
 export async function buildApp(services: Services, options: BuildAppOptions = {}): Promise<App> {
   // Typed with the base logger interface so every hook and plug-in uses Fastify's default types.
   // Without the explicit arguments TypeScript infers pino's narrower Logger from `loggerInstance`,
@@ -91,6 +126,7 @@ export async function buildApp(services: Services, options: BuildAppOptions = {}
   });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  acceptEmptyBodies(app);
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     const { status, body } = handleError(error, services);
     return reply.code(status).send(body);
