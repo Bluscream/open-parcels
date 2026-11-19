@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import type { Clock } from "../clock.js";
 import type { PluginHttp } from "./http.js";
 
@@ -86,6 +87,11 @@ export interface StaticSignIn<Config> extends SignInScope<Config> {
   readonly type: "none" | "credentials" | "api_key";
   readonly id?: string;
   readonly label?: string;
+  /**
+   * The fields the user fills in for this flow, when they are only part of the plug-in's sign-in
+   * data (an optional API key next to an account's stored session). Defaults to the whole schema.
+   */
+  readonly fields?: z.ZodType;
 }
 
 /**

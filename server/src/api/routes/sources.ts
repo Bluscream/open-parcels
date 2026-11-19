@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { InvalidSourceConfigError } from "../../engine/registry.js";
+import { InvalidSourceConfigError, type SignInFlowInfo } from "../../engine/registry.js";
 import type { SourceView } from "../../engine/sources.js";
 import type { Services } from "../../services.js";
 import type { TypedApp } from "../app.js";
@@ -63,7 +63,6 @@ const carrierSchema = z.object({
     .describe(
       "JSON Schema of the sign-in data for credentials and api_key flows: field names only, never values.",
     ),
-  browser_user_agent_reason: z.string().nullable(),
 });
 
 function toBody(view: SourceView): z.infer<typeof sourceSchema> {
@@ -79,6 +78,17 @@ function toBody(view: SourceView): z.infer<typeof sourceSchema> {
     next_run_at: view.nextRunAt,
     last_run_at: view.lastRunAt,
     last_ok_at: view.lastOkAt,
+  };
+}
+
+/** A flow as the carrier list shows it; per-flow fields come from the source's own flow list. */
+function flowSummary(flow: SignInFlowInfo): z.infer<typeof carrierSchema>["sign_in_flows"][number] {
+  return {
+    id: flow.id,
+    label: flow.label,
+    type: flow.type,
+    kinds: [...flow.kinds],
+    conditional: flow.conditional,
   };
 }
 
@@ -110,10 +120,9 @@ export function registerSourceRoutes(app: TypedApp, services: Services): void {
         countries: [...plugin.info.countries],
         source_kinds: [...plugin.info.sourceKinds],
         sign_in: plugin.info.signIn,
-        sign_in_flows: plugin.info.signInFlows.map((flow) => ({ ...flow, kinds: [...flow.kinds] })),
+        sign_in_flows: plugin.info.signInFlows.map(flowSummary),
         config_schema: z.toJSONSchema(plugin.info.configSchema, { unrepresentable: "any" }),
         secret_schema: z.toJSONSchema(plugin.info.secretSchema, { unrepresentable: "any" }),
-        browser_user_agent_reason: plugin.info.browserUserAgentReason,
       })),
   );
 

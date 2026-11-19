@@ -574,7 +574,7 @@ describe("Amazon registration", () => {
     expect(amazon?.info).toMatchObject({ sourceKinds: ["shop"], signIn: "interactive" });
     expect(amazon?.info.signInFlows.map((flow) => flow.id)).toEqual(["pasted_redirect"]);
     expect(amazon?.canReadLive).toBe(true);
-    expect(amazon?.info.browserUserAgentReason).not.toBeNull();
+    expect(amazon?.http.userAgent?.reason).toBeTruthy();
   });
 
   it("starts a sign-in with a fresh device and finishes it from the pasted address", async () => {

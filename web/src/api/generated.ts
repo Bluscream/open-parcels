@@ -214,6 +214,11 @@ export type GetApiV1ParcelsParams = {
    * @maximum 1000
    */
   limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
 };
 
 export type GetApiV1ParcelsActive =
@@ -1633,8 +1638,6 @@ export type GetApiV1Carriers200Item = {
   config_schema: unknown;
   /** JSON Schema of the sign-in data for credentials and api_key flows: field names only, never values. */
   secret_schema: unknown;
-  /** @nullable */
-  browser_user_agent_reason: string | null;
 };
 
 export type GetApiV1Sources200ItemKind =
@@ -1829,6 +1832,13 @@ export type PutApiV1SourcesIdSecretBody = {
   secret: unknown;
 };
 
+export type PutApiV1SourcesIdSecret400 = {
+  /** Stable machine-readable error code. */
+  error: string;
+  /** Human-readable explanation. */
+  message: string;
+};
+
 export type PutApiV1SourcesIdSecret404 = {
   /** Stable machine-readable error code. */
   error: string;
@@ -1875,6 +1885,8 @@ export type GetApiV1SourcesIdSignInFlows200Item = {
   type: GetApiV1SourcesIdSignInFlows200ItemType;
   kinds: GetApiV1SourcesIdSignInFlows200ItemKindsItem[];
   conditional: boolean;
+  /** JSON Schema of what to fill in for this flow; null: the carrier's secret_schema. */
+  secret_schema: unknown;
 };
 
 export type GetApiV1SourcesIdSignInFlows404 = {
@@ -2486,6 +2498,7 @@ export const getGetApiV1ParcelsUrl = (params?: GetApiV1ParcelsParams) => {
 };
 
 /**
+ * Pages of `limit` parcels (default 500), from `offset`. A full page carries the `X-Next-Offset` header with the offset of the next page; the last page has none.
  * @summary List parcels, newest change first.
  */
 export const getApiV1Parcels = async (

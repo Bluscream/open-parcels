@@ -23,8 +23,9 @@ export interface JsonSchema {
 
 export type FormValues = Record<string, unknown>;
 
+/** A form's root schema; a nullable object (sign-in data that may be absent) is its object. */
 export function asSchema(value: unknown): JsonSchema {
-  return typeof value === "object" && value !== null ? value : {};
+  return typeof value === "object" && value !== null ? unwrap(value) : {};
 }
 
 /** Words that make a field a secret on their own: `apiKey`, `refresh_token`, `password`. */

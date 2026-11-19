@@ -81,6 +81,51 @@ function renderDialog() {
   };
 }
 
+function renderStatic(flows: unknown[], carrierSecretSchema: unknown) {
+  mockApi({
+    [`GET ${BASE}/flows`]: () => ({ body: flows }),
+    "GET /api/v1/carriers": () => ({
+      body: [{ id: "fakeverify", secret_schema: carrierSecretSchema, sign_in_flows: [] }],
+    }),
+  });
+  return renderDialog();
+}
+
+describe("static sign-in form", () => {
+  const nullableCredentials = {
+    anyOf: [
+      {
+        type: "object",
+        properties: { username: { type: "string" }, password: { type: "string" } },
+        required: ["username", "password"],
+      },
+      { type: "null" },
+    ],
+  };
+
+  it("shows the fields of sign-in data that may be absent", async () => {
+    const flow = { id: "credentials", label: "Credentials", type: "credentials", kinds: [] };
+    const { open } = renderStatic([{ ...flow, secret_schema: null }], nullableCredentials);
+    await open();
+    expect(await screen.findByLabelText(/user ?name/iu)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/iu)).toBeInTheDocument();
+  });
+
+  it("shows only a flow's own fields, not the whole sign-in data", async () => {
+    const flow = {
+      id: "key",
+      label: "API key",
+      type: "api_key",
+      kinds: [],
+      secret_schema: { type: "object", properties: { apiKey: { type: "string" } } },
+    };
+    const { open } = renderStatic([flow], nullableCredentials);
+    await open();
+    expect(await screen.findByLabelText(/api ?key/iu)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/user ?name/iu)).not.toBeInTheDocument();
+  });
+});
+
 describe("interactive sign-in dialog", () => {
   it("keeps the code step after a mistyped code instead of starting over", async () => {
     const calls = routes([

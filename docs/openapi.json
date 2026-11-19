@@ -2941,10 +2941,6 @@
                       },
                       "secret_schema": {
                         "description": "JSON Schema of the sign-in data for credentials and api_key flows: field names only, never values."
-                      },
-                      "browser_user_agent_reason": {
-                        "nullable": true,
-                        "type": "string"
                       }
                     },
                     "required": [
@@ -2955,8 +2951,7 @@
                       "sign_in",
                       "sign_in_flows",
                       "config_schema",
-                      "secret_schema",
-                      "browser_user_agent_reason"
+                      "secret_schema"
                     ],
                     "additionalProperties": false
                   }
@@ -3681,6 +3676,10 @@
                       },
                       "conditional": {
                         "type": "boolean"
+                      },
+                      "secret_schema": {
+                        "nullable": true,
+                        "description": "JSON Schema of what to fill in for this flow; null: the carrier's secret_schema."
                       }
                     },
                     "required": [
@@ -3688,7 +3687,8 @@
                       "label",
                       "type",
                       "kinds",
-                      "conditional"
+                      "conditional",
+                      "secret_schema"
                     ],
                     "additionalProperties": false
                   }

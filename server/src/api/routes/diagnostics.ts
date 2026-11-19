@@ -69,7 +69,6 @@ export function registerDiagnosticsRoutes(app: TypedApp, services: Services): vo
         plugins: services.registry.list().map((plugin) => ({
           id: plugin.info.id,
           source_kinds: plugin.info.sourceKinds,
-          browser_user_agent_reason: plugin.info.browserUserAgentReason,
         })),
         sources,
         parcels: statusCounts,

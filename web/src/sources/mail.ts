@@ -37,6 +37,7 @@ export const MAIL_FLOWS: SignInFlow[] = [
     label: "User name and password",
     type: "credentials",
     kinds: [],
+    secret_schema: null,
     conditional: false,
   },
 ];

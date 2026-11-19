@@ -66,6 +66,7 @@ export const dhl = defineCarrier<Config, Secret>({
       id: "tracking_api_key",
       label: "DHL API key (optional)",
       kinds: ["tracking"],
+      fields: z.object({ apiKey: z.string().min(1).describe("DHL API key") }),
     },
   ],
   http: {

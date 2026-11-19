@@ -30,6 +30,8 @@ export interface SignInFlowInfo {
   readonly kinds: readonly PluginSourceKind[];
   /** True when the flow only applies to some configurations. */
   readonly conditional: boolean;
+  /** What the user fills in for a credentials or API-key flow; null means the plug-in's schema. */
+  readonly fields: z.ZodType | null;
 }
 
 /** One call into an interactive flow: `start` (no state), `continue` (with input) or `poll`. */
@@ -55,7 +57,6 @@ export interface PluginInfo {
   readonly signInFlows: readonly SignInFlowInfo[];
   readonly configSchema: z.ZodType;
   readonly secretSchema: z.ZodType;
-  readonly browserUserAgentReason: string | null;
   /** Hosts the image proxy may fetch this carrier's pictures from (see `CarrierPlugin`). */
   readonly imageHosts: readonly string[];
 }
@@ -122,6 +123,7 @@ function flowInfo<Config, Secret>(
     type: flow.type,
     kinds: flow.kinds ?? plugin.sourceKinds,
     conditional: flow.when !== undefined,
+    fields: flow.type === "interactive" ? null : (flow.fields ?? null),
   };
 }
 
@@ -202,7 +204,6 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
       signInFlows: flows.map((flow) => flowInfo(plugin, flow)),
       configSchema: plugin.configSchema,
       secretSchema: plugin.secretSchema,
-      browserUserAgentReason: plugin.http.userAgent?.reason ?? null,
       imageHosts: plugin.imageHosts ?? [],
     },
     http: plugin.http,

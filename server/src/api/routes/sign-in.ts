@@ -66,6 +66,10 @@ const flowSchema = z.object({
   type: z.enum(["none", "credentials", "api_key", "interactive"]),
   kinds: z.array(z.enum(["account", "tracking", "shop"])),
   conditional: z.boolean(),
+  secret_schema: z
+    .unknown()
+    .nullable()
+    .describe("JSON Schema of what to fill in for this flow; null: the carrier's secret_schema."),
 });
 
 const STATUS: Readonly<Record<SignInErrorCode, number>> = {
@@ -158,7 +162,11 @@ export function registerSignInRoutes(app: TypedApp, services: Services): void {
     },
     async (request) => {
       const flows = await signIn.flows(request.params.id).catch(failWith(null));
-      return flows.map((flow) => ({ ...flow, kinds: [...flow.kinds] }));
+      return flows.map(({ fields, ...flow }) => ({
+        ...flow,
+        kinds: [...flow.kinds],
+        secret_schema: fields === null ? null : z.toJSONSchema(fields, { unrepresentable: "any" }),
+      }));
     },
   );
 

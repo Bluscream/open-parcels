@@ -13,14 +13,19 @@ import { useSignInAttempt } from "./useSignInAttempt";
 /** Credentials and API keys: a form from the carrier's sign-in schema, sent once with PUT. */
 function StaticSecretForm(props: {
   readonly source: Source;
+  readonly flow: SignInFlow;
   readonly onDone: () => void;
 }): ReactNode {
   const carriers = useCarriers();
   const client = useQueryClient();
+  // A flow with its own fields (an optional API key) shows only those, not the whole sign-in data.
   const schema =
     props.source.plugin === MAIL_PLUGIN
       ? MAIL_SECRET_SCHEMA
-      : asSchema(carriers.data?.find((c) => c.id === props.source.plugin)?.secret_schema);
+      : asSchema(
+          props.flow.secret_schema ??
+            carriers.data?.find((c) => c.id === props.source.plugin)?.secret_schema,
+        );
   const [values, setValues] = useState<FormValues>({});
   const save = useMutation({
     mutationFn: (secret: FormValues) => putApiV1SourcesIdSecret(props.source.id, { secret }),
@@ -116,7 +121,7 @@ function FlowBody(props: {
       return <p className="muted">This source needs no sign-in.</p>;
     case "credentials":
     case "api_key":
-      return <StaticSecretForm source={props.source} onDone={props.onDone} />;
+      return <StaticSecretForm source={props.source} flow={props.flow} onDone={props.onDone} />;
     case "interactive":
       return <InteractiveSignIn key={props.flow.id} {...props} />;
   }
