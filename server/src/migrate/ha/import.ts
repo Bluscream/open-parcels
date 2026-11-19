@@ -4,9 +4,11 @@ import { z } from "zod";
 import { isoNow, type Clock } from "../../clock.js";
 import type { SecretBox } from "../../crypto/secrets.js";
 import type { Database } from "../../db/schema.js";
+import { normaliseBarcode } from "../../engine/barcode.js";
 import { BUILTIN_CARRIERS } from "../../engine/builtin-carriers.js";
 import { trackingSourceIn } from "../../engine/linking.js";
 import { PluginRegistry } from "../../engine/registry.js";
+import { configKey } from "../../engine/source-dedup.js";
 import { secretAad, sessionAad } from "../../engine/sources.js";
 import { parseConfigEntries, planEntry, type SourcePlan } from "./entries.js";
 
@@ -141,29 +143,39 @@ function blobs(ctx: Context, id: string, plan: SourcePlan) {
 async function writeSource(ctx: Context, plan: SourcePlan): Promise<Written> {
   const fingerprint = credentialsFingerprint(ctx.secrets, plan);
   const marker = await readMarker(ctx.trx, plan.entryId);
-  const existing =
+  const wanted = configKey(plan.config);
+  const found =
     marker === null
       ? undefined
       : await ctx.trx
           .selectFrom("sources")
-          .select(["id", "plugin"])
+          .select(["id", "plugin", "config"])
           .where("id", "=", marker.sourceId)
           .executeTakeFirst();
+  // An adoption by an older version may have matched on the plug-in alone; one whose settings
+  // differ from the entry's is dropped, so the entry gets a source of its own.
+  const existing =
+    marker?.adopted === true && found !== undefined && configKey(found.config) !== wanted
+      ? undefined
+      : found;
   if (marker?.adopted === true && existing?.plugin === plan.plugin) {
     return { id: existing.id, action: "updated", credentialsWritten: false };
   }
-  // A keyless tracking source holds nothing of its own: adopt the plug-in's existing one (created
-  // on first use, say) instead of adding a second, keeping that source's id and label.
+  // A keyless tracking source holds nothing of its own beyond its settings: adopt the plug-in's
+  // existing one with the same settings (created on first use, say) instead of adding a second,
+  // keeping that source's id and label.
   const adopted =
     existing === undefined && plan.kind === "tracking" && plan.secret === null
-      ? await ctx.trx
-          .selectFrom("sources")
-          .select(["id", "plugin"])
-          .where("plugin", "=", plan.plugin)
-          .where("kind", "=", "tracking")
-          .where("secret_blob", "is", null)
-          .orderBy("created_at")
-          .executeTakeFirst()
+      ? (
+          await ctx.trx
+            .selectFrom("sources")
+            .select(["id", "plugin", "config"])
+            .where("plugin", "=", plan.plugin)
+            .where("kind", "=", "tracking")
+            .where("secret_blob", "is", null)
+            .orderBy("created_at")
+            .execute()
+        ).find((source) => configKey(source.config) === wanted)
       : undefined;
   if (adopted !== undefined) {
     await writeMarker(ctx, plan.entryId, {
@@ -221,14 +233,23 @@ async function writeParcels(
   sourceId: string,
   counts: ParcelCounts,
 ): Promise<void> {
-  for (const parcel of plan.parcels) {
+  for (const given of plan.parcels) {
+    const parcel = { ...given, barcode: normaliseBarcode(plan.plugin, given.barcode) };
+    // Removed parcels count too: the table holds one row per carrier and code, and HA still
+    // tracking the code means it is not gone, so a removed one is revived.
     const found = await ctx.trx
       .selectFrom("parcels")
-      .select("id")
+      .select(["id", "removed_at"])
       .where("carrier", "=", plan.plugin)
       .where("barcode", "=", parcel.barcode)
-      .where("removed_at", "is", null)
       .executeTakeFirst();
+    if (found !== undefined && found.removed_at !== null) {
+      await ctx.trx
+        .updateTable("parcels")
+        .set({ removed_at: null, updated_at: ctx.now })
+        .where("id", "=", found.id)
+        .execute();
+    }
     const id = found?.id ?? crypto.randomUUID();
     if (found === undefined) {
       await ctx.trx

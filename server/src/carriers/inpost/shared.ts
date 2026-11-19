@@ -35,7 +35,7 @@ export const text = (value: unknown): string | null => anyText(value, { numbers:
 
 /** ISO 8601 for a string or epoch-millisecond timestamp; null when it does not parse. */
 export const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "Europe/Warsaw" }, epoch: "ms" });
 /**
  * The shared table's InPost vocabularies: the Polish account inbox (`inbox`, its coarse
  * `inbox-group`), the Italian inbox (`group`) and the public cross-border codes (`tracking`).

@@ -40,7 +40,7 @@ export function isoTime(value: unknown): string | null {
   }
   return NAIVE_TIME.test(value.trim())
     ? kitIsoTime(value, { naive: { zone: "Europe/Prague" }, keepFraction: true })
-    : kitIsoTime(value, { naive: "runtime" });
+    : kitIsoTime(value, { naive: { zone: "Europe/Prague" } });
 }
 export function publicUrl(barcode: string): string {
   return `https://${TRACKING_HOST}/en/?id=${encodeURIComponent(barcode)}`;

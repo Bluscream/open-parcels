@@ -107,6 +107,18 @@ describe("DHL Netherlands account", () => {
     expect(parcelsCall?.headers.get("x-xsrf-token")).toBe("xsrf-1");
   });
 
+  it("signs in again at most once per run, not once per list", async () => {
+    const world = new World(dhl, [
+      on(PARCELS, json({}, 401), json({ parcels: [] })),
+      on(LOGIN, loggedIn(), loggedIn()),
+      on(SENT, json({}, 401)),
+    ]);
+    await expect(world.fetchAccount(NL, { nl: CREDENTIALS })).rejects.toBeInstanceOf(
+      SignInRejectedError,
+    );
+    expect(world.calls.filter((call) => call.key === LOGIN)).toHaveLength(1);
+  });
+
   it("needs the Dutch sign-in data", async () => {
     const world = new World(dhl);
     await expect(world.fetchAccount(NL, { refreshToken: "x" })).rejects.toBeInstanceOf(

@@ -146,9 +146,12 @@ export function publicSnapshot(
 ): ParcelSnapshot {
   const status = plStatus(text(raw["status"]), text(raw["timelineStep"]), report);
   const delivered = status === "delivered";
+  // The code as tracked stays the key; DHL's own shipment number is only a reference.
+  const shipmentNumber = text(raw["shipmentNumber"]);
   return snapshot({
     carrier: "dhl",
-    barcode: text(raw["shipmentNumber"]) ?? code,
+    barcode: code,
+    externalRef: shipmentNumber !== null && shipmentNumber !== code ? shipmentNumber : null,
     status,
     rawStatus: text(raw["step"]) ?? text(raw["status"]),
     delivered,

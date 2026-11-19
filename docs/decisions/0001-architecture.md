@@ -287,7 +287,7 @@ There is one owner per container, so tables carry no user column.
 | `parcels` | id (UUID), carrier, barcode, direction, status, raw_status, delivered, delivered_at, planned_from, planned_to, pickup, pickup_point, url, sender, receiver, weight, dimensions, label, order_id, manual_status, manual_until, first_seen_at, last_seen_at, removed_at, archived_at | Unique on (carrier, barcode). Nothing ever overwrites a manual override |
 | `parcel_sources` | parcel_id, source_id, external_ref, role (primary/handoff/mail), last_seen_at | Hand-off and deduplication |
 | `parcel_events` | id, parcel_id, source_id, at, status, raw_status, location_text, fingerprint (unique) | History. No coordinates |
-| `parcel_raw` | parcel_id, source_id, fetched_at, payload (JSON) | The latest raw payload per source. Codes that open or sign in to something are stripped |
+| `parcel_raw` | parcel_id, source_id, fetched_at, payload (JSON) | The latest raw payload per source. Codes that open or sign in to something, and personal data (names, addresses, contact details, coordinates), are stripped |
 | `items` | id, parcel_id, title, image_ref, url, external_id, quantity, price, currency | |
 | `orders` | id, shop, order_number, placed_at, status | |
 | `live_state` | parcel_id, state, stops_away, message, position_at, updated_at | No coordinates |

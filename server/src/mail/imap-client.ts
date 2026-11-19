@@ -12,9 +12,15 @@ export const imapClientFactory: MailboxClientFactory = (config, secret) => {
     logger: false,
   });
   async function* toMessages(range: string): AsyncIterable<FetchedMessage> {
-    for await (const message of client.fetch(range, { uid: true, source: true }, { uid: true })) {
+    const query = { uid: true, source: true, internalDate: true };
+    for await (const message of client.fetch(range, query, { uid: true })) {
       if (message.source !== undefined) {
-        yield { uid: message.uid, source: message.source };
+        const received = message.internalDate;
+        yield {
+          uid: message.uid,
+          source: message.source,
+          receivedAt: received instanceof Date ? received : null,
+        };
       }
     }
   }

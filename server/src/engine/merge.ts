@@ -1,5 +1,6 @@
 import type { Direction, ParcelStatus } from "../domain/parcel.js";
 import type { ParcelSnapshot, SnapshotEvent } from "../plugin/snapshot.js";
+import { compareTimes } from "./utc.js";
 
 /** The parcel fields a snapshot can change. */
 export interface ParcelState {
@@ -34,7 +35,7 @@ export interface ResolvedStatus {
 function newest(events: readonly SnapshotEvent[]): SnapshotEvent | undefined {
   let best: SnapshotEvent | undefined;
   for (const event of events) {
-    if (best === undefined || event.at > best.at) {
+    if (best === undefined || compareTimes(event.at, best.at) > 0) {
       best = event;
     }
   }
@@ -92,7 +93,13 @@ function maySetStatus(
     return false;
   }
   if (snapshotAt !== null && current.statusAt !== null) {
-    return authority === "carrier" ? snapshotAt >= current.statusAt : snapshotAt > current.statusAt;
+    const order = compareTimes(snapshotAt, current.statusAt);
+    return authority === "carrier" ? order >= 0 : order > 0;
+  }
+  // A source without history cannot show that it is newer than a status set by a timed scan;
+  // it may lag behind (DHL NL's account, the DHL PL lookup), so only its delivered stands.
+  if (snapshotAt === null && current.statusAt !== null) {
+    return authority === "carrier" && signal === "delivered";
   }
   return authority === "carrier";
 }

@@ -39,6 +39,8 @@ describe("My bpost account", () => {
       ),
     ]);
     const result = await world.fetchAccount({}, SECRET);
+    // Only the first page of details is read, so the answer never counts as the whole inbox.
+    expect(result.complete).toBe(false);
     expect(world.calls[0]?.headers.get("x-api-key")).toBe(carrierKey("bpost", "app_key"));
     expect(world.calls[0]?.headers.get("appversion")).toBe(carrierKey("bpost", "app_version"));
     expect(world.calls[1]?.headers.get("authorization")).toBe("a1");
@@ -67,5 +69,21 @@ describe("My bpost account", () => {
       on(`${API}/users/login`, json({ code: "BAD_CREDENTIALS" }, 401)),
     ]);
     await expect(wrong.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
+  });
+
+  it("renews at most once per run, however many calls are refused", async () => {
+    const world = new World(bpost, [
+      on(
+        `${API}/parcel/getparcelslist`,
+        json({}, 401),
+        json({ response: { items: [{ itemCode: "323200000000000001", Status: "x" }] } }),
+      ),
+      on(`${API}/users/refreshtoken`, json(tokens("a2")), json(tokens("a3"))),
+      on(`${API}/parcel/getparcelsv3`, json({}, 401)),
+    ]);
+    world.stored = { access: "a1", refresh: "r-a1" };
+    await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(SignInRejectedError);
+    const renewals = world.calls.filter((call) => call.url.pathname.endsWith("/refreshtoken"));
+    expect(renewals).toHaveLength(1);
   });
 });

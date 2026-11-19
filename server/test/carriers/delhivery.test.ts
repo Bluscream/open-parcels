@@ -106,7 +106,7 @@ describe("Delhivery tracking", () => {
     ]);
     const { base } = fakeContext(delhivery.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [CODE, "not a code"]);
-    expect(result).toEqual({ snapshots: [], complete: true });
+    expect(result).toEqual({ snapshots: [], complete: false });
     expect(calls).toHaveLength(1);
   });
 

@@ -68,11 +68,43 @@ async function moveMarkers(trx: Trx, from: string, into: string): Promise<void> 
   }
 }
 
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonical);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, entry]) => [key, canonical(entry)]),
+    );
+  }
+  return value;
+}
+
 /**
- * Merges keyless tracking sources of the same plug-in into the oldest one, which keeps its id and
- * label. A keyless tracking source holds nothing of its own, so two of them (one created on first
- * use, one imported from Home Assistant) only split the parcels and the polling. Sources with a
- * key are left alone: each key is its own quota. Idempotent; returns how many were merged.
+ * A source configuration in one spelling, key order aside, so two sources can be compared. Takes
+ * the stored JSON text or the parsed value; unreadable text is its own key.
+ */
+export function configKey(config: unknown): string {
+  if (typeof config === "string") {
+    try {
+      return JSON.stringify(canonical(JSON.parse(config)));
+    } catch {
+      return `invalid:${config}`;
+    }
+  }
+  return JSON.stringify(canonical(config ?? {}));
+}
+
+/**
+ * Merges keyless tracking sources of the same plug-in and the same settings into the oldest one,
+ * which keeps its id and label. A keyless tracking source holds nothing of its own beyond its
+ * settings, so two such twins (one created on first use, one imported from Home Assistant) only
+ * split the parcels and the polling. Sources whose settings differ (a GLS source for NL and one
+ * for DE, a bpost postcode) are separate lookups and stay apart, and so do sources with a key:
+ * each key is its own quota. Idempotent; returns how many were merged.
  */
 export async function mergeDuplicateTrackingSources(
   db: Kysely<Database>,
@@ -81,7 +113,7 @@ export async function mergeDuplicateTrackingSources(
   return db.transaction().execute(async (trx) => {
     const rows = await trx
       .selectFrom("sources")
-      .select(["id", "plugin", "label", "kind"])
+      .select(["id", "plugin", "label", "kind", "config"])
       .where("kind", "=", "tracking")
       .where("secret_blob", "is", null)
       .orderBy("created_at")
@@ -90,9 +122,10 @@ export async function mergeDuplicateTrackingSources(
     const keep = new Map<string, string>();
     let merged = 0;
     for (const row of rows) {
-      const into = keep.get(row.plugin);
+      const twinKey = JSON.stringify([row.plugin, configKey(row.config)]);
+      const into = keep.get(twinKey);
       if (into === undefined) {
-        keep.set(row.plugin, row.id);
+        keep.set(twinKey, row.id);
         continue;
       }
       await moveLinks(trx, row.id, into);

@@ -60,6 +60,8 @@ export interface FetchedMessage {
   readonly uid: number;
   /** The raw RFC 822 message. */
   readonly source: Buffer;
+  /** When the server received it (IMAP INTERNALDATE), if it said. */
+  readonly receivedAt?: Date | null;
 }
 
 /** What the watcher needs from an IMAP connection; the real one wraps imapflow, tests use a fake. */

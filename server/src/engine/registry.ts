@@ -11,6 +11,7 @@ import type {
   SignInTurn,
 } from "../plugin/api.js";
 import type { Clock } from "../clock.js";
+import { InvalidConfigError } from "../plugin/errors.js";
 import type { HttpPolicy, PluginHttp } from "../plugin/http.js";
 
 export class InvalidSourceConfigError extends Error {
@@ -87,6 +88,18 @@ export interface RegisteredPlugin {
     rawSecret: unknown,
     barcodes: readonly string[],
   ): Promise<FetchResult>;
+}
+
+/** A plug-in's settings error, as the engine's own, so the source shows it as invalid settings. */
+async function asSourceConfigError<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    if (error instanceof InvalidConfigError) {
+      throw new InvalidSourceConfigError(error.message);
+    }
+    throw error;
+  }
 }
 
 function parseWith<T>(schema: z.ZodType<T>, raw: unknown, what: string, pluginId: string): T {
@@ -215,13 +228,13 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
       if (plugin.fetchAccount === undefined) {
         throw new InvalidSourceConfigError(`${plugin.name} has no account source.`);
       }
-      return plugin.fetchAccount(context(base, rawConfig, rawSecret));
+      return asSourceConfigError(plugin.fetchAccount(context(base, rawConfig, rawSecret)));
     },
     async track(base, rawConfig, rawSecret, barcodes) {
       if (plugin.track === undefined) {
         throw new InvalidSourceConfigError(`${plugin.name} cannot track codes.`);
       }
-      return plugin.track(context(base, rawConfig, rawSecret), barcodes);
+      return asSourceConfigError(plugin.track(context(base, rawConfig, rawSecret), barcodes));
     },
   };
 }

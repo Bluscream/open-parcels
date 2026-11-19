@@ -16,8 +16,8 @@ export const CARRIER_ID = "sameday";
 export const COUNTRIES = ["ro", "hu", "bg"] as const;
 export type Country = (typeof COUNTRIES)[number];
 
-/** Sameday's dates are read as the runtime's `Date` reads them; numbers are epoch milliseconds. */
-const TIME = { naive: "runtime", epoch: "ms" } as const;
+/** Sameday's offset-less dates are Romanian local time; numbers are epoch milliseconds. */
+const TIME = { naive: { zone: "Europe/Bucharest" }, epoch: "ms" } as const;
 
 /**
  * The numeric `statusStateId` of an AWB event. Returns, cancellations and failures map to the

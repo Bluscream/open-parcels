@@ -6,6 +6,7 @@ import type { SecretBox } from "../crypto/secrets.js";
 import type { Database } from "../db/schema.js";
 import { isPlausibleOrder, shopFromDomain } from "../domain/order.js";
 import type { ParcelStatus } from "../domain/parcel.js";
+import { normaliseBarcode } from "../engine/barcode.js";
 import { BUILTIN_CARRIERS } from "../engine/builtin-carriers.js";
 import { linkUntrackedParcels, trackingSourceIn } from "../engine/linking.js";
 import { PluginRegistry } from "../engine/registry.js";
@@ -45,6 +46,8 @@ export interface LegacyReport {
   readonly events: number;
   readonly droppedPositionEvents: number;
   readonly mailboxes: number;
+  /** Mailboxes already present (same host and user), from an earlier import or added by hand. */
+  readonly skippedDuplicateMailboxes: number;
   /** Active parcels linked to their carrier's tracking source, so they get refreshed. */
   readonly linkedParcels: number;
   /** Parcels from an earlier import whose placeholder carrier was replaced by a plug-in id. */
@@ -120,6 +123,7 @@ interface Counters {
   events: number;
   droppedPositionEvents: number;
   mailboxes: number;
+  skippedDuplicateMailboxes: number;
   linkedParcels: number;
   correctedCarriers: number;
   undecryptableCredentials: number;
@@ -222,10 +226,11 @@ async function importParcels(
     const status = STATUS_MAP[oldStatus] ?? "unknown";
     counters.statuses[`${oldStatus} → ${status}`] =
       (counters.statuses[`${oldStatus} → ${status}`] ?? 0) + 1;
+    const stored = normaliseBarcode(carrier, barcode);
     const existing = await trx
       .selectFrom("parcels")
       .select(["id", "carrier"])
-      .where("barcode", "=", barcode)
+      .where("barcode", "in", [...new Set([barcode, stored])])
       .execute();
     if (existing.length > 0) {
       counters.skippedDuplicateParcels += 1;
@@ -245,7 +250,7 @@ async function importParcels(
       .values({
         id,
         carrier,
-        barcode,
+        barcode: stored,
         direction: "incoming",
         status,
         raw_status: text(row["last_event_description"]),
@@ -371,37 +376,68 @@ async function importCredentials(
         skipped.push({ service, reason: parsed.reason });
         continue;
       }
-      await insertMailbox(input, parsed.config, parsed.secret);
-      counters.mailboxes += 1;
+      if (await insertMailbox(input, parsed.config, parsed.secret)) {
+        counters.mailboxes += 1;
+      } else {
+        counters.skippedDuplicateMailboxes += 1;
+      }
     }
   }
 }
 
+/** True when a mailbox source for this host and user already exists. */
+async function hasMailbox(
+  input: ImportCredentials,
+  host: string,
+  username: string,
+): Promise<boolean> {
+  const rows = await input.trx
+    .selectFrom("sources")
+    .select(["id", "config", "secret_blob"])
+    .where("plugin", "=", MAIL_PLUGIN)
+    .where("kind", "=", "mail")
+    .execute();
+  const same = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
+  return rows.some((row) => {
+    const config = JSON.parse(row.config) as { host?: unknown };
+    if (typeof config.host !== "string" || !same(config.host, host) || row.secret_blob === null) {
+      return false;
+    }
+    const stored = input.secrets.decryptJson(row.secret_blob, secretAad(row.id)) as {
+      username?: unknown;
+    };
+    return typeof stored.username === "string" && same(stored.username, username);
+  });
+}
+
+/** Adds the mailbox unless one for the same host and user exists; true when it was added. */
 async function insertMailbox(
   input: ImportCredentials,
   config: { host: string },
   secret: { username: string; password: string },
-): Promise<void> {
-  {
-    const id = crypto.randomUUID();
-    await input.trx
-      .insertInto("sources")
-      .values({
-        id,
-        plugin: MAIL_PLUGIN,
-        kind: "mail",
-        label: mailboxLabel(secret.username, config.host),
-        config: JSON.stringify(config),
-        secret_blob: input.secrets.encryptJson(secret, secretAad(id)),
-        session_blob: null,
-        state: "ok",
-        state_detail: null,
-        next_run_at: null,
-        created_at: input.now,
-        updated_at: input.now,
-      })
-      .execute();
+): Promise<boolean> {
+  if (await hasMailbox(input, config.host, secret.username)) {
+    return false;
   }
+  const id = crypto.randomUUID();
+  await input.trx
+    .insertInto("sources")
+    .values({
+      id,
+      plugin: MAIL_PLUGIN,
+      kind: "mail",
+      label: mailboxLabel(secret.username, config.host),
+      config: JSON.stringify(config),
+      secret_blob: input.secrets.encryptJson(secret, secretAad(id)),
+      session_blob: null,
+      state: "ok",
+      state_detail: null,
+      next_run_at: null,
+      created_at: input.now,
+      updated_at: input.now,
+    })
+    .execute();
+  return true;
 }
 
 /** Old settings whose key mentions IMAP or mail, values decoded from JSON where possible. */
@@ -446,6 +482,7 @@ export async function importLegacy(options: LegacyImportOptions): Promise<Legacy
     events: 0,
     droppedPositionEvents: 0,
     mailboxes: 0,
+    skippedDuplicateMailboxes: 0,
     linkedParcels: 0,
     correctedCarriers: 0,
     undecryptableCredentials: 0,

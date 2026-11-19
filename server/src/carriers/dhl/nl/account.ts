@@ -90,19 +90,29 @@ async function xsrf(jar: CookieJar): Promise<Record<string, string>> {
   return token === undefined ? {} : { "x-xsrf-token": token };
 }
 
-/** One authenticated GET; signs in again once when DHL says the session is gone. */
+/** Whether this run has signed in again already; a run does so at most once. */
+interface LoginBudget {
+  relogged: boolean;
+}
+
+/** One authenticated GET; signs in again, once per run, when DHL says the session is gone. */
 async function getJson(
   deps: Deps,
   jar: CookieJar,
   credentials: NlCredentials,
   url: string,
+  budget: LoginBudget,
 ): Promise<unknown> {
-  for (const retry of [false, true]) {
+  for (;;) {
     const response = await deps.http.request(new URL(url), {
       headers: { accept: "application/json", ...(await xsrf(jar)) },
       jar,
     });
-    if ((response.status === 401 || response.status === 403) && !retry) {
+    if (response.status === 401 || response.status === 403) {
+      if (budget.relogged) {
+        throw new SignInRejectedError("DHL refused a fresh login session.");
+      }
+      budget.relogged = true;
       await logIn(deps.http, jar, credentials);
       await deps.session.save(serializeJar(jar));
       continue;
@@ -112,7 +122,6 @@ async function getJson(
     }
     return readJson(response, "DHL");
   }
-  throw new SignInRejectedError("DHL refused a fresh login session.");
 }
 
 function deliveryWindow(parcel: Json): { from: string | null; to: string | null } {
@@ -171,8 +180,9 @@ export function normalizeNl(deps: Deps, parcel: Json, sent: boolean): ParcelSnap
 /** Everything the Dutch account lists: received parcels, returns and sent shipments. */
 export async function fetchNlAccount(deps: Deps, credentials: NlCredentials): Promise<FetchResult> {
   const jar = restoreJar(deps.session.load());
-  const received = asObject(await getJson(deps, jar, credentials, PARCELS_URL))["parcels"];
-  const sent = await getJson(deps, jar, credentials, SENT_URL);
+  const budget: LoginBudget = { relogged: false };
+  const received = asObject(await getJson(deps, jar, credentials, PARCELS_URL, budget))["parcels"];
+  const sent = await getJson(deps, jar, credentials, SENT_URL, budget);
   if (!Array.isArray(received) || !Array.isArray(sent)) {
     throw new UnexpectedResponseError("DHL's account answered without parcel lists.");
   }

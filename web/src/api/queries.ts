@@ -2,7 +2,13 @@
  * TanStack Query hooks over the generated API functions. Query keys live here so live events and
  * mutations invalidate the same entries.
  */
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
   deleteApiV1ParcelsId,
@@ -126,11 +132,22 @@ export function useDiagnostics() {
   });
 }
 
+/**
+ * Everything that shows parcels: the lists and details, and the calendar, which must not stay
+ * stale after an edit while the live stream is offline.
+ */
+export async function invalidateParcelViews(client: QueryClient): Promise<void> {
+  await Promise.all([
+    client.invalidateQueries({ queryKey: keys.parcels }),
+    client.invalidateQueries({ queryKey: ["calendar"] }),
+  ]);
+}
+
 export function useAddParcel() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: PostApiV1ParcelsBody) => postApiV1Parcels(body),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.parcels }),
+    onSuccess: () => invalidateParcelViews(client),
   });
 }
 
@@ -140,7 +157,7 @@ export function useUpdateParcel(id: string) {
     mutationFn: (body: PatchApiV1ParcelsIdBody) => patchApiV1ParcelsId(id, body),
     onSuccess: (parcel) => {
       client.setQueryData(keys.parcel(id), parcel);
-      return client.invalidateQueries({ queryKey: keys.parcels });
+      return invalidateParcelViews(client);
     },
   });
 }
@@ -149,7 +166,7 @@ export function useDeleteParcel() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteApiV1ParcelsId(id),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.parcels }),
+    onSuccess: () => invalidateParcelViews(client),
   });
 }
 

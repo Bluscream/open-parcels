@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mergeDuplicateTrackingSources } from "../../src/engine/source-dedup.js";
 import { secretAad, sessionAad } from "../../src/engine/sources.js";
 import { importHaEntries, markerKey } from "../../src/migrate/ha/import.js";
 import { createTestContext, type TestContext } from "../helpers.js";
@@ -368,5 +369,116 @@ describe("an existing tracking source", () => {
       [existing, "DHL tracking (auto)"],
     ]);
     expect(await linkedCodes(existing)).toContain("JVGL0000000000000001");
+  });
+});
+
+async function insertTrackingSource(plugin: string, config: string, label: string) {
+  const now = context.clock.now().toISOString();
+  const id = crypto.randomUUID();
+  await context.services.db
+    .insertInto("sources")
+    .values({
+      id,
+      plugin,
+      kind: "tracking",
+      label,
+      config,
+      secret_blob: null,
+      session_blob: null,
+      state: "ok",
+      state_detail: null,
+      next_run_at: now,
+      created_at: now,
+      updated_at: now,
+    })
+    .execute();
+  return id;
+}
+
+describe("tracking sources with other settings", () => {
+  it("are never adopted: a GLS DE entry gets its own source beside a GLS NL one", async () => {
+    const nl = await insertTrackingSource(
+      "gls",
+      '{"country":"NL","postalCode":"1234 AB"}',
+      "GLS NL",
+    );
+    await run(fixture());
+    const gls = (await sources()).filter((source) => source.plugin === "gls");
+    expect(gls.map((source) => [source.label, JSON.parse(source.config) as unknown])).toEqual([
+      ["GLS DE (10115)", { country: "DE", postalCode: "10115" }],
+      ["GLS NL", { country: "NL", postalCode: "1234 AB" }],
+    ]);
+    expect(await linkedCodes(nl)).toEqual([]);
+  });
+
+  it("drop an adoption an older version made across settings", async () => {
+    const nl = await insertTrackingSource(
+      "gls",
+      '{"country":"NL","postalCode":"1234 AB"}',
+      "GLS NL",
+    );
+    await context.services.db
+      .insertInto("settings")
+      .values({
+        key: markerKey("e-gls"),
+        value: JSON.stringify({ sourceId: nl, credentials: "old", adopted: true }),
+        updated_at: context.clock.now().toISOString(),
+      })
+      .execute();
+    await run(fixture());
+    const de = await sourceByLabel("GLS DE (10115)");
+    expect(de.id).not.toBe(nl);
+    expect(JSON.parse((await sourceByLabel("GLS NL")).config)).toEqual({
+      country: "NL",
+      postalCode: "1234 AB",
+    });
+  });
+
+  it("are merged at startup only when plug-in and settings match exactly", async () => {
+    const first = await insertTrackingSource("gls", '{"country":"NL","postalCode":"1234 AB"}', "a");
+    context.clock.advance(1000);
+    await insertTrackingSource("gls", '{"postalCode":"1234 AB","country":"NL"}', "b");
+    context.clock.advance(1000);
+    await insertTrackingSource("gls", '{"country":"DE","postalCode":"10115"}', "c");
+    expect(await mergeDuplicateTrackingSources(context.services.db, context.clock)).toBe(1);
+    const left = (await sources()).map((source) => [source.label, source.id === first]);
+    expect(left).toEqual([
+      ["a", true],
+      ["c", false],
+    ]);
+  });
+});
+
+describe("a parcel removed earlier", () => {
+  it("is found and revived instead of breaking the import", async () => {
+    const now = context.clock.now().toISOString();
+    const id = crypto.randomUUID();
+    await context.services.db
+      .insertInto("parcels")
+      .values({
+        id,
+        carrier: "gls",
+        barcode: "00000000001",
+        direction: "incoming",
+        status: "registered",
+        raw_status: null,
+        delivered: 0,
+        pickup: 0,
+        label: null,
+        first_seen_at: now,
+        last_seen_at: now,
+        updated_at: now,
+        removed_at: now,
+      })
+      .execute();
+    const report = await run(fixture());
+    expect(report.parcels.existing).toBeGreaterThanOrEqual(1);
+    const parcel = await context.services.db
+      .selectFrom("parcels")
+      .select(["id", "removed_at"])
+      .where("barcode", "=", "00000000001")
+      .executeTakeFirstOrThrow();
+    expect(parcel).toEqual({ id, removed_at: null });
+    expect(await linkedCodes((await sourceByLabel("GLS DE (10115)")).id)).toEqual(["00000000001"]);
   });
 });

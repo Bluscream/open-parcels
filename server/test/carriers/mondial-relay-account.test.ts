@@ -56,6 +56,34 @@ describe("Mondial Relay account", () => {
     expect(world.saved[0]).toMatchObject({ refreshToken: madeUp("refresh", "2") });
   });
 
+  it("reads a local delivery date as an instant and fails on a page count it cannot trust", async () => {
+    const delivered = {
+      expedition: {
+        shipmentUid: "9",
+        shipmentId: "00009",
+        stepSection: 3,
+        tracingDate: "2026-11-18T10:30:00",
+      },
+    };
+    const tokens = () =>
+      json({ access_token: "a1", refresh_token: madeUp("refresh", "2"), expires_in: 900 });
+    const ok = new World(mondialRelay, [
+      on(TOKEN, tokens()),
+      onPrefix(RECEIVED, json({ list: [delivered], totalPages: 1 })),
+      onPrefix(SHIPPED, json({ list: [], totalPages: 0 })),
+    ]);
+    const [parcel] = (await ok.fetchAccount({}, SECRET)).snapshots;
+    expect(parcel?.deliveredAt).toBe("2026-11-18T09:30:00.000Z");
+
+    for (const envelope of [{ list: [delivered] }, { list: [delivered], totalPages: 26 }]) {
+      const world = new World(mondialRelay, [
+        on(TOKEN, tokens()),
+        onPrefix(RECEIVED, json(envelope)),
+      ]);
+      await expect(world.fetchAccount({}, SECRET)).rejects.toBeInstanceOf(TransientError);
+    }
+  });
+
   it("treats a refused signature as transient and a refused grant as a sign-in problem", async () => {
     const world = new World(mondialRelay, [
       on(TOKEN, json({ access_token: "a1" }), json({ error: "invalid_grant" }, 400)),

@@ -15,8 +15,8 @@ export const CARRIER_ID = "seur";
 
 /** SEUR's fields are strings; a number is never read as text. */
 export const STRINGS = { numbers: false } as const;
-/** SEUR dates are read as the runtime's `Date` reads them; numbers are not timestamps. */
-const TIME = { naive: "runtime" } as const;
+/** SEUR's offset-less dates are Spanish local time; numbers are not timestamps. */
+const TIME = { naive: { zone: "Europe/Madrid" } } as const;
 
 function mapCode(code: string | null): ParcelStatus | null {
   return ruleStatus("seur", code);

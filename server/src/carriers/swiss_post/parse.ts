@@ -9,8 +9,8 @@ import {
   type SnapshotEvent,
 } from "../../plugin/api.js";
 
-/** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
-const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
+/** Offset-less timestamps are the carrier's local time; numbers are epoch ms. */
+const LOCAL_TIME = { naive: { zone: "Europe/Zurich" }, epoch: "ms" } as const;
 
 export const CARRIER_ID = "swiss_post";
 
@@ -48,7 +48,7 @@ export function eventWording(texts: ReadonlyMap<string, string>, event: Json): s
 function history(events: readonly Json[], texts: ReadonlyMap<string, string>): SnapshotEvent[] {
   const result: SnapshotEvent[] = [];
   for (const event of events) {
-    const at = isoTime(event["timestamp"], RUNTIME_TIME);
+    const at = isoTime(event["timestamp"], LOCAL_TIME);
     const rawStatus = eventWording(texts, event) ?? text(event["eventCode"]);
     if (at !== null && rawStatus !== null) {
       // The place fields of an event have not been confirmed yet, so none is read.
@@ -62,8 +62,8 @@ function history(events: readonly Json[], texts: ReadonlyMap<string, string>): S
 function window(raw: Json): { from: string | null; to: string | null } {
   const range = asObject(raw["deliveryRange"]);
   const from =
-    isoTime(range["start"], RUNTIME_TIME) ?? isoTime(raw["calculatedDeliveryDate"], RUNTIME_TIME);
-  const to = isoTime(range["end"], RUNTIME_TIME);
+    isoTime(range["start"], LOCAL_TIME) ?? isoTime(raw["calculatedDeliveryDate"], LOCAL_TIME);
+  const to = isoTime(range["end"], LOCAL_TIME);
   return { from, to: to === from ? null : to };
 }
 
@@ -102,7 +102,7 @@ export function shipmentSnapshot(
     status,
     rawStatus: text(raw["status"]) ?? code,
     delivered,
-    deliveredAt: delivered ? isoTime(raw["deliveryDate"], RUNTIME_TIME) : null,
+    deliveredAt: delivered ? isoTime(raw["deliveryDate"], LOCAL_TIME) : null,
     plannedFrom: delivered ? null : from,
     plannedTo: delivered ? null : to,
     pickup,

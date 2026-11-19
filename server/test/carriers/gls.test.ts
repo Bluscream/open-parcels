@@ -182,6 +182,18 @@ describe("gls group countries", () => {
     ).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 
+  it("treats only an explicit not-found code as not found; other errors are transient", async () => {
+    for (const reply of [
+      { status: 503, body: { lastError: "E206" } },
+      { status: 400, body: { lastError: "E999" } },
+    ]) {
+      const odd = fake({ [`rstt028/${CODE}`]: [reply] });
+      await expect(
+        plugin.track(context(odd.fetchImpl).base, czConfig, null, [CODE]),
+      ).rejects.toBeInstanceOf(TransientError);
+    }
+  });
+
   it("reports an unmapped status and honours the return flag", async () => {
     const body = { progressBar: { statusInfo: "NEWSTATE", retourFlag: true } };
     const { fetchImpl } = fake({ [`rstt028/${CODE}`]: [{ status: 200, body }] });

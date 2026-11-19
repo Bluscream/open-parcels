@@ -2,7 +2,7 @@ import type { Kysely } from "kysely";
 import type { Clock } from "../clock.js";
 import type { Database } from "../db/schema.js";
 import { effectiveDelivered, PARCEL_STATUSES, type ParcelStatus } from "../domain/parcel.js";
-import { localParts } from "../engine/tz.js";
+import { localParts, nextLocalMidnight } from "../engine/tz.js";
 
 /** How long a delivered parcel's marker lasts on the calendar. */
 const DELIVERED_MARKER_MS = 30 * 60_000;
@@ -184,8 +184,9 @@ export class CalendarService {
           const start = new Date(row.delivered_at);
           // A delivery known only by its day is that whole day, not half an hour at midnight.
           const dateOnly = isDateOnly(start, this.timeZone);
+          // The next local midnight, not 24 hours on: a daylight-saving day has 23 or 25.
           const end = dateOnly
-            ? new Date(start.getTime() + 24 * 60 * 60_000)
+            ? nextLocalMidnight(start, this.timeZone)
             : new Date(start.getTime() + DELIVERED_MARKER_MS);
           return { ...base, kind: "delivered", late: false, ...this.#span(start, end, dateOnly) };
         }
@@ -199,7 +200,9 @@ export class CalendarService {
         const end =
           row.planned_to !== null
             ? new Date(row.planned_to)
-            : new Date(start.getTime() + (pointIsDay ? 24 * 60 : 60) * 60_000);
+            : pointIsDay
+              ? nextLocalMidnight(start, this.timeZone)
+              : new Date(start.getTime() + 60 * 60_000);
         if (end.toISOString() < fromIso) {
           return undefined;
         }

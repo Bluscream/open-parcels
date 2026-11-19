@@ -87,6 +87,8 @@ describe("la_poste", () => {
       UnexpectedResponseError,
     );
     await expect(run([raw("", 500)])).rejects.toBeInstanceOf(TransientError);
+    // A server error carried in the body is a failure, not an unknown code.
+    await expect(run([json([{ returnCode: 500 }], 200)])).rejects.toBeInstanceOf(TransientError);
     await expect(run([new Error("offline")])).rejects.toBeInstanceOf(TransientError);
   });
 });

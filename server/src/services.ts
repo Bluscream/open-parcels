@@ -10,6 +10,9 @@ import type { AppConfig } from "./config.js";
 import type { SecretBox } from "./crypto/secrets.js";
 import type { Database } from "./db/schema.js";
 import { LiveTracker } from "./engine/live.js";
+import { repairBarcodes } from "./engine/barcode-repair.js";
+import { scrubStoredRaw } from "./engine/raw-scrub.js";
+import { trackingSourceIn } from "./engine/linking.js";
 import { Reconciler } from "./engine/reconciler.js";
 import { PluginRegistry, type RegisteredPlugin } from "./engine/registry.js";
 import { SourceRunner } from "./engine/runner.js";
@@ -18,6 +21,8 @@ import { Scheduler } from "./engine/scheduler.js";
 import { repairOrderShops } from "./engine/order-repair.js";
 import { mergeDuplicateTrackingSources } from "./engine/source-dedup.js";
 import { SourceService } from "./engine/sources.js";
+import { reviveTrackingRemovals } from "./engine/tracking-removal-repair.js";
+import { rewriteOffsetTimes } from "./engine/utc-repair.js";
 import { EventBus } from "./events/bus.js";
 import { ImageProxy } from "./images/proxy.js";
 import { loadRules } from "open-parcels-rules";
@@ -102,10 +107,24 @@ export interface ServiceDeps {
  * an older version) to their carrier's tracking source and makes those sources due. Returns true
  * when anything was linked.
  */
-async function followUntracked(sources: SourceService, viaSource?: string): Promise<boolean> {
+async function followUntracked(
+  sources: SourceService,
+  registry: PluginRegistry,
+  logger: Logger,
+  viaSource?: string,
+): Promise<boolean> {
   const linked = await sources.linkUntracked(viaSource === undefined ? {} : { viaSource });
   for (const sourceId of linked.sources) {
     await sources.requestRun(sourceId);
+  }
+  const needSettings = [...linked.unlinkedCarriers].filter(
+    (carrier) => registry.get(carrier)?.canTrack === true,
+  );
+  if (needSettings.length > 0) {
+    logger.warn(
+      { carriers: needSettings },
+      "Parcels wait for a tracking source: these carriers need settings, add the source by hand.",
+    );
   }
   return linked.parcels > 0;
 }
@@ -147,7 +166,27 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   if (repairedOrders > 0) {
     logger.info({ repaired: repairedOrders }, "Moved orders filed under the wrong shop.");
   }
-  if (await followUntracked(sources)) {
+  const rewrittenTimes = await rewriteOffsetTimes(db);
+  if (rewrittenTimes > 0) {
+    logger.info({ rewritten: rewrittenTimes }, "Rewrote stored times with an offset as UTC.");
+  }
+  const barcodes = await repairBarcodes(db, clock);
+  if (barcodes.respelled > 0 || barcodes.folded > 0) {
+    await bus.notify();
+    logger.info(
+      barcodes,
+      "Stored codes in their carrier's spelling and merged case or space twins.",
+    );
+  }
+  const scrubbed = await scrubStoredRaw(db);
+  if (scrubbed > 0) {
+    logger.info({ scrubbed }, "Removed codes and personal data from stored raw payloads.");
+  }
+  const revived = await reviveTrackingRemovals(db, clock);
+  if (revived > 0) {
+    logger.info({ revived }, "Revived parcels removed only because a lookup did not find them.");
+  }
+  if (await followUntracked(sources, registry, logger)) {
     logger.info("Linked parcels without a tracking source to their carrier.");
   }
   const images = new ImageProxy({
@@ -211,10 +250,11 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     bus,
     clock,
     async (carrier) => {
-      if (registry.get(carrier)?.canTrack !== true) {
+      // Undefined when no plug-in tracks the carrier, or its plug-in needs settings first.
+      const sourceId = await trackingSourceIn(db, registry, clock)(carrier);
+      if (sourceId === undefined) {
         return undefined;
       }
-      const sourceId = await sources.ensureTrackingSource(carrier);
       await sources.requestRun(sourceId);
       scheduler.wake();
       return sourceId;
@@ -231,7 +271,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     clientFactory: deps.mailClientFactory ?? imapClientFactory,
     interpret: deps.mailInterpreter ?? createMailInterpreter(loadRules(), deps.config.timeZone),
     followUp: async (sourceId) => {
-      if (await followUntracked(sources, sourceId)) {
+      if (await followUntracked(sources, registry, logger, sourceId)) {
         scheduler.wake();
       }
     },

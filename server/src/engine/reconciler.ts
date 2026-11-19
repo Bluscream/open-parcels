@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Kysely, Transaction } from "kysely";
+import type { ExpressionBuilder, Kysely, Transaction } from "kysely";
 import type { Logger } from "pino";
 import { addMs, isoNow, type Clock } from "../clock.js";
 import type { Database, ParcelRow, SourceRow } from "../db/schema.js";
@@ -11,6 +11,11 @@ import type { FetchResult, LiveTarget } from "../plugin/api.js";
 import { snapshot, type ParcelSnapshot, type SnapshotEvent } from "../plugin/snapshot.js";
 import { healState, mergeParcel, type Authority, type ParcelState } from "./merge.js";
 import { deriveEvents, type EventView } from "./rules.js";
+import { utcSnapshot } from "./utc.js";
+import { normaliseBarcode } from "./barcode.js";
+import { foldParcel } from "./fold.js";
+import { scrubRaw } from "./raw-scrub.js";
+import { withSafeLinks } from "./links.js";
 import { maskIdentifiers, recordUnknown, type UnknownValue } from "./vocab.js";
 
 /** A parcel missing from every complete listing for this long, undelivered, counts as removed. */
@@ -88,7 +93,9 @@ function stateColumns(state: ParcelState) {
 }
 
 /** An entry's identity: the source's own id when it has one, else time, text and place. */
-function fingerprint(event: SnapshotEvent): string {
+export function fingerprint(
+  event: Pick<SnapshotEvent, "at" | "rawStatus" | "location" | "id">,
+): string {
   const basis =
     event.id === undefined
       ? `${event.at}\u0000${event.rawStatus}\u0000${event.location ?? ""}`
@@ -107,6 +114,21 @@ function unmappedMail(snapshot: ParcelSnapshot): UnknownValue | null {
   }
   const key = maskIdentifiers(raw);
   return key === "" ? null : { plugin: snapshot.carrier, kind: "mail_subject", key };
+}
+
+/** The snapshot's codes in their stored spelling, so an echoed `1Z999…` finds `1z 999…`. */
+function normalisedCodes(snapshot: ParcelSnapshot): ParcelSnapshot {
+  return {
+    ...snapshot,
+    barcode: normaliseBarcode(snapshot.carrier, snapshot.barcode),
+    handoff:
+      snapshot.handoff === null
+        ? null
+        : {
+            carrier: snapshot.handoff.carrier,
+            barcode: normaliseBarcode(snapshot.handoff.carrier, snapshot.handoff.barcode),
+          },
+  };
 }
 
 /** The parcel's stored history from every source, as merge input. */
@@ -156,6 +178,23 @@ async function shopTwins(
       ),
     )
     .execute();
+}
+
+/**
+ * A hand-off goes to a carrier, never to another shop: a parcel stored under a plug-in that has a
+ * shop source is not a hand-off target, so a second shop's parcel with the same code is not
+ * folded into it.
+ */
+function notUnderAShop(eb: ExpressionBuilder<Database, "parcels">) {
+  return eb.not(
+    eb.exists(
+      eb
+        .selectFrom("sources")
+        .select("sources.id")
+        .where("sources.kind", "=", "shop")
+        .whereRef("sources.plugin", "=", "parcels.carrier"),
+    ),
+  );
 }
 
 async function findParcel(
@@ -213,7 +252,8 @@ export class Reconciler {
     const unknown: UnknownValue[] = [];
     await this.db.transaction().execute(async (trx) => {
       const seen = new Set<string>();
-      for (const snapshot of result.snapshots) {
+      for (const reported of result.snapshots) {
+        const snapshot = withSafeLinks(normalisedCodes(utcSnapshot(reported)));
         const value = source.kind === "mail" ? unmappedMail(snapshot) : null;
         if (value !== null) {
           unknown.push(value);
@@ -226,7 +266,10 @@ export class Reconciler {
         summary[outcome.created ? "created" : "updated"] += 1;
         summary.events += outcome.events;
       }
-      if (result.complete) {
+      // A tracking source only answers for the codes it was asked about. Whether such a code is
+      // gone is the not-found lookup state's call (archived after 30 days, ADR §2.5), never
+      // `parcel.removed`, whatever the plug-in says about completeness.
+      if (result.complete && source.kind !== "tracking") {
         await this.#markMissing(trx, sourceId, seen);
       }
       summary.found = await this.#recordLookup(trx, asked, seen);
@@ -333,12 +376,16 @@ export class Reconciler {
     }
     const before = existing === undefined ? null : rowToState(existing);
     const manual = existing === undefined ? null : asStatus(existing.manual_status);
-    const after = mergeParcel(
+    const merged = mergeParcel(
       before,
       { ...snapshot, carrier: key.carrier, barcode: key.barcode },
       authority,
       existing === undefined ? [] : await storedHistory(trx, existing.id),
     );
+    // A delivery nobody gave a time for is dated when it was first seen, so retention (which
+    // counts from delivered_at) archives it like any other.
+    const after =
+      merged.delivered && merged.deliveredAt === null ? { ...merged, deliveredAt: now } : merged;
     const parcelId = existing?.id ?? crypto.randomUUID();
     const orderId = await this.#upsertOrder(trx, snapshot, now);
 
@@ -371,7 +418,14 @@ export class Reconciler {
         .where("id", "=", parcelId)
         .execute();
     }
-    await this.#writeRelated(trx, { parcelId, sourceId: source.id, role, snapshot, now });
+    await this.#writeRelated(trx, {
+      parcelId,
+      sourceId: source.id,
+      sourceKind: source.kind,
+      role,
+      snapshot,
+      now,
+    });
 
     const derived = deriveEvents(
       before === null ? null : eventView(before, manual),
@@ -410,6 +464,7 @@ export class Reconciler {
       .select(["carrier", "barcode"])
       .where("barcode", "=", snapshot.barcode)
       .where("carrier", "!=", snapshot.carrier)
+      .where(notUnderAShop)
       .execute();
     const [twin] = twins;
     return twins.length === 1 && twin !== undefined
@@ -476,6 +531,7 @@ export class Reconciler {
         .selectAll()
         .where("barcode", "=", shop.barcode)
         .where("carrier", "!=", shop.carrier)
+        .where(notUnderAShop)
         .execute();
       const [target] = others;
       if (others.length !== 1 || target === undefined) {
@@ -531,77 +587,9 @@ export class Reconciler {
       this.logger.debug({ parcelId: duplicate.id }, "Re-keyed a shop parcel under its carrier.");
       return { ...duplicate, carrier: handoff.carrier, barcode: handoff.barcode };
     }
-    // Copy history and links over, skipping what the target already has; the duplicate's own rows
-    // go away with it through the foreign-key cascade.
-    await trx
-      .insertInto("parcel_events")
-      .columns([
-        "parcel_id",
-        "source_id",
-        "at",
-        "status",
-        "raw_status",
-        "location_text",
-        "fingerprint",
-      ])
-      .expression((eb) =>
-        eb
-          .selectFrom("parcel_events")
-          .select([
-            eb.val(target.id).as("parcel_id"),
-            "source_id",
-            "at",
-            "status",
-            "raw_status",
-            "location_text",
-            "fingerprint",
-          ])
-          .where("parcel_id", "=", duplicate.id),
-      )
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-    await trx
-      .insertInto("parcel_sources")
-      .columns(["parcel_id", "source_id", "external_ref", "role", "last_seen_at", "missing_since"])
-      .expression((eb) =>
-        eb
-          .selectFrom("parcel_sources")
-          .select([
-            eb.val(target.id).as("parcel_id"),
-            "source_id",
-            "external_ref",
-            eb.val("handoff").as("role"),
-            "last_seen_at",
-            "missing_since",
-          ])
-          .where("parcel_id", "=", duplicate.id),
-      )
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-    await trx
-      .updateTable("items")
-      .set({ parcel_id: target.id })
-      .where("parcel_id", "=", duplicate.id)
-      .execute();
-    // What the user or the shop knew about the duplicate is kept where the target has nothing.
-    await trx
-      .updateTable("parcels")
-      .set({
-        order_id: target.order_id ?? duplicate.order_id,
-        label: target.label ?? duplicate.label,
-        manual_status: target.manual_status ?? duplicate.manual_status,
-      })
-      .where("id", "=", target.id)
-      .execute();
-    const gone = await new ParcelRepository(trx, this.presentation).get(duplicate.id);
-    await trx.deleteFrom("parcels").where("id", "=", duplicate.id).execute();
-    if (gone !== undefined) {
-      await appendEvent(trx, this.clock, {
-        type: "parcel.deleted",
-        parcelId: duplicate.id,
-        payload: { ...parcelEventPayload({ ...gone, history: [] }), merged_into: target.id },
-      });
-    }
+    // History, links, raw payloads and items move over; the duplicate goes, naming the target.
+    const env = { clock: this.clock, presentation: this.presentation };
+    await foldParcel(trx, env, duplicate, target, { linkRole: "handoff" });
     this.logger.debug({ parcelId: target.id }, "Folded a shop duplicate into the carrier parcel.");
     return target;
   }
@@ -645,12 +633,13 @@ export class Reconciler {
     input: {
       parcelId: string;
       sourceId: string;
+      sourceKind: SourceRow["kind"];
       role: "primary" | "handoff" | "mail";
       snapshot: ParcelSnapshot;
       now: string;
     },
   ): Promise<void> {
-    const { parcelId, sourceId, role, snapshot, now } = input;
+    const { parcelId, sourceId, sourceKind, role, snapshot, now } = input;
     await trx
       .insertInto("parcel_sources")
       .values({
@@ -685,7 +674,7 @@ export class Reconciler {
         .onConflict((oc) => oc.columns(["parcel_id", "fingerprint"]).doNothing())
         .execute();
     }
-    if (snapshot.items.length > 0) {
+    if (snapshot.items.length > 0 && (await this.#mayWriteItems(trx, parcelId, sourceKind))) {
       await trx.deleteFrom("items").where("parcel_id", "=", parcelId).execute();
       await trx
         .insertInto("items")
@@ -705,21 +694,33 @@ export class Reconciler {
         .execute();
     }
     if (snapshot.raw !== null) {
+      // Codes that open something and personal data (names, addresses) never reach storage.
+      const payload = JSON.stringify(scrubRaw(snapshot.raw));
       await trx
         .insertInto("parcel_raw")
-        .values({
-          parcel_id: parcelId,
-          source_id: sourceId,
-          fetched_at: now,
-          payload: JSON.stringify(snapshot.raw),
-        })
+        .values({ parcel_id: parcelId, source_id: sourceId, fetched_at: now, payload })
         .onConflict((oc) =>
-          oc
-            .columns(["parcel_id", "source_id"])
-            .doUpdateSet({ fetched_at: now, payload: JSON.stringify(snapshot.raw) }),
+          oc.columns(["parcel_id", "source_id"]).doUpdateSet({ fetched_at: now, payload }),
         )
         .execute();
     }
+  }
+
+  /**
+   * Items have one writer, so two sources never take turns replacing each other's list: a shop
+   * (who sold the items, with images and prices) always writes them; anyone else (a mail's plain
+   * titles, a carrier) only fills a parcel that has none.
+   */
+  async #mayWriteItems(trx: Trx, parcelId: string, kind: SourceRow["kind"]): Promise<boolean> {
+    if (kind === "shop") {
+      return true;
+    }
+    const stored = await trx
+      .selectFrom("items")
+      .select("id")
+      .where("parcel_id", "=", parcelId)
+      .executeTakeFirst();
+    return stored === undefined;
   }
 
   /** Marks the asked parcels found or not found; `since` moves only when the state changes. */
@@ -805,6 +806,8 @@ export class Reconciler {
                   inner("parcel_sources.missing_since", "is", null),
                   inner("parcel_sources.missing_since", ">", cutoff),
                   inner("sources.state", "!=", "ok"),
+                  // A tracking link never judges a removal, even one marked by an older version.
+                  inner("sources.kind", "=", "tracking"),
                 ]),
               ),
           ),

@@ -36,9 +36,9 @@ describe("Quickpac tracking", () => {
       delivered: false,
     });
     expect(parcel?.history.map((e) => [e.at, e.status])).toEqual([
-      ["2026-11-18T08:00:00+01:00", "out_for_delivery"],
-      ["2026-11-17T10:00:00+01:00", "in_transit"],
-      ["2026-11-16T10:00:00+01:00", "registered"],
+      ["2026-11-18T07:00:00.000Z", "out_for_delivery"],
+      ["2026-11-17T09:00:00.000Z", "in_transit"],
+      ["2026-11-16T09:00:00.000Z", "registered"],
     ]);
     expect(parcel?.url).toContain(CODE);
   });
@@ -49,7 +49,7 @@ describe("Quickpac tracking", () => {
     expect(parcel).toMatchObject({
       status: "delivered",
       delivered: true,
-      deliveredAt: "2026-11-18T08:00:00+01:00",
+      deliveredAt: "2026-11-18T07:00:00.000Z",
     });
   });
 

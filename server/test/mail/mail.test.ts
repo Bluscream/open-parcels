@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "../../src/api/app.js";
 import type { FetchedMessage, MailboxClient, MailInput } from "../../src/mail/types.js";
 import { snapshot } from "../../src/plugin/api.js";
@@ -179,6 +179,26 @@ describe("mail watcher", () => {
         .map((parcel) => parcel.barcode)
         .sort(),
     ).toEqual(["FP0001", "FP0002"]);
+  });
+
+  it("reads a batch again when storing it failed, even when the next sync runs on the same connection", async () => {
+    mailbox.add(1, "2026-11-17T10:00:00Z", "First FP0001");
+    await addMailbox();
+    const ingest = vi
+      .spyOn(context.services.reconciler, "ingest")
+      .mockRejectedValueOnce(new Error("database busy"));
+    mailbox.add(2, "2026-11-18T10:00:00Z", "Second FP0002");
+    mailbox.newMail?.();
+    // The failed batch, then a new-mail trigger on the same connection before any reconnect.
+    mailbox.add(3, "2026-11-18T11:00:00Z", "Third FP0003");
+    mailbox.newMail?.();
+    await context.services.mail.stop();
+    expect(ingest).toHaveBeenCalledTimes(2);
+    expect(
+      (await context.services.parcels.repository.list({}, false))
+        .map((parcel) => parcel.barcode)
+        .sort(),
+    ).toEqual(["FP0001", "FP0002", "FP0003"]);
   });
 
   it("starts over when the folder's UIDVALIDITY changes", async () => {

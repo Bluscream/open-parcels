@@ -28,7 +28,7 @@ const BARCODE_PATTERN = carrierPattern("gobolt");
 
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "America/Toronto" }, epoch: "ms" });
 
 /** A label status name, from the shared table. */
 function mapName(name: string | null): ParcelStatus | null {

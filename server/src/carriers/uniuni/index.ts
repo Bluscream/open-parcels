@@ -67,7 +67,7 @@ function mapState(code: string | null): Status | null {
 function eventTime(dateTime: Json): string | null {
   const fromTs =
     typeof dateTime["ts"] === "number"
-      ? isoTime(dateTime["ts"], { naive: "runtime", epoch: "s" })
+      ? isoTime(dateTime["ts"], { naive: { zone: "America/Vancouver" }, epoch: "s" })
       : null;
   if (fromTs !== null) {
     return fromTs;

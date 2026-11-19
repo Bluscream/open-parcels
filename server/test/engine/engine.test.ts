@@ -150,7 +150,7 @@ describe("event rules", () => {
       delivered: true,
       planned_from: null,
       planned_to: null,
-      delivered_at: "2026-11-18T16:05:00Z",
+      delivered_at: "2026-11-18T16:05:00.000Z",
     });
   });
 

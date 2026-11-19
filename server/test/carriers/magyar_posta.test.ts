@@ -77,7 +77,7 @@ describe("magyar_posta tracking", () => {
   it("treats a null or empty answer as not found", async () => {
     const { result } = await run([json({ [CODE]: null }), json({ [CODE]: [] })], [CODE, CODE]);
     expect(result.snapshots).toEqual([]);
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
   });
 
   it("reports unknown categories and falls back to the newest row that maps", async () => {

@@ -1,14 +1,33 @@
 import type { Kysely } from "kysely";
 import { isoNow, type Clock } from "../clock.js";
 import type { Database } from "../db/schema.js";
-import type { PluginRegistry } from "./registry.js";
+import {
+  InvalidSourceConfigError,
+  type PluginRegistry,
+  type RegisteredPlugin,
+} from "./registry.js";
 
 /** The tracking source of a carrier, created if missing; undefined when no plug-in can track it. */
 export type TrackingSourceFor = (carrier: string) => Promise<string | undefined>;
 
+/** True when the plug-in can run with an empty configuration, so a source can be made for it. */
+export function acceptsEmptyConfig(plugin: RegisteredPlugin): boolean {
+  try {
+    plugin.validateConfig({});
+    return true;
+  } catch (error) {
+    if (error instanceof InvalidSourceConfigError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 /**
  * The tracking source of a plug-in in `db` (which may be a transaction), created on first use and
- * due at once. Undefined when no installed plug-in can track the carrier.
+ * due at once. Undefined when no installed plug-in can track the carrier, or when its plug-in needs
+ * settings (a postcode, a country) that only the user can give; such parcels stay unfollowed until
+ * the user adds the source, and are linked to it then.
  */
 export function trackingSourceIn(
   db: Kysely<Database>,
@@ -30,7 +49,10 @@ export function trackingSourceIn(
     if (existing !== undefined) {
       return existing.id;
     }
-    plugin.validateConfig({});
+    if (!acceptsEmptyConfig(plugin)) {
+      // GLS, Evri and others need a postcode or a country: the user has to add the source.
+      return undefined;
+    }
     const id = crypto.randomUUID();
     const now = isoNow(clock);
     await db
@@ -59,6 +81,8 @@ export function trackingSourceIn(
 export interface LinkResult {
   readonly sources: ReadonlySet<string>;
   readonly parcels: number;
+  /** Carriers whose parcels stayed unfollowed: no plug-in tracks them, or it needs settings. */
+  readonly unlinkedCarriers: ReadonlySet<string>;
 }
 
 export interface LinkOptions {
@@ -109,6 +133,7 @@ export async function linkUntrackedParcels(
   }
   const unfollowed = await query.execute();
   const touched = new Set<string>();
+  const unlinked = new Set<string>();
   let parcels = 0;
   const byCarrier = new Map<string, string | undefined>();
   for (const parcel of unfollowed) {
@@ -117,6 +142,7 @@ export async function linkUntrackedParcels(
     }
     const sourceId = byCarrier.get(parcel.carrier);
     if (sourceId === undefined) {
+      unlinked.add(parcel.carrier);
       continue;
     }
     await db
@@ -133,5 +159,5 @@ export async function linkUntrackedParcels(
     touched.add(sourceId);
     parcels += 1;
   }
-  return { sources: touched, parcels };
+  return { sources: touched, parcels, unlinkedCarriers: unlinked };
 }

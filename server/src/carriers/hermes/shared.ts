@@ -15,7 +15,7 @@ export const text = (value: unknown): string | null => anyText(value, { numbers:
 
 /** ISO 8601 for a string or epoch-millisecond timestamp; null when it does not parse. */
 export const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "Europe/Berlin" }, epoch: "ms" });
 /** Maps a Hermes status code (either vocabulary) through the shared status table. */
 export function mapCode(
   code: string | null,

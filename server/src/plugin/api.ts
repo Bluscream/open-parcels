@@ -56,7 +56,9 @@ export interface FetchResult {
   readonly snapshots: readonly ParcelSnapshot[];
   /**
    * True when the list is everything the source currently has. Only complete results let the
-   * reconciler conclude that a missing parcel is gone.
+   * reconciler conclude that a missing parcel is gone. Ignored for tracking sources: a lookup
+   * never lists everything, and a code the carrier does not know goes through the not-found
+   * lookup state instead.
    */
   readonly complete: boolean;
 }

@@ -221,6 +221,8 @@ function rowsOf(payload: unknown): Json[] | null {
 export class CargusAccount {
   #tokens: Tokens | null;
   #changed = false;
+  /** One renewal per run (an account object lives for one run), not one per request. */
+  #renewed = false;
 
   constructor(
     private readonly http: PluginHttp,
@@ -277,22 +279,21 @@ export class CargusAccount {
     };
   }
 
-  /** One signed-in GET. A 401 renews the token once; a 400/403 tries the other variant once. */
+  /** One signed-in GET. A 401 renews the token once per run; a 400/403 tries the other variant once. */
   async get(path: string, params: Record<string, string>): Promise<unknown> {
     const url = new URL(`${API_BASE}/${path}`);
     url.search = new URLSearchParams(params).toString();
     const first = this.#tokens?.variant ?? "web";
     const variants = first === "web" ? (["web", "app"] as const) : (["app", "web"] as const);
     let token = await this.#access(false);
-    let renewed = false;
     for (let index = 0; index < variants.length;) {
       const variant = variants[index] ?? "web";
       const response = await this.http.request(url, {
         headers: this.#headers(variant, token),
         maxBytes: 1024 * 1024,
       });
-      if (response.status === 401 && !renewed) {
-        renewed = true;
+      if (response.status === 401 && !this.#renewed) {
+        this.#renewed = true;
         token = await this.#access(true);
         continue;
       }

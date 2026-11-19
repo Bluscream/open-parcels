@@ -15,7 +15,7 @@ export const text = (value: unknown): string | null => kitText(value, { numbers:
 
 /** Strings as `new Date()` reads them, numbers as epoch milliseconds. */
 export const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "Pacific/Auckland" }, epoch: "ms" });
 
 /**
  * The display text every event carries, or the numeric event code of an event without one,

@@ -285,6 +285,16 @@ describe("UPS official Tracking API", () => {
     expect(w.calls[3]?.headers.get("authorization")).toBe("Bearer t2");
   });
 
+  it("requests a new token at most once per run, not once per code", async () => {
+    const w = world([
+      on(TOKEN, token("t1"), token("t2"), token("t3")),
+      on(OFFICIAL(CODE), json({}, 401), json(officialPackage("I", "2026111810:30:00"))),
+      on(OFFICIAL(OTHER), json({}, 401)),
+    ]);
+    expect(await failure(w.track([CODE, OTHER], {}, SECRET))).toBeInstanceOf(SignInRejectedError);
+    expect(w.requests().filter((request) => request === TOKEN)).toHaveLength(2);
+  });
+
   it("never requests a new token on a network error", async () => {
     const w = world([
       on(TOKEN, token("t1"), token("t2")),

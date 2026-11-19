@@ -56,6 +56,8 @@ function tokensFrom(payload: unknown): Tokens {
  */
 class Account {
   #tokens: Tokens | null;
+  /** One renewal per run (an Account lives for one run): a second refusal means sign in again. */
+  #renewed = false;
 
   constructor(private readonly context: PluginContext<unknown, Credentials>) {
     const stored = tokensSchema.safeParse(context.session.load());
@@ -146,7 +148,7 @@ class Account {
     }
   }
 
-  /** One signed-in call; a refused token is renewed once. */
+  /** One signed-in call; a refused token is renewed once per run, not once per call. */
   async call(path: string, body: Json): Promise<unknown> {
     if (this.#tokens === null) {
       await this.#signIn();
@@ -158,6 +160,10 @@ class Account {
         throw error;
       }
     }
+    if (this.#renewed) {
+      throw new SignInRejectedError("My bpost refused the session again after renewing it.");
+    }
+    this.#renewed = true;
     await this.#renew();
     try {
       return await this.#post(path, body, { auth: true, app: true });
@@ -283,5 +289,7 @@ export async function fetchBpostAccount(
   const snapshots = entries
     .map((raw) => accountSnapshot(raw, report))
     .filter((parcel): parcel is ParcelSnapshot => parcel !== null);
-  return { snapshots, complete: true };
+  // The details call is the app's first page (`isFirstPageCall`) and how it pages further is not
+  // known, so the answer may be partial: it never lets a parcel missing from it count as gone.
+  return { snapshots, complete: false };
 }

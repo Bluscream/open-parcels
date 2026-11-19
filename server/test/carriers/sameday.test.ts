@@ -42,7 +42,7 @@ describe("Sameday tracking", () => {
     });
     const { base } = fakeContext(sameday.http, fetchImpl);
     const result = await plugin.track(base, {}, null, [AWB]);
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
     expect(result.snapshots[0]).toMatchObject({
       carrier: "sameday",
       barcode: AWB,

@@ -42,7 +42,7 @@ const QUERY = `query ParcelTracking($ref: String!) {
 
 const text = (value: unknown): string | null => anyText(value, { numbers: false });
 const isoTime = (value: unknown): string | null =>
-  kitIsoTime(value, { naive: "runtime", epoch: "ms" });
+  kitIsoTime(value, { naive: { zone: "Europe/Oslo" }, epoch: "ms" });
 
 /**
  * One enum serves the parcel and its events (the shared table). Provisional: the vocabulary

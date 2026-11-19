@@ -121,10 +121,10 @@ function rows(found: Json): Json[] {
     });
 }
 
-function history(scans: readonly Json[]): SnapshotEvent[] {
+function history(scans: readonly Json[], zone: string): SnapshotEvent[] {
   return latestHistory(
     scans.flatMap((row) => {
-      const at = isoTime(row["at"]);
+      const at = isoTime(row["at"], zone);
       const code = text(row["code"]);
       const description = text(row["description"]);
       const rawStatus = description ?? code;
@@ -161,7 +161,7 @@ export function esSnapshot(
   const state = asObject(found["state"]);
   const code = text(state["code"]);
   const scans = rows(found);
-  const events = history(scans);
+  const events = history(scans, ids.country === "PT" ? "Europe/Lisbon" : "Europe/Madrid");
   const mapped = mapEs(code, text(state["description"]));
   // `stored` has no milestone of its own; like any unmapped state it takes the newest scan's.
   if (code !== null && mapped === null && code !== "stored") {

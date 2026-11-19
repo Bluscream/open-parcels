@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  asTracked,
   carrierPattern,
   ruleStatus,
   defineCarrier,
@@ -15,8 +16,8 @@ import { API_HOST, UspsClient } from "./client.js";
 import { fetchInformed, INFORMED_API_HOST } from "./informed.js";
 import { informedSignIn } from "./journey.js";
 
-/** Offset-less timestamps keep the runtime's own reading, as before; numbers are epoch ms. */
-const RUNTIME_TIME = { naive: "runtime", epoch: "ms" } as const;
+/** Offset-less timestamps are the carrier's local time; numbers are epoch ms. */
+const LOCAL_TIME = { naive: { zone: "America/New_York" }, epoch: "ms" } as const;
 
 const CARRIER_ID = "usps";
 
@@ -57,7 +58,7 @@ type Secret = z.infer<typeof secretSchema>;
 function history(raw: Json): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const event of objects(raw["trackingEvents"])) {
-    const at = isoTime(event["eventTimestamp"], RUNTIME_TIME);
+    const at = isoTime(event["eventTimestamp"], LOCAL_TIME);
     const kind = text(event["eventType"]) ?? text(event["statusCategory"]);
     const rawStatus = text(event["eventCode"]) ?? kind;
     if (at !== null && rawStatus !== null) {
@@ -120,7 +121,8 @@ async function track(context: PluginContext<Config, Secret>, barcodes: readonly 
     }
     const raw = await client.parcel(barcode);
     if (raw !== null) {
-      snapshots.push(uspsSnapshot(raw, barcode, report));
+      // USPS echoes its own spelling of the number; the tracked code stays the key.
+      snapshots.push(asTracked(uspsSnapshot(raw, barcode, report), barcode));
     }
   }
   return { snapshots, complete: true };

@@ -92,7 +92,9 @@ describe("GLS Poland, US and Canada", () => {
     const config = { country: "PL", postalCode: "00-001" };
     const [found] = (await world.track([CODE], config)).snapshots;
     expect(found).toMatchObject({
-      barcode: `${CODE}5`,
+      // The code as tracked stays the key; GLS's own number (with its check digit) is a reference.
+      barcode: CODE,
+      externalRef: `${CODE}5`,
       status: "delivered",
       deliveredAt: "2026-11-18T08:00:00.000Z",
       rawStatus: "Paczka doręczona",

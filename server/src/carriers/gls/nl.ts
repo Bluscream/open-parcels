@@ -21,6 +21,8 @@ import {
   text,
 } from "./shared.js";
 
+const NL_ZONE = "Europe/Amsterdam";
+
 /**
  * The Dutch national tracking: one keyless GET keyed on parcel number and delivery postcode.
  * 204 means GLS does not know the parcel (yet); that is a normal "not found".
@@ -56,7 +58,7 @@ function scans(raw: Json): SnapshotEvent[] {
   const events: SnapshotEvent[] = [];
   for (const entry of asList(raw["scans"])) {
     const scan = asObject(entry);
-    const at = isoTime(scan["dateTime"]);
+    const at = isoTime(scan["dateTime"], NL_ZONE);
     const code = stateCode(scan["state"]);
     const rawStatus = text(scan["eventReasonDescr"]) ?? code;
     if (at === null || rawStatus === null) {
@@ -103,9 +105,9 @@ export function nlSnapshot(
     status: delivered ? "delivered" : status,
     rawStatus: text(asObject(asList(raw["parcels"])[0])["lastStatus"]) ?? code,
     delivered,
-    deliveredAt: delivered ? isoTime(scanInfo["dateTime"]) : null,
-    plannedFrom: delivered ? null : isoTime(eta["etaTimestampMin"]),
-    plannedTo: delivered ? null : isoTime(eta["etaTimestampMax"]),
+    deliveredAt: delivered ? isoTime(scanInfo["dateTime"], NL_ZONE) : null,
+    plannedFrom: delivered ? null : isoTime(eta["etaTimestampMin"], NL_ZONE),
+    plannedTo: delivered ? null : isoTime(eta["etaTimestampMax"], NL_ZONE),
     pickup,
     pickupPoint: pickup ? pickupPoint(raw) : null,
     url: `https://www.gls-info.nl/tracking?trackid=${encodeURIComponent(parcelNo)}&zipcode=${encodeURIComponent(compactPostcode(postcode))}`,

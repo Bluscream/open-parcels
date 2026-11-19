@@ -75,9 +75,13 @@ async function requestToken(deps: Deps, credentials: Credentials): Promise<Store
   };
 }
 
-/** The access token of one source: reused while valid, renewed when expired or refused once. */
+/**
+ * The access token of one source for one run: reused while valid, renewed when expired, and
+ * renewed after a refusal at most once per run (not once per code).
+ */
 export class OfficialSession {
   #token: StoredToken | null;
+  #renewed = false;
 
   constructor(
     private readonly deps: Deps,
@@ -119,9 +123,10 @@ export class OfficialSession {
   /** The package UPS reports for one number; null when it does not know it. */
   async track(code: string): Promise<Json | null> {
     let response = await this.#get(code);
-    if (response.status === 401) {
-      // UPS refused the token itself: request a new one once. A network error never gets here;
-      // it is thrown by the HTTP layer as a transient failure.
+    if (response.status === 401 && !this.#renewed) {
+      // UPS refused the token itself: request a new one, once per run. A network error never gets
+      // here; it is thrown by the HTTP layer as a transient failure.
+      this.#renewed = true;
       this.#token = null;
       response = await this.#get(code);
     }

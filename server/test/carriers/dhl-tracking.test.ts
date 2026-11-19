@@ -167,6 +167,23 @@ describe("DHL tracking", () => {
     expect(Object.keys(parcel?.raw as object)).toEqual(["gateway", "unified"]);
   });
 
+  it("never takes the official API's first shipment when none is the asked code", async () => {
+    const world = new World();
+    gateway(world, []);
+    world.routes.push(({ url }) =>
+      url.hostname === "api-eu.dhl.com"
+        ? json({
+            shipments: [
+              { id: CODE_B, status: { statusCode: "delivered", status: "DELIVERED" }, events: [] },
+            ],
+          })
+        : undefined,
+    );
+    await expect(track(world.context({ apiKey: "made-up-key" }), [CODE_A])).rejects.toBeInstanceOf(
+      UnexpectedResponseError,
+    );
+  });
+
   it("asks for a new key only when DHL refuses it, never on a network error", async () => {
     const refused = new World();
     gateway(refused, "Not found", 404);

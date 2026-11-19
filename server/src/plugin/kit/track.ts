@@ -63,6 +63,18 @@ const defaultNormalize = (code: string): string => code.trim().toUpperCase();
 const asGiven = (code: string): string => code;
 
 /**
+ * A lookup's answer filed under the code as tracked. Carriers often echo their own number (a
+ * parcel number, a token, a reformatted code); that one is kept as the external reference, never
+ * as the barcode, so the answer can never become a second parcel. A hand-off keeps its own key.
+ */
+export function asTracked(found: ParcelSnapshot, tracked: string): ParcelSnapshot {
+  if (found.barcode === tracked) {
+    return found;
+  }
+  return { ...found, barcode: tracked, externalRef: found.externalRef ?? found.barcode };
+}
+
+/**
  * Looks codes up one at a time, so the host limiter paces them and the first error stops the run
  * before more requests go out. `lookUp` gets the code as sent and as tracked. A null answer means
  * "not found" and leaves the code out.
@@ -73,7 +85,7 @@ export async function trackEach(
   barcodes: readonly string[],
   options: RegExp | TrackOptions,
   lookUp: (code: string, tracked: string) => Promise<ParcelSnapshot | null>,
-): Promise<FetchResult & { readonly complete: true }> {
+): Promise<FetchResult> {
   const settings: TrackOptions =
     options instanceof RegExp ? { plausible: options, normalize: asGiven, dedupe: false } : options;
   const normalize = settings.normalize ?? defaultNormalize;
@@ -87,10 +99,12 @@ export async function trackEach(
     done.add(code);
     const found = await lookUp(code, barcode);
     if (found !== null) {
-      snapshots.push(found);
+      snapshots.push(asTracked(found, barcode));
     }
   }
-  return { snapshots, complete: true };
+  // A lookup answers only for the codes asked; whether a missing one is gone is the not-found
+  // lookup state's call (archived after 30 days), never the removal grace period's.
+  return { snapshots, complete: false };
 }
 
 /**
