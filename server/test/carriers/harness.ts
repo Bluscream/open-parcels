@@ -4,6 +4,7 @@
  * with it are always made up.
  */
 import { register, type BaseContext, type RegisteredPlugin } from "../../src/engine/registry.js";
+import { NOT_FILED_AS_TRACKED } from "../../src/engine/tracked.js";
 import type { CarrierPlugin, FetchResult, PluginContext } from "../../src/plugin/api.js";
 import { HostLimiter, PluginHttp, type FetchLike, type HttpPolicy } from "../../src/plugin/http.js";
 import { FakeClock } from "../helpers.js";
@@ -289,12 +290,25 @@ export class World<Config = unknown, Secret = unknown> {
     return { ...this.#context.base, config, secret };
   }
 
-  track(
+  /**
+   * Tracks codes through the registry, and fails when a snapshot is filed under anything but a code
+   * that was asked for: the carrier's echo belongs in `externalRef`, never in `barcode`, or the
+   * tracked code reads as not found and a second parcel appears. Every carrier test runs this.
+   */
+  async track(
     codes: readonly string[],
     config: unknown = {},
     secret: unknown = null,
   ): Promise<FetchResult> {
-    return this.plugin.track(this.base(), config, secret, codes);
+    const before = this.warnings.length;
+    const result = await this.plugin.track(this.base(), config, secret, codes);
+    if (this.warnings.slice(before).includes(NOT_FILED_AS_TRACKED)) {
+      throw new Error(
+        `${this.carrier.id}: track() filed an answer under something other than a tracked code (${codes.join(", ")}).`,
+      );
+    }
+    assertFiledAsTracked(this.carrier.id, codes, result);
+    return result;
   }
 
   fetchAccount(config: unknown = {}, secret: unknown = null): Promise<FetchResult> {
@@ -304,6 +318,21 @@ export class World<Config = unknown, Secret = unknown> {
   /** "METHOD host/path" of every request, in order. */
   requests(): string[] {
     return this.#network.requests();
+  }
+}
+
+/** Throws unless every snapshot of a lookup is filed under one of the codes asked for. */
+export function assertFiledAsTracked(
+  carrier: string,
+  codes: readonly string[],
+  result: FetchResult,
+): void {
+  const asked = new Set(codes);
+  const stray = result.snapshots.map((found) => found.barcode).filter((code) => !asked.has(code));
+  if (stray.length > 0) {
+    throw new Error(
+      `${carrier}: track() filed ${stray.join(", ")} instead of a tracked code (${codes.join(", ")}).`,
+    );
   }
 }
 

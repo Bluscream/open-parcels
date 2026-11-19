@@ -13,6 +13,7 @@ import type {
 import type { Clock } from "../clock.js";
 import { InvalidConfigError } from "../plugin/errors.js";
 import type { HttpPolicy, PluginHttp } from "../plugin/http.js";
+import { fileUnderTracked } from "./tracked.js";
 
 export class InvalidSourceConfigError extends Error {
   override readonly name = "InvalidSourceConfigError";
@@ -234,7 +235,10 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
       if (plugin.track === undefined) {
         throw new InvalidSourceConfigError(`${plugin.name} cannot track codes.`);
       }
-      return asSourceConfigError(plugin.track(context(base, rawConfig, rawSecret), barcodes));
+      const result = await asSourceConfigError(
+        plugin.track(context(base, rawConfig, rawSecret), barcodes),
+      );
+      return fileUnderTracked(plugin.id, barcodes, result, base.logger);
     },
   };
 }
