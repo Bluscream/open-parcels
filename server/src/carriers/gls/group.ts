@@ -47,6 +47,19 @@ async function getJson(http: PluginHttp, url: URL): Promise<Reply> {
   return { status: response.status, body: payload };
 }
 
+/**
+ * Error codes that say the parcel is unknown: E206 (no data for the code) and, from the overview,
+ * E800 (not indexed). Any other code, or one on a 5xx, is a failure of the service.
+ */
+const NOT_FOUND_ERRORS: ReadonlySet<string> = new Set(["E206", "E800"]);
+
+function notFoundOrFail(status: number, lastError: string): null {
+  if (status < 500 && NOT_FOUND_ERRORS.has(lastError)) {
+    return null;
+  }
+  throw new TransientError(`GLS group tracking answered HTTP ${status} with ${lastError}.`);
+}
+
 function base(country: GroupCountry, path: string): URL {
   return new URL(`https://${country.host}/app/service/open/rest/${country.locale}/${path}`);
 }
@@ -81,7 +94,7 @@ async function overview(
       throw new TransientError(`GLS group tracking answered HTTP ${status}.`);
     }
     if (lastError !== null) {
-      return null;
+      return notFoundOrFail(status, lastError);
     }
     const first = asList(body["tuStatus"])[0];
     return isObject(first) ? first : null;
@@ -113,7 +126,7 @@ export async function lookUpGroup(
     return overview(http, millis, country, barcode);
   }
   if (lastError !== null) {
-    return null;
+    return notFoundOrFail(status, lastError);
   }
   if (status !== 200) {
     throw new TransientError(`GLS group tracking answered HTTP ${status}.`);
