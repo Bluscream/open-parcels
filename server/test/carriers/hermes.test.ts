@@ -343,6 +343,35 @@ describe("Hermes account", () => {
     expect(lookups.length).toBeLessThan(many.length);
   });
 
+  it("runs an imported account on its tokens alone", async () => {
+    const { fetchImpl, calls } = fakeHermes({ "GET shipments": [{ status: 200, body: [] }] });
+    const { base } = context(fetchImpl, tokens(1));
+    const result = await plugin.fetchAccount(base, { publicForecast: false }, { username: "u" });
+    expect(result.snapshots).toEqual([]);
+    expect(calls.map((c) => c.key)).toEqual(["GET shipments"]);
+  });
+
+  it("needs a sign-in, without a login attempt, when an imported account's tokens are refused", async () => {
+    const { fetchImpl, calls } = fakeHermes({
+      "GET shipments": [{ status: 401, body: {} }],
+      "POST users/refreshtoken": [{ status: 401, body: {} }],
+    });
+    const { base } = context(fetchImpl, tokens(1));
+    const run = plugin.fetchAccount(base, {}, { username: "u" });
+    await expect(run).rejects.toBeInstanceOf(SignInRejectedError);
+    await expect(run).rejects.toThrow(/no password/);
+    expect(calls.map((c) => c.key)).toEqual(["GET shipments", "POST users/refreshtoken"]);
+  });
+
+  it("needs a sign-in, sending nothing, when an imported account has no tokens", async () => {
+    const { fetchImpl, calls } = fakeHermes({});
+    const { base } = context(fetchImpl);
+    await expect(plugin.fetchAccount(base, {}, { username: "u" })).rejects.toBeInstanceOf(
+      SignInRejectedError,
+    );
+    expect(calls).toEqual([]);
+  });
+
   it("refuses to run without stored credentials", async () => {
     const { fetchImpl } = fakeHermes({});
     const { base } = context(fetchImpl);
