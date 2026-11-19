@@ -37,6 +37,7 @@ import { HostLimiter, realSleep, type FetchLike, type Sleep } from "./plugin/htt
 import { availableLayers } from "./tiles/layers.js";
 import { TileProxy } from "./tiles/proxy.js";
 import { Geocoder } from "./geo/geocoder.js";
+import { PlaceResolver } from "./geo/resolver.js";
 import { ConfigSettings } from "./settings/config-settings.js";
 import { SettingsStore } from "./settings/store.js";
 import { CollageMaker } from "./images/collage.js";
@@ -88,6 +89,8 @@ export interface Services {
   readonly images: ImageProxy;
   readonly tiles: TileProxy;
   readonly geocoder: Geocoder;
+  /** Background job placing scans that only name a place; started by main. */
+  readonly places: PlaceResolver;
   readonly settings: SettingsStore;
   readonly configSettings: ConfigSettings;
   readonly collages: CollageMaker;
@@ -293,6 +296,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     },
     presentation,
   );
+  const places = new PlaceResolver({ db, geocoder, bus, clock, logger, presentation });
   const mail = new MailWatcher({
     db,
     secrets: deps.secrets,
@@ -319,6 +323,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     images,
     tiles,
     geocoder,
+    places,
     settings,
     configSettings,
     collages: new CollageMaker(path.join(deps.config.dataDir, "collages")),

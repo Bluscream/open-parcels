@@ -12,6 +12,7 @@ const PARCEL_EVENTS = [
   "parcel.outgoing_registered",
   "parcel.outgoing_delivered",
   "parcel.live_updated",
+  "parcel.location_changed",
   "parcel.removed",
   "parcel.deleted",
 ] as const;

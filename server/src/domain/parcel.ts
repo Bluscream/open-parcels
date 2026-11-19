@@ -37,6 +37,11 @@ export const historyEntrySchema = z.object({
   location: z.string().nullable(),
   latitude: z.number().min(-90).max(90).nullable(),
   longitude: z.number().min(-180).max(180).nullable(),
+  /**
+   * True when the coordinates were looked up from `location` (the place's centre) instead of
+   * coming from the carrier; false otherwise, also when there are none.
+   */
+  approximate: z.boolean(),
 });
 export type HistoryEntry = z.infer<typeof historyEntrySchema>;
 

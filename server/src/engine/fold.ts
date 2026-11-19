@@ -36,6 +36,7 @@ export async function foldParcel(
       "location_text",
       "latitude",
       "longitude",
+      "geocoded",
       "fingerprint",
     ])
     .expression((eb) =>
@@ -50,6 +51,7 @@ export async function foldParcel(
           "location_text",
           "latitude",
           "longitude",
+          "geocoded",
           "fingerprint",
         ])
         .where("parcel_id", "=", duplicate.id),

@@ -752,6 +752,7 @@ export class Reconciler {
       )
       .execute();
     for (const event of snapshot.history) {
+      const position = coordinates(event);
       await trx
         .insertInto("parcel_events")
         .values({
@@ -761,10 +762,23 @@ export class Reconciler {
           status: event.status,
           raw_status: event.rawStatus,
           location_text: event.location,
-          ...coordinates(event),
+          ...position,
           fingerprint: fingerprint(event),
         })
-        .onConflict((oc) => oc.columns(["parcel_id", "fingerprint"]).doNothing())
+        .onConflict((oc) => {
+          const target = oc.columns(["parcel_id", "fingerprint"]);
+          // The carrier's own position wins over one looked up from the place name.
+          return position.latitude === null
+            ? target.doNothing()
+            : target
+                .doUpdateSet({ ...position, geocoded: 0 })
+                .where((eb) =>
+                  eb.or([
+                    eb("parcel_events.geocoded", "=", 1),
+                    eb("parcel_events.latitude", "is", null),
+                  ]),
+                );
+        })
         .execute();
     }
     if (snapshot.historyComplete === true) {

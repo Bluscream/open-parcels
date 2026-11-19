@@ -69,6 +69,7 @@ describe("migration 0009-idle-source-state", () => {
         "0009-idle-source-state",
         "0010-order-lifecycle",
         "0011-setting-overrides",
+        "0012-geocoded-events",
       ]);
 
       const rows = await sql<{ id: string; state: string; state_detail: string | null }>`

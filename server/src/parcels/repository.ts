@@ -307,7 +307,7 @@ export class ParcelRepository {
         // Only the scans with a position: the parcel's place, also when the history is not loaded.
         this.db
           .selectFrom("parcel_events")
-          .select(["parcel_id", "at", "location_text", "latitude", "longitude"])
+          .select(["parcel_id", "at", "location_text", "latitude", "longitude", "geocoded"])
           .where("parcel_id", "in", ids)
           .where("latitude", "is not", null)
           .where("longitude", "is not", null)
@@ -372,6 +372,7 @@ export class ParcelRepository {
           location: event.location_text,
           latitude: event.latitude,
           longitude: event.longitude,
+          approximate: event.geocoded === 1 && event.latitude !== null,
         })),
       );
     }
@@ -383,7 +384,8 @@ export class ParcelRepository {
           latitude: event.latitude,
           longitude: event.longitude,
           source: "event",
-          precision: "exact",
+          // A position looked up from the place name is only the town's centre.
+          precision: event.geocoded === 1 ? "area" : "exact",
           name: event.location_text,
           address: null,
           at: event.at,

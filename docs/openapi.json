@@ -1625,6 +1625,9 @@
                               "type": "number",
                               "minimum": -180,
                               "maximum": 180
+                            },
+                            "approximate": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -1633,7 +1636,8 @@
                             "raw_status",
                             "location",
                             "latitude",
-                            "longitude"
+                            "longitude",
+                            "approximate"
                           ],
                           "additionalProperties": false
                         }
@@ -2272,6 +2276,9 @@
                             "type": "number",
                             "minimum": -180,
                             "maximum": 180
+                          },
+                          "approximate": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -2280,7 +2287,8 @@
                           "raw_status",
                           "location",
                           "latitude",
-                          "longitude"
+                          "longitude",
+                          "approximate"
                         ],
                         "additionalProperties": false
                       }
@@ -2943,6 +2951,9 @@
                             "type": "number",
                             "minimum": -180,
                             "maximum": 180
+                          },
+                          "approximate": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -2951,7 +2962,8 @@
                           "raw_status",
                           "location",
                           "latitude",
-                          "longitude"
+                          "longitude",
+                          "approximate"
                         ],
                         "additionalProperties": false
                       }
@@ -3621,6 +3633,9 @@
                             "type": "number",
                             "minimum": -180,
                             "maximum": 180
+                          },
+                          "approximate": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -3629,7 +3644,8 @@
                           "raw_status",
                           "location",
                           "latitude",
-                          "longitude"
+                          "longitude",
+                          "approximate"
                         ],
                         "additionalProperties": false
                       }
