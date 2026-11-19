@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Kysely, Transaction } from "kysely";
+import type { ExpressionBuilder, Kysely, Transaction } from "kysely";
 import type { Logger } from "pino";
 import { addMs, isoNow, type Clock } from "../clock.js";
 import type { Database, ParcelRow, SourceRow } from "../db/schema.js";
@@ -176,6 +176,23 @@ async function shopTwins(
       ),
     )
     .execute();
+}
+
+/**
+ * A hand-off goes to a carrier, never to another shop: a parcel stored under a plug-in that has a
+ * shop source is not a hand-off target, so a second shop's parcel with the same code is not
+ * folded into it.
+ */
+function notUnderAShop(eb: ExpressionBuilder<Database, "parcels">) {
+  return eb.not(
+    eb.exists(
+      eb
+        .selectFrom("sources")
+        .select("sources.id")
+        .where("sources.kind", "=", "shop")
+        .whereRef("sources.plugin", "=", "parcels.carrier"),
+    ),
+  );
 }
 
 async function findParcel(
@@ -441,6 +458,7 @@ export class Reconciler {
       .select(["carrier", "barcode"])
       .where("barcode", "=", snapshot.barcode)
       .where("carrier", "!=", snapshot.carrier)
+      .where(notUnderAShop)
       .execute();
     const [twin] = twins;
     return twins.length === 1 && twin !== undefined
@@ -507,6 +525,7 @@ export class Reconciler {
         .selectAll()
         .where("barcode", "=", shop.barcode)
         .where("carrier", "!=", shop.carrier)
+        .where(notUnderAShop)
         .execute();
       const [target] = others;
       if (others.length !== 1 || target === undefined) {
