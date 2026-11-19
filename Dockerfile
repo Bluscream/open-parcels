@@ -61,4 +61,4 @@ CMD ["node", "server/dist/main.js"]
 
 LABEL org.opencontainers.image.title="open-parcels" \
       org.opencontainers.image.description="Self-hosted parcel and order tracking for every carrier, shop and mailbox." \
-      org.opencontainers.image.source="https://github.com/Bluscream/open-parcels"
+      org.opencontainers.image.source="https://github.com/open-parcels/open-parcels"

@@ -6,8 +6,9 @@
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Bluscream/open-parcels/issues</Support>
-  <Project>https://github.com/Bluscream/open-parcels</Project>
+  <Support>https://github.com/open-parcels/open-parcels/issues</Support>
+  <Project>https://github.com/open-parcels/open-parcels</Project>
+  <TemplateURL>https://raw.githubusercontent.com/open-parcels/open-parcels/master/unraid/open-parcels.xml</TemplateURL>
   <Overview>Self-hosted parcel and order tracking. Signs in to carriers and shops, reads shipping mails, follows couriers live on a map, keeps a delivery calendar (also as an ICS feed) and publishes events for Home Assistant and other clients.&#xD;
 &#xD;
 On first start the container log prints a one-time setup code; open the web UI and enter it to set the owner password.&#xD;
@@ -15,7 +16,7 @@ On first start the container log prints a one-time setup code; open the web UI a
 The image runs as uid 1000. The data folder must be writable for that user (chown 1000:1000), or set Extra Parameters to --user 99:100 and make the folder writable for nobody:users.</Overview>
   <Category>Tools:Utilities HomeAutomation:</Category>
   <WebUI>http://[IP]:[PORT:3000]</WebUI>
-  <Icon>https://raw.githubusercontent.com/Bluscream/open-parcels/master/docs/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/open-parcels/open-parcels/master/docs/icon.png</Icon>
   <ExtraParams>--read-only --tmpfs /tmp --security-opt no-new-privileges</ExtraParams>
   <PostArgs/>
   <Config Name="Web UI port" Target="3000" Default="3000" Mode="tcp" Description="Port of the web UI and the API." Type="Port" Display="always" Required="true" Mask="false">3000</Config>

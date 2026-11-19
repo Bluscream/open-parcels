@@ -49,7 +49,7 @@ export const BROWSER_HEADERS_REASON =
   "times out) unless the request carries a Chrome User-Agent with matching client-hint headers.";
 
 /** Sent to UPS's official API, which needs no disguise. */
-export const HONEST_USER_AGENT = "open-parcels/2 (+https://github.com/Bluscream/open-parcels)";
+export const HONEST_USER_AGENT = "open-parcels/2 (+https://github.com/open-parcels/open-parcels)";
 
 /**
  * The client-hint headers the guard scores for a Chrome identity. All four are required together:

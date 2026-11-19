@@ -4,7 +4,7 @@ import type { Clock } from "../clock.js";
 import { isNonPublicHostLiteral } from "../net/address.js";
 import { RateLimitedError, TransientError } from "./errors.js";
 
-export const DEFAULT_USER_AGENT = "open-parcels/2 (+https://github.com/Bluscream/open-parcels)";
+export const DEFAULT_USER_AGENT = "open-parcels/2 (+https://github.com/open-parcels/open-parcels)";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 

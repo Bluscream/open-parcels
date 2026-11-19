@@ -2,6 +2,14 @@
   "name": "open-parcels-workspace",
   "private": true,
   "description": "Self-hosted parcel and order tracking: one backend for every carrier, shop and mailbox.",
+  "homepage": "https://open-parcels.github.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-parcels/open-parcels.git"
+  },
+  "bugs": {
+    "url": "https://github.com/open-parcels/open-parcels/issues"
+  },
   "type": "module",
   "workspaces": [
     "server",

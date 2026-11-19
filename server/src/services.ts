@@ -198,7 +198,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
   const tiles = new TileProxy({
     cacheDir: path.join(deps.config.dataDir, "tiles"),
     userAgent:
-      "open-parcels/2.0 (self-hosted parcel tracker; +https://github.com/Bluscream/open-parcels)",
+      "open-parcels/2.0 (self-hosted parcel tracker; +https://github.com/open-parcels/open-parcels)",
   });
   // Filled in once the live tracker exists; reads before that see no positions.
   const presentation: Presentation = {
