@@ -688,6 +688,17 @@ export class Reconciler {
         .onConflict((oc) => oc.columns(["parcel_id", "fingerprint"]).doNothing())
         .execute();
     }
+    if (snapshot.historyComplete === true) {
+      let stale = trx
+        .deleteFrom("parcel_events")
+        .where("parcel_id", "=", parcelId)
+        .where("source_id", "=", sourceId);
+      const kept = snapshot.history.map((event) => fingerprint(event));
+      if (kept.length > 0) {
+        stale = stale.where("fingerprint", "not in", kept);
+      }
+      await stale.execute();
+    }
     if (snapshot.items.length > 0 && (await this.#mayWriteItems(trx, parcelId, sourceKind))) {
       await trx.deleteFrom("items").where("parcel_id", "=", parcelId).execute();
       await trx

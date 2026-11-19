@@ -238,6 +238,7 @@ export async function createServices(deps: ServiceDeps): Promise<Services> {
     timeZone: deps.config.timeZone,
     quietWindow: deps.config.quietWindow,
     installId,
+    pollIntervalOf: (plugin) => registry.get(plugin)?.info.pollIntervalMs ?? null,
     onRunSucceeded: (sourceId, liveTargets) => {
       live.setTargets(sourceId, liveTargets);
     },

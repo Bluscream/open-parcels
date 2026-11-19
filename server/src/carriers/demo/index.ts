@@ -1,43 +1,74 @@
 import { z } from "zod";
 import { defineCarrier, type ParcelSnapshot } from "../../plugin/api.js";
 import {
+  courierView,
   DEMO_CARRIER,
   DEMO_PARCELS,
+  DEMO_POLL_MS,
   DEMO_SHOP,
   DEMO_SHOP_NAME,
   IMAGE_HOST,
   demoLiveReading,
+  runOf,
   type DemoParcel,
 } from "./data.js";
 
 /**
- * Demo courier and demo shop: made-up parcels for trying and testing the app (orders, items,
- * history with and without coordinates, a pickup point, a live courier). They never go online
- * except for the placeholder item pictures, fetched through the image proxy.
+ * Demo courier and demo shop: made-up parcels for trying and testing the app, replaying a ten
+ * minute story from announced to delivered (see data.ts). They never go online except for the
+ * placeholder item pictures, fetched through the image proxy.
  */
 
 const configSchema = z.looseObject({});
 const secretSchema = z.null();
 
-function snapshot(parcel: DemoParcel, now: number, fromShop: boolean): ParcelSnapshot {
-  const built = parcel.build(now);
+const order = (parcel: DemoParcel, now: number): ParcelSnapshot["order"] => ({
+  shop: DEMO_SHOP_NAME,
+  orderNumber: parcel.order.number,
+  placedAt: new Date(runOf(now).start - parcel.order.placedSecondsBefore * 1000).toISOString(),
+});
+
+function fromCourier(parcel: DemoParcel, now: number): ParcelSnapshot {
   return {
-    ...built,
-    carrier: fromShop ? DEMO_SHOP : DEMO_CARRIER,
-    // The shop only knows the order; the courier tracks the parcel and shows it live.
-    live: fromShop ? null : built.live,
+    ...courierView(parcel, now),
+    carrier: DEMO_CARRIER,
     items: parcel.items,
-    order: {
-      shop: DEMO_SHOP_NAME,
-      orderNumber: parcel.order.number,
-      placedAt: new Date(now - parcel.order.placedHoursAgo * 3_600_000).toISOString(),
-    },
-    handoff: fromShop ? { carrier: DEMO_CARRIER, barcode: parcel.barcode } : null,
+    order: order(parcel, now),
+    handoff: null,
     raw: { demo: true, barcode: parcel.barcode },
   };
 }
 
+/** The shop knows the order and its items and who carries it; the courier knows the rest. */
+function fromShop(parcel: DemoParcel, now: number): ParcelSnapshot {
+  return {
+    carrier: DEMO_SHOP,
+    barcode: parcel.barcode,
+    direction: "incoming",
+    status: null,
+    rawStatus: null,
+    delivered: false,
+    deliveredAt: null,
+    plannedFrom: null,
+    plannedTo: null,
+    pickup: false,
+    pickupPoint: null,
+    url: null,
+    sender: DEMO_SHOP_NAME,
+    receiver: null,
+    weightKg: null,
+    history: [],
+    items: parcel.items,
+    order: order(parcel, now),
+    externalRef: null,
+    handoff: { carrier: DEMO_CARRIER, barcode: parcel.barcode },
+    raw: { demo: true, barcode: parcel.barcode },
+    live: null,
+  };
+}
+
 const LIMITS = { "*": { intervalMs: 1_000, burst: 1 } } as const;
+const liveRef = z.object({ barcode: z.string() });
 
 export const demoCarrier = defineCarrier({
   id: DEMO_CARRIER,
@@ -45,6 +76,7 @@ export const demoCarrier = defineCarrier({
   countries: ["*"],
   sourceKinds: ["account", "tracking"],
   imageHosts: [IMAGE_HOST],
+  pollIntervalMs: DEMO_POLL_MS,
   configSchema,
   secretSchema,
   signIn: { type: "none" },
@@ -52,7 +84,7 @@ export const demoCarrier = defineCarrier({
   fetchAccount: (context) => {
     const now = context.clock.now().getTime();
     return Promise.resolve({
-      snapshots: DEMO_PARCELS.map((parcel) => snapshot(parcel, now, false)),
+      snapshots: DEMO_PARCELS.map((parcel) => fromCourier(parcel, now)),
       complete: true,
     });
   },
@@ -61,12 +93,17 @@ export const demoCarrier = defineCarrier({
     const wanted = new Set(barcodes.map((code) => code.toUpperCase()));
     return Promise.resolve({
       snapshots: DEMO_PARCELS.filter((parcel) => wanted.has(parcel.barcode)).map((parcel) =>
-        snapshot(parcel, now, false),
+        fromCourier(parcel, now),
       ),
       complete: true,
     });
   },
-  readLive: (context) => Promise.resolve(demoLiveReading(context.clock.now().getTime())),
+  readLive: (context, target) => {
+    const ref = liveRef.safeParse(target.ref);
+    return Promise.resolve(
+      ref.success ? demoLiveReading(ref.data.barcode, context.clock.now().getTime()) : null,
+    );
+  },
 });
 
 export const demoShop = defineCarrier({
@@ -75,6 +112,7 @@ export const demoShop = defineCarrier({
   countries: ["*"],
   sourceKinds: ["shop"],
   imageHosts: [IMAGE_HOST],
+  pollIntervalMs: DEMO_POLL_MS,
   configSchema,
   secretSchema,
   signIn: { type: "none" },
@@ -82,7 +120,7 @@ export const demoShop = defineCarrier({
   fetchAccount: (context) => {
     const now = context.clock.now().getTime();
     return Promise.resolve({
-      snapshots: DEMO_PARCELS.map((parcel) => snapshot(parcel, now, true)),
+      snapshots: DEMO_PARCELS.map((parcel) => fromShop(parcel, now)),
       complete: true,
     });
   },

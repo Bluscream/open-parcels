@@ -31,6 +31,8 @@ export interface SchedulerDeps {
   readonly concurrency?: number;
   /** Called after each successful run with the parcels the carrier can show on a courier map. */
   readonly onRunSucceeded?: (sourceId: string, liveTargets: readonly LiveTargetOfParcel[]) => void;
+  /** A plug-in's fixed time between runs, if it has one. */
+  readonly pollIntervalOf?: (plugin: string) => number | null;
 }
 
 function asStatus(value: string): ParcelStatus {
@@ -154,6 +156,7 @@ export class Scheduler {
         kind: source.kind,
         staggerMinutes: staggerMinutes(`${this.deps.installId}:${source.id}`),
         active: await this.#activeParcels(source.id),
+        fixedIntervalMs: this.deps.pollIntervalOf?.(source.plugin) ?? null,
       });
       await this.deps.db
         .updateTable("sources")

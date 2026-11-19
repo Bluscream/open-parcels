@@ -59,6 +59,8 @@ export interface PluginInfo {
   readonly secretSchema: z.ZodType;
   /** Hosts the image proxy may fetch this carrier's pictures from (see `CarrierPlugin`). */
   readonly imageHosts: readonly string[];
+  /** Fixed time between runs, or null for the adaptive schedule (see `CarrierPlugin`). */
+  readonly pollIntervalMs: number | null;
 }
 
 /**
@@ -205,6 +207,7 @@ export function register<Config, Secret>(plugin: CarrierPlugin<Config, Secret>):
       configSchema: plugin.configSchema,
       secretSchema: plugin.secretSchema,
       imageHosts: plugin.imageHosts ?? [],
+      pollIntervalMs: plugin.pollIntervalMs ?? null,
     },
     http: plugin.http,
     canFetchAccount: plugin.fetchAccount !== undefined,

@@ -51,6 +51,12 @@ export interface ParcelSnapshot {
   readonly receiver: string | null;
   readonly weightKg: number | null;
   readonly history: readonly SnapshotEvent[];
+  /**
+   * The history is everything this source has for the parcel: entries it stored earlier and no
+   * longer reports are dropped (only its own, never another source's). For sources whose history
+   * starts over, like the demo plug-ins' loop.
+   */
+  readonly historyComplete?: boolean;
   readonly items: readonly SnapshotItem[];
   readonly order: {
     readonly shop: string;

@@ -28,6 +28,8 @@ export interface PollContext {
   /** Minutes 0–6, derived from the install and source ids, so installs don't poll in lockstep. */
   readonly staggerMinutes: number;
   readonly active: readonly ActiveParcel[];
+  /** The plug-in's fixed interval, which replaces the adaptive one and the quiet window. */
+  readonly fixedIntervalMs?: number | null;
 }
 
 function isHot(parcel: ActiveParcel, now: Date): boolean {
@@ -59,6 +61,9 @@ function respectQuietWindow(now: Date, target: Date, timeZone: string): Date {
 /** When to poll next after a successful run; null means stop until something changes. */
 export function nextRunAfterSuccess(context: PollContext): Date | null {
   const { now, active, kind } = context;
+  if (context.fixedIntervalMs !== undefined && context.fixedIntervalMs !== null) {
+    return new Date(now.getTime() + context.fixedIntervalMs);
+  }
   let interval: number;
   if (active.length === 0) {
     if (kind === "tracking") {

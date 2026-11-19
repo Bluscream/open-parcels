@@ -95,6 +95,11 @@ export interface CarrierPlugin<Config = unknown, Secret = unknown> {
    * leading dot also allows subdomains (`.media-example.com`). Unset: the proxy fetches nothing.
    */
   readonly imageHosts?: readonly string[];
+  /**
+   * A fixed time between runs instead of the adaptive schedule (and its night-time pause). Only
+   * for sources that cost nothing to ask, like the demo plug-ins.
+   */
+  readonly pollIntervalMs?: number;
   readonly configSchema: z.ZodType<Config>;
   readonly secretSchema: z.ZodType<Secret>;
   /**

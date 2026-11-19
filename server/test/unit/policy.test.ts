@@ -51,6 +51,14 @@ describe("time-zone helpers", () => {
   });
 });
 
+describe("a plug-in's fixed interval", () => {
+  it("replaces the adaptive one, the stagger and the night-time pause", () => {
+    // 01:30 local time, in the quiet window, with nothing in flight.
+    const night = context("2026-11-18T00:30:00Z", { fixedIntervalMs: 30_000, staggerMinutes: 5 });
+    expect(nextRunAfterSuccess(night)?.toISOString()).toBe("2026-11-18T00:30:30.000Z");
+  });
+});
+
 describe("poll scheduling", () => {
   it("uses the mid tier for parcels in flight", () => {
     const next = nextRunAfterSuccess(
