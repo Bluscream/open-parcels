@@ -11,7 +11,12 @@ import { isPlausibleOrder, shopFromDomain } from "../domain/order.js";
  */
 export async function repairOrderShops(db: Kysely<Database>, clock: Clock): Promise<number> {
   return db.transaction().execute(async (trx) => {
-    const orders = await trx.selectFrom("orders").select(["id", "shop", "order_number"]).execute();
+    // A deleted order is a tombstone: never repaired, never a twin to move parcels onto.
+    const orders = await trx
+      .selectFrom("orders")
+      .select(["id", "shop", "order_number"])
+      .where("deleted_at", "is", null)
+      .execute();
     let repaired = 0;
     for (const order of orders) {
       if (isPlausibleOrder(order.shop, order.order_number)) {
@@ -29,11 +34,19 @@ export async function repairOrderShops(db: Kysely<Database>, clock: Clock): Prom
       const shop = named.size === 1 && only !== undefined ? only : "unknown";
       const twin = await trx
         .selectFrom("orders")
-        .select("id")
+        .select(["id", "deleted_at"])
         .where("shop", "=", shop)
         .where("order_number", "=", order.order_number)
         .executeTakeFirst();
-      if (twin === undefined) {
+      if (twin !== undefined && twin.deleted_at !== null) {
+        // The user deleted that order: its parcels stay without one.
+        await trx
+          .updateTable("parcels")
+          .set({ order_id: null })
+          .where("order_id", "=", order.id)
+          .execute();
+        await trx.deleteFrom("orders").where("id", "=", order.id).execute();
+      } else if (twin === undefined) {
         await trx
           .updateTable("orders")
           .set({ shop, updated_at: isoNow(clock) })
